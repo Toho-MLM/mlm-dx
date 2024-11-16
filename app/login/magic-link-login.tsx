@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,58 +8,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription }
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { MailCheck, MailWarning, Loader2 } from 'lucide-react'
+import { supabase } from '@/supabaseClient';
+import { useRouter } from 'next/navigation'
 
-function CircularProgress({ remainingSeconds }: { remainingSeconds: number }) {
-  const progress = ((60 - remainingSeconds) / 60) * 100
-  const circumference = 2 * Math.PI * 18
-  return (
-    <div className="relative inline-flex flex-col items-center justify-center">
-      <div className="w-10 h-10 relative">
-        <svg className="w-10 h-10 transform -rotate-90">
-          <circle
-            className="text-gray-300"
-            strokeWidth="3"
-            stroke="currentColor"
-            fill="transparent"
-            r="18"
-            cx="20"
-            cy="20"
-          />
-          <circle
-            className="text-blue-600 transition-[stroke-dashoffset] ease-in-out"
-            strokeWidth="3"
-            strokeDasharray={circumference}
-            strokeDashoffset={circumference - (progress / 100) * circumference}
-            strokeLinecap="round"
-            stroke="currentColor"
-            fill="transparent"
-            r="18"
-            cx="20"
-            cy="20"
-          />
-        </svg>
-        <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-blue-600">{remainingSeconds}</span>
-      </div>
-      <span className="text-[10px] mt-1 text-gray-500 whitespace-nowrap">再送信可能まで</span>
-    </div>
-  )
-}
-
-async function sendMagicLink(email: string) {
-  await new Promise(resolve => setTimeout(resolve, 1000))
-  if (email === 'error@example.com') {
-    throw new Error('Failed to send magic link')
-  }
-  return { success: true }
-}
 
 export function MagicLinkLogin() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [cooldownEndTime, setCooldownEndTime] = useState<number | null>(null)
   const [remainingTime, setRemainingTime] = useState(0)
   const lastSubmittedEmail = useRef('')
+  const [errorMessage, setErrorMessage] = useState('エラーが発生しました。\nもう一度お試しください。')
 
   useEffect(() => {
     const storedState = localStorage.getItem('magicLinkState')
@@ -93,6 +54,65 @@ export function MagicLinkLogin() {
     }
   }, [status, cooldownEndTime])
 
+  useEffect(() => {
+    const checkUserSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        router.push('/')
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkUserSession()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    checkUserSession()
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
+  function CircularProgress({ remainingSeconds }: { remainingSeconds: number }) {
+    const progress = (((status === 'success' ? 60 : 10) - remainingSeconds) / (status === 'success' ? 60 : 10)) * 100
+    const circumference = 2 * Math.PI * 18
+    return (
+      <div className="relative inline-flex flex-col items-center justify-center">
+        <div className="w-10 h-10 relative">
+          <svg className="w-10 h-10 transform -rotate-90">
+            <circle
+              className="text-gray-300"
+              strokeWidth="3"
+              stroke="currentColor"
+              fill="transparent"
+              r="18"
+              cx="20"
+              cy="20"
+            />
+            <circle
+              className="text-blue-600 transition-[stroke-dashoffset] ease-in-out"
+              strokeWidth="3"
+              strokeDasharray={circumference}
+              strokeDashoffset={circumference - (progress / 100) * circumference}
+              strokeLinecap="round"
+              stroke="currentColor"
+              fill="transparent"
+              r="18"
+              cx="20"
+              cy="20"
+            />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-blue-600">{remainingSeconds}</span>
+        </div>
+        <span className="text-[10px] mt-1 text-gray-500 whitespace-nowrap">再送信可能まで</span>
+      </div>
+    )
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -103,12 +123,50 @@ export function MagicLinkLogin() {
       setStatus('success')
       lastSubmittedEmail.current = email
       setCooldownEndTime(new Date().getTime() + 60000)
-    } catch (error) {
+    } catch (error: unknown) {
       setStatus('error')
       console.error(error)
-      setCooldownEndTime(new Date().getTime() + 60000)
+      setCooldownEndTime(new Date().getTime() + 10000)
     } finally {
       setIsLoading(false)
+    }
+
+    async function sendMagicLink(email: string) {
+      const { error } = await supabase.auth.signInWithOtp({ 
+        email,
+        options: {
+          emailRedirectTo: "http://localhost:3000/login/callback"
+        }
+      })
+    
+      if (error) {
+        handleAuthError(error)
+        throw new Error(error.message)
+      }
+    
+    }
+    
+    function handleAuthError(error: { message: string; status?: number }) {
+      switch (error.status) {
+        case 403:
+          setErrorMessage('この機能を利用するための必要な権限がありません。\n管理者にお問い合わせください。')
+          break
+        case 422:
+          setErrorMessage('このメールアドレスは登録されていません。\nメールアドレスが正しい場合は管理者にお問い合わせください。')
+          break
+        case 429:
+          setErrorMessage('アクセスが多すぎます。\nしばらくしてから再試行してください。')
+          break
+        case 500:
+          setErrorMessage('内部エラーが発生しました。\nしばらくしてから再試行してください。')
+          break
+        case 501:
+          setErrorMessage('この機能はサーバーで有効になっていません。\n管理者にお問い合わせください。')
+          break
+        default:
+          setErrorMessage('予期せぬエラーが発生しました。\n' + error.message)
+          break
+      }
     }
   }
 
@@ -173,12 +231,13 @@ export function MagicLinkLogin() {
                         <div>
                           <AlertTitle >エラー</AlertTitle>
                           <AlertDescription>
-                            <>
-                              送信に失敗しました。
-                              <br />
-                              メールアドレスを確認してもう一度お試しください。
-                            </>
-                          </AlertDescription>
+                          {errorMessage.split("\n").map((line, index) => (
+                            <React.Fragment key={index}>
+                                {line}
+                                <br />
+                              </React.Fragment>
+                            ))}
+                            </AlertDescription>
                         </div>
                       </div>
                     </Alert>
