@@ -105,6 +105,7 @@ export function MagicLinkLogin() {
       setCooldownEndTime(new Date().getTime() + 60000)
     } catch (error) {
       setStatus('error')
+      console.error(error)
       setCooldownEndTime(new Date().getTime() + 60000)
     } finally {
       setIsLoading(false)
@@ -115,14 +116,14 @@ export function MagicLinkLogin() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <Card className="overflow-hidden min-w">
+      <Card className="w-full max-w-md overflow-hidden">
           <CardHeader className="bg-gray-800 text-white">
           <CardTitle className="text-2xl font-bold">ログイン</CardTitle>
           <CardDescription className="text-gray-300">メールアドレスを入力してください。</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
-          <CardContent className="mt-6 space-y-4">
-            <div className="space-y-2">
+          <CardContent className="mt-2 space-y-4">
+            <div className="space-y-1">
               <Label htmlFor="email" className="text-sm font-medium text-gray-700">メールアドレス</Label>
               <Input
                 id="email"
@@ -143,40 +144,52 @@ export function MagicLinkLogin() {
                   transition={{ duration: 0.3 }}
                 >
                   {status === 'success' && (
-                    <Alert className="bg-green-50 text-green-800 border-green-300 relative pr-20">
+                    <Alert className="bg-green-50 text-green-800 border-green-300 relative pr-24">
                       <div className="absolute top-3 right-3">
                         <CircularProgress remainingSeconds={Math.max(0, Math.ceil(remainingTime / 1000))} />
                       </div>
-                      <MailCheck className="h-5 w-5" />
-                      <AlertTitle>送信完了</AlertTitle>
-                      <AlertDescription>
-                        <>
-                          マジックリンクをメールで送信しました。
-                          <br />
-                          迷惑メールボックスもご確認ください。
-                        </>
-                      </AlertDescription>
+                      <div className="flex items-start gap-1">
+                        <MailCheck className="h-5 w-5 relative top-[-4px] left-[-4px]" />
+                        <div>
+                          <AlertTitle >送信完了</AlertTitle>
+                          <AlertDescription>
+                            <>
+                              マジックリンクをメールで送信しました。
+                              <br />
+                              迷惑メールボックスもご確認ください。
+                            </>
+                          </AlertDescription>
+                        </div>
+                      </div>
                     </Alert>
                   )}
                   {status === 'error' && (
-                    <Alert variant="destructive" className="bg-red-50 text-red-800 border-red-300 relative pr-16">
+                    <Alert className="bg-red-50 text-red-800 border-red-300 relative pr-24">
                       <div className="absolute top-3 right-3">
                         <CircularProgress remainingSeconds={Math.max(0, Math.ceil(remainingTime / 1000))} />
                       </div>
-                      <MailWarning className="h-4 w-4" />
-                      <AlertTitle>エラー</AlertTitle>
-                      <AlertDescription className="mr-12">
-                        送信に失敗しました。メールアドレスを確認してもう一度お試しください。
-                      </AlertDescription>
+                      <div className="flex items-start gap-1">
+                        <MailWarning className="h-5 w-5 relative top-[-4px] left-[-4px]" />
+                        <div>
+                          <AlertTitle >エラー</AlertTitle>
+                          <AlertDescription>
+                            <>
+                              送信に失敗しました。
+                              <br />
+                              メールアドレスを確認してもう一度お試しください。
+                            </>
+                          </AlertDescription>
+                        </div>
+                      </div>
                     </Alert>
                   )}
                 </motion.div>
               )}
             </AnimatePresence>
           </CardContent>
-          <CardFooter className="flex flex-col items-center space-y-2">
+          <CardFooter className="flex flex-col items-center">
             <Button 
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" 
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" 
               type="submit" 
               disabled={isButtonDisabled}
             >
