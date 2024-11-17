@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, LogOut, Pencil, Settings } from 'lucide-react'
+import { Loader2, LogOut, Pencil } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { Instrument, UserData } from '@/app/types'
 import { useRouter } from 'next/navigation'
