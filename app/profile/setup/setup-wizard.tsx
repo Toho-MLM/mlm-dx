@@ -179,11 +179,10 @@ export function SetupWizard(initialUserData: UserData) {
       p_instruments: instrumentString,
     });
     if (error) {
-      console.error('データの取得中にエラーが発生しました。' + error.message);
+      setError('データの取得中にエラーが発生しました。' + error.message);
     } else if ('error' in data) {
-      console.error('データの処理中にエラーが発生しました。' + data.error);
+      setError('データの処理中にエラーが発生しました。' + data.error);
     } else {
-      console.log('データが正常に更新されました。');
       router.push('/profile');
     }
     setIsSending(false);

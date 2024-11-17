@@ -135,7 +135,7 @@ export function MagicLinkLogin() {
       const { error } = await supabase.auth.signInWithOtp({ 
         email,
         options: {
-          emailRedirectTo: "http://localhost:3000/login/callback"
+          emailRedirectTo: `${window.location.origin}/login/callback`
         }
       })
     
