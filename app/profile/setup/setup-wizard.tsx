@@ -75,6 +75,10 @@ export function SetupWizard(initialUserData: UserData) {
             <p className="text-base font-semibold">{userData.student_number}</p>
           </div>
           <div className="bg-gray-50 p-3 rounded-lg">
+            <p className="text-sm font-medium text-gray-500">学年</p>
+            <p className="text-base font-semibold">{userData.grade}年</p>
+          </div>
+          <div className="bg-gray-50 p-3 rounded-lg">
             <p className="text-sm font-medium text-gray-500">氏名</p>
             <p className="text-base font-semibold">{userData.name}</p>
           </div>
@@ -141,10 +145,6 @@ export function SetupWizard(initialUserData: UserData) {
       <CardContent className="space-y-3">
         <p className="text-sm font-medium text-gray-500">変更内容を確認してください。</p>
         <div className="space-y-2">
-          <div className="bg-gray-50 p-2 rounded-lg">
-            <p className="text-xs font-medium text-gray-500">メールアドレス</p>
-            <p className="text-sm font-semibold">{userData.email}</p>
-          </div>
           <div className="bg-gray-50 p-2 rounded-lg">
             <p className="text-xs font-medium text-gray-500">学籍番号</p>
             <p className="text-sm font-semibold">{userData.student_number}</p>

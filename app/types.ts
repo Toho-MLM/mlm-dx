@@ -8,8 +8,9 @@ export enum Instrument {
 
 export interface UserData {
     student_number: string;
-    email: string;
+    grade: string;
     name: string;
+    email: string;
     nickname: string | null;
     instruments: Instrument[];
 }
