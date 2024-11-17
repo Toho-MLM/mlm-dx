@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation'
 
 export function MagicLinkLogin() {
   const router = useRouter()
-  const [email, setEmail] = useState('@st.toho-u.ac.jp')
+  const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [cooldownEndTime, setCooldownEndTime] = useState<number | null>(null)
@@ -186,7 +186,7 @@ export function MagicLinkLogin() {
               <Input
                 id="email"
                 type="email"
-                placeholder="your@email.com"
+                placeholder="example@st.toho-u.ac.jp"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required

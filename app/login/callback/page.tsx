@@ -6,6 +6,8 @@ import { UserData } from '@/app/types'
 import { supabase } from '@/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
 import LoadingScreen from '@/components/ui/loading';
+import { AlertTriangle, CheckCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
 export default function Page() {
   const [userData, setUserData] = useState<UserData | null>(null)
@@ -54,11 +56,31 @@ export default function Page() {
   }
 
   if (error) {
-    return <div style={{ color: 'red' }}>{error}</div>
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Card className="max-w-lg mx-auto flex flex-col items-center">
+          <CardHeader>
+            <AlertTriangle className="h-12 w-12 text-red-500" />
+            <span className="ml-2 text-lg text-red-600">エラーが発生しました。<br />{error}</span>
+          </CardHeader>
+        </Card>
+      </div>
+    )
   }
 
   if (userData) {
-    return <div>ログインに成功しました。このページは閉じてください。</div>
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Card className="max-w-lg mx-auto flex flex-col items-center">
+          <CardHeader>
+            <CheckCircle className="h-12 w-12 text-green-500" />
+          </CardHeader>
+          <CardContent className="flex justify-center">
+            <span className="mt-2 text-lg text-green-600 text-center">ログインに成功しました。<br />このページは閉じてください。</span>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return null
