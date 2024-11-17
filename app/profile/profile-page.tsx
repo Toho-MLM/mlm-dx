@@ -57,6 +57,10 @@ export function ProfilePage({ userData }: { userData: UserData }) {
               <p className="text-sm font-semibold">{userData.student_number}</p>
             </div>
             <div className="bg-gray-50 p-2 rounded-lg">
+              <p className="text-xs font-medium text-gray-500">学年</p>
+              <p className="text-sm font-semibold">{userData.grade}年</p>
+            </div>
+            <div className="bg-gray-50 p-2 rounded-lg">
               <p className="text-xs font-medium text-gray-500">氏名</p>
               <p className="text-sm font-semibold">{userData.name}</p>
             </div>
