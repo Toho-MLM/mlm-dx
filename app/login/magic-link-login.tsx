@@ -173,7 +173,7 @@ export function MagicLinkLogin() {
   const isButtonDisabled = isLoading || (cooldownEndTime !== null && Date.now() < cooldownEndTime)
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+    <div className="min-h-screen flex items-center justify-center">
       <Card className="w-full max-w-md overflow-hidden">
           <CardHeader className="bg-gray-800 text-white">
           <CardTitle className="text-2xl font-bold">ログイン</CardTitle>
@@ -227,7 +227,7 @@ export function MagicLinkLogin() {
                         <CircularProgress remainingSeconds={Math.max(0, Math.ceil(remainingTime / 1000))} />
                       </div>
                       <div className="flex items-start gap-1">
-                        <MailWarning className="h-5 w-5 relative top-[-4px] left-[-4px]" />
+                        <MailWarning className="h-5 w-5 flex-shrink-0 relative top-[-4px] left-[-4px]" />
                         <div>
                           <AlertTitle >エラー</AlertTitle>
                           <AlertDescription>
