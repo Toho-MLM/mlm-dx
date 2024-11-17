@@ -3,9 +3,11 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { LogOut, Settings } from 'lucide-react'
+import { Loader2, LogOut, Settings } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { Instrument, UserData } from '@/app/types'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/supabaseClient'
 
 const instrumentNames: Record<Instrument, string> = {
   [Instrument.VOCAL]: 'ボーカル',
@@ -17,18 +19,21 @@ const instrumentNames: Record<Instrument, string> = {
 
 export function ProfilePage({ userData }: { userData: UserData }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-
+  const router = useRouter()
   const handleLogout = async () => {
-    setIsLoggingOut(true)
-    // ここに実際のログアウト処理を追加します
-    await new Promise(resolve => setTimeout(resolve, 1000)) // ログアウト処理のシミュレーション
-    setIsLoggingOut(false)
-    // ログアウト後のリダイレクト処理をここに追加します
-  }
+    setIsLoggingOut(true);
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Failed to logout:', error.message);
+    } else {
+      console.log('Logout success');
+      window.location.reload(); // ページをリロードしてログアウトを反映
+    }
+    setIsLoggingOut(false);
+  };
 
   const handleResetProfile = () => {
-    // ここにプロフィール再設定ページへの遷移処理を追加します
-    console.log('プロフィール再設定ページへ遷移')
+    router.push('/profile/setup')
   }
 
   return (
@@ -41,19 +46,19 @@ export function ProfilePage({ userData }: { userData: UserData }) {
         <CardHeader className="pb-4">
           <CardTitle className="text-xl font-bold">プロフィール</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 py-4">
+        <CardContent className="space-y-3">
           <div className="space-y-2">
             <div className="bg-gray-50 p-2 rounded-lg">
-              <p className="text-xs font-medium text-gray-500">名前</p>
-              <p className="text-sm font-semibold">{userData.name}</p>
+              <p className="text-xs font-medium text-gray-500">メールアドレス</p>
+              <p className="text-sm font-semibold">{userData.email}</p>
             </div>
             <div className="bg-gray-50 p-2 rounded-lg">
               <p className="text-xs font-medium text-gray-500">学籍番号</p>
               <p className="text-sm font-semibold">{userData.student_number}</p>
             </div>
             <div className="bg-gray-50 p-2 rounded-lg">
-              <p className="text-xs font-medium text-gray-500">メールアドレス</p>
-              <p className="text-sm font-semibold">{userData.email}</p>
+              <p className="text-xs font-medium text-gray-500">氏名</p>
+              <p className="text-sm font-semibold">{userData.name}</p>
             </div>
             <div className="bg-gray-50 p-2 rounded-lg">
               <p className="text-xs font-medium text-gray-500">ニックネーム</p>
@@ -65,14 +70,14 @@ export function ProfilePage({ userData }: { userData: UserData }) {
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex justify-between pt-4 pb-6">
+        <CardFooter className="flex justify-between">
           <Button
             onClick={handleResetProfile}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
             size="sm"
           >
             <Settings className="mr-2 h-4 w-4" />
-            プロフィール再設定
+            プロフィール編集
           </Button>
           <Button
             onClick={handleLogout}
@@ -80,21 +85,11 @@ export function ProfilePage({ userData }: { userData: UserData }) {
             className="bg-red-500 text-white hover:bg-red-600"
             size="sm"
           >
-            {isLoggingOut ? (
-              <>
-                <motion.div
-                  className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                />
-                ログアウト中...
-              </>
-            ) : (
-              <>
-                <LogOut className="mr-2 h-4 w-4" />
-                ログアウト
-              </>
-            )}
+            <div className="flex items-center justify-center">
+              {isLoggingOut && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <LogOut className="mr-2 h-4 w-4" />
+              ログアウト
+            </div>
           </Button>
         </CardFooter>
       </Card>

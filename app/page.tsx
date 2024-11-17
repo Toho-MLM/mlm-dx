@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './context/AuthContext';
+import LoadingScreen from '@/components/ui/loading';
 
 export default function Page() {
   const router = useRouter();
@@ -18,8 +19,6 @@ export default function Page() {
   }, [user, loading, router]);
 
   return (
-    <div className="flex items-center justify-center h-screen">
-      <div className="text-lg font-semibold">読み込み中...</div>
-    </div>
+    <LoadingScreen />
   );
 }

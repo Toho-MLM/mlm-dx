@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { UserData } from '@/app/types'
 import { supabase } from '@/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
+import LoadingScreen from '@/components/ui/loading';
 
 export default function Page() {
   const [userData, setUserData] = useState<UserData | null>(null)
@@ -19,11 +20,13 @@ export default function Page() {
     }
 
     const fetchUserData = async () => {
+      if (!user) return;
+
       setLoading(true)
       setError(null)
 
       try {
-        const { data, error } = await supabase.rpc('fetch_user', { p_email: user?.email });
+        const { data, error } = await supabase.rpc('fetch_user', { p_email: user.email });
 
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
@@ -41,11 +44,13 @@ export default function Page() {
       }
     }
 
-    fetchUserData()
+    if (user) {
+      fetchUserData();
+    }
   }, [router, user, authLoading])
 
   if (loading) {
-    return <div>読み込み中...</div>
+    return <LoadingScreen />
   }
 
   if (error) {

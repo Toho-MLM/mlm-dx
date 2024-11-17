@@ -8,8 +8,10 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Checkbox } from '@/components/ui/checkbox'
 import { motion } from 'framer-motion'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { InfoIcon } from 'lucide-react'
+import { InfoIcon, Loader2 } from 'lucide-react'
 import { UserData, Instrument } from '@/app/types'
+import { supabase } from '@/supabaseClient'
+import { useRouter } from 'next/navigation'
 
 const instrumentNames: Record<Instrument, string> = {
   [Instrument.VOCAL]: 'ボーカル',
@@ -24,16 +26,13 @@ const stepVariants = {
   visible: { opacity: 1, x: 0 },
 }
 
-export function SetupWizard({ name, studentId, email }: { name: string; studentId: string; email: string }) {
+export function SetupWizard(initialUserData: UserData) {
   const [step, setStep] = useState(0)
-  const [userData, setUserData] = useState<UserData>({
-    name: name,
-    student_number: studentId,
-    email: email,
-    nickname: '',
-    instruments: [],
-  })
+  const [userData, setUserData] = useState<UserData>(initialUserData)
   const [canProceed, setCanProceed] = useState(true)
+  const [isSending, setIsSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const router = useRouter();
 
   useEffect(() => {
     if (step === 1) {
@@ -64,9 +63,10 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
   const steps = [
     // Step 1: 名前と学籍番号の確認
     <motion.div key="step1" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
-      <CardContent className="space-y-4 py-4">
+      <CardContent className="space-y-4">
         <div className="space-y-2">
-        <div className="bg-gray-50 p-3 rounded-lg">
+          <p className="font-medium text-gray-500">設定を確認してください。</p>
+          <div className="bg-gray-50 p-3 rounded-lg">
             <p className="text-sm font-medium text-gray-500">メールアドレス</p>
             <p className="text-base font-semibold">{userData.email}</p>
           </div>
@@ -75,13 +75,13 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
             <p className="text-base font-semibold">{userData.student_number}</p>
           </div>
           <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm font-medium text-gray-500">名前</p>
+            <p className="text-sm font-medium text-gray-500">氏名</p>
             <p className="text-base font-semibold">{userData.name}</p>
           </div>
         </div>
-        <Alert className="flex items-center">
+        <Alert className="flexitems-center">
           <InfoIcon className="h-4 w-4" />
-          <AlertDescription className="text-xs">
+          <AlertDescription>
             いずれかの情報が間違っている場合は、管理者にお問い合わせください。
           </AlertDescription>
         </Alert>
@@ -90,7 +90,7 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
 
     // Step 2: ニックネームの設定
     <motion.div key="step2" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
-      <CardContent className="space-y-4 py-4">
+      <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="nickname" className="text-sm">ニックネーム</Label>
           <Input
@@ -100,9 +100,9 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
             className="text-sm"
           />
         </div>
-        <Alert variant={canProceed ? "default" : "destructive"} className="py-2">
-          <InfoIcon className="h-4 w-4 mt-0.5" />
-          <AlertDescription className="text-xs ml-2">
+        <Alert variant={canProceed ? "default" : "destructive"} className="flex items-center">
+          <InfoIcon className="h-4 w-4" />
+          <AlertDescription>
             {canProceed ? "ニックネームを入力してください。" : "ニックネームは必須です。"}
           </AlertDescription>
         </Alert>
@@ -114,7 +114,7 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
       <CardContent className="space-y-4 py-4">
         <div className="space-y-2">
           <Label className="text-sm">担当楽器（複数選択可）</Label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="ml-2 grid grid-cols-2 gap-2">
             {Object.values(Instrument).map((instrument) => (
               <div key={instrument} className="flex items-center space-x-2">
                 <Checkbox
@@ -127,9 +127,9 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
             ))}
           </div>
         </div>
-        <Alert variant={canProceed ? "default" : "destructive"} className="py-2">
-          <InfoIcon className="h-4 w-4 mt-0.5" />
-          <AlertDescription className="text-xs ml-2">
+        <Alert variant={canProceed ? "default" : "destructive"} className="flex items-center">
+          <InfoIcon className="h-4 w-4" />
+          <AlertDescription>
             {canProceed ? "担当楽器を1つ以上選択してください。" : "少なくとも1つの楽器を選択してください。"}
           </AlertDescription>
         </Alert>
@@ -138,19 +138,20 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
 
     // Step 4: 確認
     <motion.div key="step4" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
-      <CardContent className="space-y-3 py-4">
+      <CardContent className="space-y-3">
+        <p className="text-sm font-medium text-gray-500">変更内容を確認してください。</p>
         <div className="space-y-2">
           <div className="bg-gray-50 p-2 rounded-lg">
-            <p className="text-xs font-medium text-gray-500">名前</p>
-            <p className="text-sm font-semibold">{userData.name}</p>
+            <p className="text-xs font-medium text-gray-500">メールアドレス</p>
+            <p className="text-sm font-semibold">{userData.email}</p>
           </div>
           <div className="bg-gray-50 p-2 rounded-lg">
             <p className="text-xs font-medium text-gray-500">学籍番号</p>
             <p className="text-sm font-semibold">{userData.student_number}</p>
           </div>
           <div className="bg-gray-50 p-2 rounded-lg">
-            <p className="text-xs font-medium text-gray-500">メールアドレス</p>
-            <p className="text-sm font-semibold">{userData.email}</p>
+            <p className="text-xs font-medium text-gray-500">氏名</p>
+            <p className="text-sm font-semibold">{userData.name}</p>
           </div>
           <div className="bg-gray-50 p-2 rounded-lg">
             <p className="text-xs font-medium text-gray-500">ニックネーム</p>
@@ -158,16 +159,35 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
           </div>
           <div className="bg-gray-50 p-2 rounded-lg">
             <p className="text-xs font-medium text-gray-500">担当楽器</p>
-            <p className="text-sm font-semibold">{userData.instruments?.map((i) => instrumentNames[i]).join(', ') || '未設定'}</p>
+            <p className="text-sm font-semibold">{userData.instruments.map((i) => instrumentNames[i]).join(', ')}</p>
           </div>
         </div>
+        {error && <Alert variant="destructive" className="py-2">
+          <InfoIcon className="h-4 w-4 mt-0.5" />
+          <AlertDescription className="text-xs ml-2">{error}</AlertDescription>
+        </Alert>}
       </CardContent>
     </motion.div>,
   ]
 
-  const handleSubmit = () => {
-    console.log('送信されたユーザーデータ:', userData)
-  }
+  const handleSubmit = async () => {
+    setIsSending(true);
+    const instrumentString = userData.instruments.join(',');
+    const { data, error } = await supabase.rpc('update_user', {
+      p_email: userData.email,
+      p_nickname: userData.nickname,
+      p_instruments: instrumentString,
+    });
+    if (error) {
+      console.error('データの取得中にエラーが発生しました。' + error.message);
+    } else if ('error' in data) {
+      console.error('データの処理中にエラーが発生しました。' + data.error);
+    } else {
+      console.log('データが正常に更新されました。');
+      router.push('/profile');
+    }
+    setIsSending(false);
+  };
 
   return (
     <motion.div
@@ -175,18 +195,17 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
     >
-      <Card className="w-full max-w-md mx-auto h-[480px] flex flex-col">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-xl font-bold">セットアップウィザード</CardTitle>
+      <Card className="w-full max-w-md mx-auto flex flex-col">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xl font-bold">プロフィール設定</CardTitle>
         </CardHeader>
-        <div className="flex items-center justify-between px-6 pb-4">
+        <div className="flex items-center justify-between px-6 pb-2">
           <div className="flex-grow flex justify-between">
             {steps.map((_, index) => (
               <div
                 key={index}
-                className={`w-full h-1 rounded-full mx-0.5 transition-all duration-300 ${
-                  index <= step ? 'bg-primary' : 'bg-gray-200'
-                }`}
+                className={`w-full h-1 rounded-full mx-0.5 transition-all duration-300 ${index <= step ? 'bg-primary' : 'bg-gray-200'
+                  }`}
               />
             ))}
           </div>
@@ -197,7 +216,7 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
         <div className="flex-grow overflow-y-auto">
           {steps[step]}
         </div>
-        <CardFooter className="flex justify-end pt-4 pb-6">
+        <CardFooter className="flex justify-end pb-4">
           {step > 0 && (
             <Button onClick={handlePrevStep} variant="outline" size="sm" className="mr-2">
               戻る
@@ -208,8 +227,11 @@ export function SetupWizard({ name, studentId, email }: { name: string; studentI
               次へ
             </Button>
           ) : (
-            <Button onClick={handleSubmit} className="bg-primary text-primary-foreground hover:bg-primary/90" size="sm">
-              完了
+            <Button onClick={handleSubmit} className="bg-primary text-primary-foreground hover:bg-primary/90" size="sm" disabled={isSending}>
+              <div className="flex items-center justify-center">
+                {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                完了
+              </div>
             </Button>
           )}
         </CardFooter>
