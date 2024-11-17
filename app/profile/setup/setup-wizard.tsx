@@ -24,7 +24,7 @@ const stepVariants = {
   visible: { opacity: 1, x: 0 },
 }
 
-export function SetupWizard({ name = '山田 太郎', studentId = '12345678', email = 'yamada@example.com' }: { name?: string; studentId?: string; email?: string }) {
+export function SetupWizard({ name, studentId, email }: { name: string; studentId: string; email: string }) {
   const [step, setStep] = useState(0)
   const [userData, setUserData] = useState<UserData>({
     name: name,
@@ -39,7 +39,7 @@ export function SetupWizard({ name = '山田 太郎', studentId = '12345678', em
     if (step === 1) {
       setCanProceed(userData.nickname?.trim() !== '')
     } else if (step === 2) {
-      setCanProceed(userData.instruments?.length > 0)
+      setCanProceed(userData.instruments!.length > 0)
     } else {
       setCanProceed(true)
     }
@@ -66,23 +66,23 @@ export function SetupWizard({ name = '山田 太郎', studentId = '12345678', em
     <motion.div key="step1" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
       <CardContent className="space-y-4 py-4">
         <div className="space-y-2">
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm font-medium text-gray-500">名前</p>
-            <p className="text-base font-semibold">{userData.name}</p>
+        <div className="bg-gray-50 p-3 rounded-lg">
+            <p className="text-sm font-medium text-gray-500">メールアドレス</p>
+            <p className="text-base font-semibold">{userData.email}</p>
           </div>
           <div className="bg-gray-50 p-3 rounded-lg">
             <p className="text-sm font-medium text-gray-500">学籍番号</p>
             <p className="text-base font-semibold">{userData.student_number}</p>
           </div>
           <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm font-medium text-gray-500">メールアドレス</p>
-            <p className="text-base font-semibold">{userData.email}</p>
+            <p className="text-sm font-medium text-gray-500">名前</p>
+            <p className="text-base font-semibold">{userData.name}</p>
           </div>
         </div>
-        <Alert className="py-2">
-          <InfoIcon className="h-4 w-4 mt-0.5" />
-          <AlertDescription className="text-xs ml-2">
-            名前、学籍番号、またはメールアドレスが間違っている場合は、管理者にお問い合わせください。
+        <Alert className="flex items-center">
+          <InfoIcon className="h-4 w-4" />
+          <AlertDescription className="text-xs">
+            いずれかの情報が間違っている場合は、管理者にお問い合わせください。
           </AlertDescription>
         </Alert>
       </CardContent>
