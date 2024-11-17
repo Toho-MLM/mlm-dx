@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "./context/AuthContext";
+import { Analytics } from '@vercel/analytics/react';
 
 const notoSansJP = localFont({
   src: "./fonts/NotoSansJP-VariableFont_wght.ttf",
@@ -25,6 +26,7 @@ export default function RootLayout({
           className={`${notoSansJP.variable} antialiased bg-gray-100`}
         >
           {children}
+          <Analytics />
         </body>
       </html>
     </AuthProvider>
