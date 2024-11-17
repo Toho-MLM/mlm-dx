@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, LogOut, Settings } from 'lucide-react'
+import { Loader2, LogOut, Pencil, Settings } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { Instrument, UserData } from '@/app/types'
 import { useRouter } from 'next/navigation'
@@ -76,7 +76,7 @@ export function ProfilePage({ userData }: { userData: UserData }) {
             className="bg-primary text-primary-foreground hover:bg-primary/90"
             size="sm"
           >
-            <Settings className="mr-2 h-4 w-4" />
+            <Pencil className="mr-2 h-4 w-4" />
             プロフィール編集
           </Button>
           <Button
