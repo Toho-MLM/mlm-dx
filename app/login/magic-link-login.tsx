@@ -174,11 +174,11 @@ export function MagicLinkLogin() {
   const isButtonDisabled = isLoading || (cooldownEndTime !== null && Date.now() < cooldownEndTime)
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <Card className="w-full max-w-md overflow-hidden">
+    <div className="pt-5 px-10">
+      <Card className="w-full max-w-xl overflow-hidden mx-auto">
           <CardHeader className="bg-gray-800 text-white">
           <CardTitle className="text-2xl font-bold">ログイン</CardTitle>
-          <CardDescription className="text-gray-300">メールアドレスを入力してください。</CardDescription>
+          <CardDescription className="text-gray-300">メールアドレスを入力してください<br />ドメインは@st.toho-u.ac.jpを含む必要があります）</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="mt-2 space-y-4">
@@ -203,7 +203,7 @@ export function MagicLinkLogin() {
                   transition={{ duration: 0.3 }}
                 >
                   {status === 'success' && (
-                    <Alert className="bg-green-50 text-green-800 border-green-300 relative pr-24">
+                    <Alert className="bg-green-50 text-green-800 border-green-300 relative pr-20">
                       <div className="absolute top-3 right-3">
                         <CircularProgress remainingSeconds={Math.max(0, Math.ceil(remainingTime / 1000))} />
                       </div>
@@ -253,14 +253,10 @@ export function MagicLinkLogin() {
               type="submit" 
               disabled={isButtonDisabled}
             >
-              {isLoading ? (
                 <div className="flex items-center justify-center">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  送信中...
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  マジックリンクを送信
                 </div>
-              ) : (
-                'マジックリンクを送信'
-              )}
             </Button>
           </CardFooter>
         </form>

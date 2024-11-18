@@ -1,9 +1,17 @@
 export enum Instrument {
-    VOCAL = 'VOCAL',
-    KEYBOARD = 'KEYBOARD',
-    GUITAR = 'GUITAR',
-    DRUM = 'DRUM',
-    BASS = 'BASS',
+    vocal = 'VO',
+    guitar = 'GT',
+    keyboard = 'KEY',
+    drums = 'DR',
+    bass = 'BA',
+}
+
+export enum Role {
+    manager = 'MGR',
+    deputy_manager = 'DMGR',
+    accountant = 'ACC',
+    member = 'MBR',
+    admin = 'ADM',
 }
 
 export interface UserData {
