@@ -5,17 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, LogOut, Pencil } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { Instrument, UserData } from '@/app/types'
+import { UserData, instrumentNames, roleNames } from '@/app/types'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/supabase/supabaseClient'
-
-const instrumentNames: Record<Instrument, string> = {
-  [Instrument.vocal]: 'ボーカル',
-  [Instrument.keyboard]: 'キーボード',
-  [Instrument.guitar]: 'ギター',
-  [Instrument.drums]: 'ドラム',
-  [Instrument.bass]: 'ベース',
-}
 
 export function ProfilePage({ userData }: { userData: UserData }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -68,6 +60,10 @@ export function ProfilePage({ userData }: { userData: UserData }) {
               <div className="bg-gray-50 p-2 rounded-lg">
                 <p className="text-xs font-medium text-gray-500">ニックネーム</p>
                 <p className="text-sm font-semibold">{userData.nickname}</p>
+              </div>
+              <div className="bg-gray-50 p-2 rounded-lg">
+                <p className="text-xs font-medium text-gray-500">役職</p>
+                <p className="text-sm font-semibold">{roleNames[userData.role]}</p>
               </div>
               <div className="bg-gray-50 p-2 rounded-lg">
                 <p className="text-xs font-medium text-gray-500">担当楽器</p>
