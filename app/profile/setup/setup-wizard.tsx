@@ -10,7 +10,7 @@ import { motion } from 'framer-motion'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { InfoIcon, Loader2 } from 'lucide-react'
 import { UserData, Instrument } from '@/app/types'
-import { supabase } from '@/supabaseClient'
+import { supabase } from '@/supabase/supabaseClient'
 import { useRouter } from 'next/navigation'
 
 const instrumentNames: Record<Instrument, string> = {

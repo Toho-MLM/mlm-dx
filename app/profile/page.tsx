@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ProfilePage } from './profile-page'
 import { UserData } from '@/app/types'
-import { supabase } from '@/supabaseClient'
+import { supabase } from '@/supabase/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
 import LoadingScreen from '@/components/ui/loading';
 import { Card, CardHeader } from '@/components/ui/card';

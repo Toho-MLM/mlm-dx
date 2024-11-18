@@ -7,7 +7,7 @@ import { Loader2, LogOut, Pencil } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { Instrument, UserData } from '@/app/types'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/supabaseClient'
+import { supabase } from '@/supabase/supabaseClient'
 
 const instrumentNames: Record<Instrument, string> = {
   [Instrument.VOCAL]: 'ボーカル',
