@@ -7,18 +7,18 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { motion } from 'framer-motion'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { InfoIcon, Loader2 } from 'lucide-react'
 import { UserData, Instrument } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
 import { useRouter } from 'next/navigation'
 
 const instrumentNames: Record<Instrument, string> = {
-  [Instrument.VOCAL]: 'ボーカル',
-  [Instrument.KEYBOARD]: 'キーボード',
-  [Instrument.GUITAR]: 'ギター',
-  [Instrument.DRUM]: 'ドラム',
-  [Instrument.BASS]: 'ベース',
+  [Instrument.vocal]: 'ボーカル',
+  [Instrument.guitar]: 'ギター',
+  [Instrument.keyboard]: 'キーボード',
+  [Instrument.drums]: 'ドラム',
+  [Instrument.bass]: 'ベース',
 }
 
 const stepVariants = {
@@ -68,7 +68,7 @@ export function SetupWizard(initialUserData: UserData) {
           <p className="font-medium text-gray-500">設定を確認してください。</p>
           <div className="bg-gray-50 p-3 rounded-lg">
             <p className="text-sm font-medium text-gray-500">メールアドレス</p>
-            <p className="text-base font-semibold">{userData.email}</p>
+            <p className="text-base font-semibold truncate">{userData.email}</p>
           </div>
           <div className="bg-gray-50 p-3 rounded-lg">
             <p className="text-sm font-medium text-gray-500">学籍番号</p>
@@ -83,8 +83,10 @@ export function SetupWizard(initialUserData: UserData) {
             <p className="text-base font-semibold">{userData.name}</p>
           </div>
         </div>
-        <Alert className="flexitems-center">
-          <InfoIcon className="h-4 w-4" />
+        <Alert className="flex items-center">
+          <AlertTitle>
+            <InfoIcon className="h-4 w-4 mr-2" />
+          </AlertTitle>
           <AlertDescription>
             いずれかの情報が間違っている場合は、管理者にお問い合わせください。
           </AlertDescription>
@@ -105,7 +107,9 @@ export function SetupWizard(initialUserData: UserData) {
           />
         </div>
         <Alert variant={canProceed ? "default" : "destructive"} className="flex items-center">
-          <InfoIcon className="h-4 w-4" />
+          <AlertTitle>
+            <InfoIcon className="h-4 w-4 mr-2" />
+          </AlertTitle>
           <AlertDescription>
             {canProceed ? "ニックネームを入力してください。" : "ニックネームは必須です。"}
           </AlertDescription>
@@ -132,7 +136,9 @@ export function SetupWizard(initialUserData: UserData) {
           </div>
         </div>
         <Alert variant={canProceed ? "default" : "destructive"} className="flex items-center">
-          <InfoIcon className="h-4 w-4" />
+          <AlertTitle>
+            <InfoIcon className="h-4 w-4 mr-2" />
+          </AlertTitle>
           <AlertDescription>
             {canProceed ? "担当楽器を1つ以上選択してください。" : "少なくとも1つの楽器を選択してください。"}
           </AlertDescription>
@@ -189,52 +195,54 @@ export function SetupWizard(initialUserData: UserData) {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-    >
-      <Card className="w-full max-w-md mx-auto flex flex-col">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-xl font-bold">プロフィール設定</CardTitle>
-        </CardHeader>
-        <div className="flex items-center justify-between px-6 pb-2">
-          <div className="flex-grow flex justify-between">
-            {steps.map((_, index) => (
-              <div
-                key={index}
-                className={`w-full h-1 rounded-full mx-0.5 transition-all duration-300 ${index <= step ? 'bg-primary' : 'bg-gray-200'
-                  }`}
-              />
-            ))}
+    <div className="pt-5 px-5">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <Card className="w-full max-w-2xl min-w-fit mx-auto">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xl font-bold">プロフィール設定</CardTitle>
+          </CardHeader>
+          <div className="flex items-center justify-between px-6 pb-2">
+            <div className="flex-grow flex justify-between">
+              {steps.map((_, index) => (
+                <div
+                  key={index}
+                  className={`w-full h-1 rounded-full mx-0.5 transition-all duration-300 ${index <= step ? 'bg-primary' : 'bg-gray-200'
+                    }`}
+                />
+              ))}
+            </div>
+            <span className="text-sm font-medium text-gray-500 ml-2">
+              {step + 1}/{steps.length}
+            </span>
           </div>
-          <span className="text-sm font-medium text-gray-500 ml-2">
-            {step + 1}/{steps.length}
-          </span>
-        </div>
-        <div className="flex-grow overflow-y-auto">
-          {steps[step]}
-        </div>
-        <CardFooter className="flex justify-end pb-4">
-          {step > 0 && (
-            <Button onClick={handlePrevStep} variant="outline" size="sm" className="mr-2">
-              戻る
-            </Button>
-          )}
-          {step < steps.length - 1 ? (
-            <Button onClick={handleNextStep} disabled={!canProceed} size="sm">
-              次へ
-            </Button>
-          ) : (
-            <Button onClick={handleSubmit} className="bg-primary text-primary-foreground hover:bg-primary/90" size="sm" disabled={isSending}>
-              <div className="flex items-center justify-center">
-                {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                完了
-              </div>
-            </Button>
-          )}
-        </CardFooter>
-      </Card>
-    </motion.div>
+          <div className="flex-grow overflow-y-auto">
+            {steps[step]}
+          </div>
+          <CardFooter className="flex justify-end pb-4">
+            {step > 0 && (
+              <Button onClick={handlePrevStep} variant="outline" size="sm" className="mr-2">
+                戻る
+              </Button>
+            )}
+            {step < steps.length - 1 ? (
+              <Button onClick={handleNextStep} disabled={!canProceed} size="sm">
+                次へ
+              </Button>
+            ) : (
+              <Button onClick={handleSubmit} className="bg-primary text-primary-foreground hover:bg-primary/90" size="sm" disabled={isSending}>
+                <div className="flex items-center justify-center">
+                  {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  完了
+                </div>
+              </Button>
+            )}
+          </CardFooter>
+        </Card>
+      </motion.div>
+    </div>
   )
 }
