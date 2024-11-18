@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
@@ -8,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription }
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { MailCheck, MailWarning, Loader2 } from 'lucide-react'
-import { supabase } from '@/supabaseClient';
+import { supabase } from '@/supabase/supabaseClient';
 import { useRouter } from 'next/navigation'
 
 

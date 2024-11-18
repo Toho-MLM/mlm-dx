@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { UserData } from '@/app/types'
-import { supabase } from '@/supabaseClient'
+import { supabase } from '@/supabase/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
 import LoadingScreen from '@/components/ui/loading';
 import { AlertTriangle, CheckCircle } from 'lucide-react';
