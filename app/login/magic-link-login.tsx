@@ -178,7 +178,7 @@ export function MagicLinkLogin() {
       <Card className="w-full max-w-xl overflow-hidden mx-auto">
           <CardHeader className="bg-gray-800 text-white">
           <CardTitle className="text-2xl font-bold">ログイン</CardTitle>
-          <CardDescription className="text-gray-300">メールアドレスを入力してください<br />ドメインは@st.toho-u.ac.jpを含む必要があります）</CardDescription>
+          <CardDescription className="text-gray-300">メールアドレスを入力してください<br />ドメインは@st.toho-u.ac.jpを含む必要があります</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="mt-2 space-y-4">

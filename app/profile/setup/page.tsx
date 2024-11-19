@@ -6,7 +6,8 @@ import { SetupWizard } from './setup-wizard'
 import { UserData } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
-import LoadingScreen from '@/components/ui/loading';
+import LoadingScreen from '@/components/loading';
+import ErrorAlert from '@/components/errorAlert';
 
 export default function Page() {
   const [userData, setUserData] = useState<UserData | null>(null)
@@ -53,7 +54,7 @@ export default function Page() {
   }
 
   if (error) {
-    return <div style={{ color: 'red' }}>{error}</div>
+    return <ErrorAlert error={error} />
   }
 
   if (userData) {
