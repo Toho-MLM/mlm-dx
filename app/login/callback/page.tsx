@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { UserData } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
-import LoadingScreen from '@/components/ui/loading';
+import LoadingScreen from '@/components/loading';
 import { AlertTriangle, CheckCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 

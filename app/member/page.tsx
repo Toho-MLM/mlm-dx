@@ -6,7 +6,7 @@ import { MemberList } from './member-list'
 import { MemberData } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
-import LoadingScreen from '@/components/ui/loading';
+import LoadingScreen from '@/components/loading';
 import { Card, CardHeader } from '@/components/ui/card';
 import { AlertTriangle } from 'lucide-react';
 
