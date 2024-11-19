@@ -8,7 +8,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Checkbox } from '@/components/ui/checkbox'
 import { motion } from 'framer-motion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { InfoIcon, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, InfoIcon, Loader2 } from 'lucide-react'
 import { UserData, Instrument } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
 import { useRouter } from 'next/navigation'
@@ -58,6 +58,16 @@ export function SetupWizard(initialUserData: UserData) {
         ? prev.instruments.filter((i) => i !== instrument)
         : [...prev.instruments, instrument],
     }))
+  }
+
+  const moveInstrument = (index: number, direction: 'up' | 'down') => {
+    const newInstruments = [...userData.instruments]
+    if (direction === 'up' && index > 0) {
+      [newInstruments[index - 1], newInstruments[index]] = [newInstruments[index], newInstruments[index - 1]]
+    } else if (direction === 'down' && index < newInstruments.length - 1) {
+      [newInstruments[index], newInstruments[index + 1]] = [newInstruments[index + 1], newInstruments[index]]
+    }
+    setUserData((prev) => ({ ...prev, instruments: newInstruments }))
   }
 
   const steps = [
@@ -140,9 +150,54 @@ export function SetupWizard(initialUserData: UserData) {
             <InfoIcon className="h-4 w-4 mr-2" />
           </AlertTitle>
           <AlertDescription>
-            {canProceed ? "担当楽器を1つ以上選択してください。" : "少なくとも1つの楽器を選択してください。"}
+            {canProceed ? "担当楽器を1つ以上選択してください。" + (userData.instruments.length >= 2 ? "優先順位を設定してください。" : "") : "少なくとも1つの楽器を選択してください。"}
           </AlertDescription>
         </Alert>
+        {userData.instruments.length >= 2 && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-2"
+          >
+            <Label className="text-sm">優先順位</Label>
+            <ul className="space-y-2">
+              {userData.instruments.map((instrument, index) => (
+                <motion.li
+                  key={instrument}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex items-center justify-between bg-gray-50 p-2 rounded-lg"
+                >
+                  <span className="text-sm">{instrumentNames[instrument]}</span>
+                  <div className="flex space-x-1">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => moveInstrument(index, 'up')}
+                      disabled={index === 0}
+                      className="h-6 w-6"
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => moveInstrument(index, 'down')}
+                      disabled={index === userData.instruments.length - 1}
+                      className="h-6 w-6"
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </motion.li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
       </CardContent>
     </motion.div>,
 
