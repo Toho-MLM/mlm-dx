@@ -32,10 +32,10 @@ export default function Page() {
 
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
-        } else if ('error' in data) {
-          setError(data.error);
         } else if (data === null) {
           setError('ユーザーデータが取得できませんでした。');
+        } else if ('error' in data) {
+          setError(data.error);
         } else {
           setUserData(data as UserData);
         }

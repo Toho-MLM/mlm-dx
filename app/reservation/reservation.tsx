@@ -1,19 +1,17 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Calendar as BigCalendar, dateFnsLocalizer, Event, Views } from 'react-big-calendar'
+import { Calendar as BigCalendar, dateFnsLocalizer, Views } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
-import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, subMonths, addMonths, isBefore, isSameDay, setHours, setMinutes } from 'date-fns'
+import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, subMonths, addMonths, isBefore, setHours, setMinutes, startOfDay } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
-import enUS from 'date-fns/locale/en-US'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { CalendarIcon, PlusCircleIcon, XCircleIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle } from 'lucide-react'
+import { CalendarIcon, PlusCircleIcon, XCircleIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -24,10 +22,11 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { ReservationData, ReservationHolder } from '../types'
+import { supabase } from '@/supabase/supabaseClient'
 
 const locales = {
   'ja': jaLocale,
-  'en-US': enUS,
 }
 
 const localizer = dateFnsLocalizer({
@@ -40,26 +39,16 @@ const localizer = dateFnsLocalizer({
 
 const messages = {
   week: '週',
-  work_week: '稼働週',
   day: '日',
-  month: '月',
   previous: '前',
   next: '次',
   today: '今日',
-  agenda: '予定リスト',
+  agenda: 'リスト',
   showMore: (total: number) => `+${total} 件`,
 }
 
-type Reservation = {
-  id: number;
-  title: string;
-  start: Date;
-  end: Date;
-}
-
-export function ReservationPage() {
-  const [reservations, setReservations] = useState<Reservation[]>([])
-  const [newReservation, setNewReservation] = useState({
+export function ReservationPage({reservationData}: {reservationData: ReservationData[]}) {
+  const [reservationDraft, setReservationDraft] = useState({
     reservationName: '',
     date: new Date(),
     startHour: null as number | null,
@@ -67,18 +56,17 @@ export function ReservationPage() {
     endHour: null as number | null,
     endMinute: null as number | null,
   })
-  const [isNewReservationOpen, setIsNewReservationOpen] = useState(false)
-  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null)
-  const [userName, setUserName] = useState('ユーザー名')
+  const [isReservationFormOpen, setIsReservationFormOpen] = useState(false)
+  const [selectedReservation, setSelectedReservation] = useState<ReservationData | null>(null)
   const [openPicker, setOpenPicker] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
-
-  const reservationOptions = [userName]
+  const [isSending, setIsSending] = useState(false)
+  const [reservationHolders, setReservationHolders] = useState<ReservationHolder[]>([{name: '個人', id: null}])
 
   const handleInputChange = (name: string, value: number | Date | string | null) => {
-    setNewReservation(prev => {
+    setReservationDraft(prev => {
       const updated = { ...prev, [name]: value }
 
       if (name === 'startHour') {
@@ -100,39 +88,22 @@ export function ReservationPage() {
     })
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async () => {
     if (
-      !newReservation.reservationName ||
-      newReservation.startHour === null ||
-      newReservation.startMinute === null ||
-      newReservation.endHour === null ||
-      newReservation.endMinute === null
+      !reservationDraft.reservationName ||
+      reservationDraft.startHour === null ||
+      reservationDraft.startMinute === null ||
+      reservationDraft.endHour === null ||
+      reservationDraft.endMinute === null
     ) {
       setErrorMessage('すべての項目を入力してください。')
       return
     }
 
-    const start = new Date(newReservation.date)
-    start.setHours(newReservation.startHour, newReservation.startMinute)
-    const end = new Date(newReservation.date)
-    end.setHours(newReservation.endHour, newReservation.endMinute)
-
-    if (isBefore(start, new Date())) {
-      setErrorMessage('過去の日時は選択できません。')
-      return
-    }
-
-    const twoWeeksLater = addDays(new Date(), 14)
-    if (isBefore(twoWeeksLater, start)) {
-      setErrorMessage('二週間以上先の予約を取ることはできません。')
-      return
-    }
-
-    if (!isSameDay(start, end)) {
-      setErrorMessage('日をまたいで予約することはできません。')
-      return
-    }
+    const start = new Date(reservationDraft.date)
+    start.setHours(reservationDraft.startHour, reservationDraft.startMinute)
+    const end = new Date(reservationDraft.date)
+    end.setHours(reservationDraft.endHour, reservationDraft.endMinute)
 
     if (end.getTime() - start.getTime() < 30 * 60 * 1000) {
       setErrorMessage('予約時間は30分以上にしてください。')
@@ -149,37 +120,37 @@ export function ReservationPage() {
       return
     }
 
-    const reservation: Reservation = {
-      id: Date.now(),
-      title: newReservation.reservationName,
-      start,
-      end,
-    }
-
     try {
-      setReservations(prev => [...prev, reservation])
-      setIsNewReservationOpen(false)
-      setErrorMessage(null)
-      setNewReservation(prev => ({
-        ...prev,
-        date: new Date(),
-        startHour: null,
-        startMinute: null,
-        endHour: null,
-        endMinute: null,
-      }))
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '予約の作成中にエラーが発生しました。')
+      const { data, error } = await supabase.rpc('create_reservations', {
+        p_group: null,
+        p_start_time: start,
+        p_end_time: end,
+        p_notes: null,
+      });
+      if (error) {
+        setErrorMessage('データの送信中にエラーが発生しました。' + error.message);
+      } else if (data === null) {
+        setErrorMessage('データの受信中にエラーが発生しました。');
+      } else if ('error' in data) {
+        setErrorMessage('データの処理中にエラーが発生しました。' + data.error);
+      } else {
+
+      }
+    } catch (err) {
+      setErrorMessage((err as Error).message);
+    } finally {
+      setIsSending(false);
     }
   }
 
   const handleCancel = (id: number) => {
-    setReservations(prev => prev.filter(reservation => reservation.id !== id))
+    // TODO: 予約の削除
     setSelectedReservation(null)
   }
 
-  const handleSelectEvent = (event: Event) => {
-    setSelectedReservation(event as Reservation)
+  const handleSelectEvent = (event: ReservationData) => {
+    // TODO: 予約の選択
+    setSelectedReservation(event)
   }
 
   const generateHourOptions = () => {
@@ -194,16 +165,16 @@ export function ReservationPage() {
 
   const isTimeDisabled = (hour: number, minute: number) => {
     const now = new Date()
-    const selectedDate = new Date(newReservation.date)
+    const selectedDate = new Date(reservationDraft.date)
     const selectedTime = setMinutes(setHours(selectedDate, hour), minute)
     return isBefore(selectedTime, now) || hour < 6 || hour >= 23
   }
 
   const isEndTimeDisabled = (hour: number, minute: number) => {
-    if (newReservation.startHour === null || newReservation.startMinute === null) return true
-    const startDate = new Date(newReservation.date)
-    startDate.setHours(newReservation.startHour, newReservation.startMinute)
-    const endDate = new Date(newReservation.date)
+    if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return true
+    const startDate = new Date(reservationDraft.date)
+    startDate.setHours(reservationDraft.startHour, reservationDraft.startMinute)
+    const endDate = new Date(reservationDraft.date)
     endDate.setHours(hour, minute)
     const minEndTime = addMinutes(startDate, 30)
     const maxEndTime = addHours(startDate, 4)
@@ -211,11 +182,11 @@ export function ReservationPage() {
   }
 
   const isReservationButtonDisabled = () => {
-    return !newReservation.reservationName ||
-           newReservation.startHour === null ||
-           newReservation.startMinute === null ||
-           newReservation.endHour === null ||
-           newReservation.endMinute === null
+    return isSending || 
+           reservationDraft.startHour === null ||
+           reservationDraft.startMinute === null ||
+           reservationDraft.endHour === null ||
+           reservationDraft.endMinute === null
   }
 
   const handleDateChange = (date: Date | undefined) => {
@@ -236,7 +207,7 @@ export function ReservationPage() {
           </CardHeader>
           <CardDescription>
           <div className="flex flex-wrap gap-2">
-                <Dialog open={isNewReservationOpen} onOpenChange={setIsNewReservationOpen}>
+                <Dialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen}>
                   <DialogTrigger asChild>
                     <Button className="bg-blue-500 hover:bg-blue-600 text-white">
                       <PlusCircleIcon className="mr-2 h-4 w-4" />
@@ -271,17 +242,18 @@ export function ReservationPage() {
                       <div>
                         <Label htmlFor="reservationName" className="text-sm font-medium">予約名義</Label>
                         <Select
-                          onValueChange={(value) => handleInputChange('reservationName', value)}
-                          value={newReservation.reservationName}
+                          onValueChange={(value) => handleInputChange('reservationName', value === 'none' ? null : value)}
+                          value={reservationDraft.reservationName || 'none'}
+                          defaultValue={'none'}
                         >
                           <SelectTrigger id="reservationName" className="w-full">
                             <SelectValue placeholder="予約名義を選択" />
                           </SelectTrigger>
                           <SelectContent>
-                            <ScrollArea className="h-[200px] max-h-[200px]">
-                              {reservationOptions.map((option) => (
-                                <SelectItem key={option} value={option}>
-                                  {option}
+                            <ScrollArea className="max-h-[200px]">
+                              {reservationHolders.map((option) => (
+                                <SelectItem key={option.id} value={option.id || 'none'}>
+                                  {option.name}
                                 </SelectItem>
                               ))}
                             </ScrollArea>
@@ -294,19 +266,16 @@ export function ReservationPage() {
                           <PopoverTrigger asChild>
                             <Button
                               variant={"outline"}
-                              className={cn(
-                                "w-full justify-start text-left font-normal",
-                                !newReservation.date && "text-muted-foreground"
-                              )}
+                              className="w-full justify-start text-left font-normal"
                             >
                               <CalendarIcon className="mr-2 h-4 w-4" />
-                              {newReservation.date ? format(newReservation.date, "PPP", { locale: jaLocale }) : <span>日付を選択</span>}
+                              {reservationDraft.date ? format(reservationDraft.date, "PPP", { locale: jaLocale }) : <span>日付を選択</span>}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
                             <CalendarPrimitive
                               mode="single"
-                              selected={newReservation.date}
+                              selected={reservationDraft.date}
                               onSelect={(date) => {
                                 if (date) {
                                   handleInputChange('date', date)
@@ -317,9 +286,10 @@ export function ReservationPage() {
                                 }
                               }}
                               disabled={(date) =>
-                                date > maxDate || isBefore(date, new Date())
+                                date > maxDate || isBefore(date, startOfDay(new Date()))
                               }
                               initialFocus
+                              locale={jaLocale}
                             />
                           </PopoverContent>
                         </Popover>
@@ -334,13 +304,13 @@ export function ReservationPage() {
                               else setOpenPicker(null)
                             }}
                             onValueChange={(value) => handleInputChange('startHour', parseInt(value))}
-                            value={newReservation.startHour?.toString() || ''}
+                            value={reservationDraft.startHour?.toString() || ''}
                           >
                             <SelectTrigger id="startHour">
-                              <SelectValue placeholder="時" />
+                              <SelectValue/>
                             </SelectTrigger>
-                            <SelectContent>
-                              <ScrollArea className="h-[200px] max-h-[200px]">
+                            <SelectContent className="max-h-[200px]">
+                              <ScrollArea>
                                 {generateHourOptions().filter(hour => !isTimeDisabled(hour, 0)).map((hour) => (
                                   <SelectItem key={hour} value={hour.toString()}>
                                     {hour.toString().padStart(2, '0')}
@@ -359,15 +329,15 @@ export function ReservationPage() {
                               else setOpenPicker(null)
                             }}
                             onValueChange={(value) => handleInputChange('startMinute', parseInt(value))}
-                            value={newReservation.startMinute?.toString() || ''}
-                            disabled={newReservation.startHour === null}
+                            value={reservationDraft.startMinute?.toString() || ''}
+                            disabled={reservationDraft.startHour === null}
                           >
                             <SelectTrigger id="startMinute">
-                              <SelectValue placeholder="分" />
+                              <SelectValue/>
                             </SelectTrigger>
-                            <SelectContent>
-                              <ScrollArea className="h-[200px] max-h-[200px]">
-                                {generateMinuteOptions().filter(minute => newReservation.startHour !== null && !isTimeDisabled(newReservation.startHour, minute)).map((minute) => (
+                            <SelectContent className="max-h-[200px]">
+                              <ScrollArea>
+                                {generateMinuteOptions().filter(minute => reservationDraft.startHour !== null && !isTimeDisabled(reservationDraft.startHour, minute)).map((minute) => (
                                   <SelectItem key={minute} value={minute.toString()}>
                                     {minute.toString().padStart(2, '0')}
                                   </SelectItem>
@@ -385,14 +355,14 @@ export function ReservationPage() {
                               else setOpenPicker(null)
                             }}
                             onValueChange={(value) => handleInputChange('endHour', parseInt(value))}
-                            value={newReservation.endHour?.toString() || ''}
-                            disabled={newReservation.startMinute === null}
+                            value={reservationDraft.endHour?.toString() || ''}
+                            disabled={reservationDraft.startMinute === null}
                           >
                             <SelectTrigger id="endHour">
-                              <SelectValue placeholder="時" />
+                              <SelectValue/>
                             </SelectTrigger>
-                            <SelectContent>
-                              <ScrollArea className="h-[200px] max-h-[200px]">
+                            <SelectContent className="max-h-[200px]">
+                              <ScrollArea>
                                 {generateHourOptions().filter(hour => !isEndTimeDisabled(hour, 0)).map((hour) => (
                                   <SelectItem key={hour} value={hour.toString()}>
                                     {hour.toString().padStart(2, '0')}
@@ -411,15 +381,15 @@ export function ReservationPage() {
                               else setOpenPicker(null)
                             }}
                             onValueChange={(value) => handleInputChange('endMinute', parseInt(value))}
-                            value={newReservation.endMinute?.toString() || ''}
-                            disabled={newReservation.endHour === null}
+                            value={reservationDraft.endMinute?.toString() || ''}
+                            disabled={reservationDraft.endHour === null}
                           >
                             <SelectTrigger id="endMinute">
-                              <SelectValue placeholder="分" />
+                              <SelectValue/>
                             </SelectTrigger>
-                            <SelectContent>
-                              <ScrollArea className="h-[200px] max-h-[200px]">
-                                {generateMinuteOptions().filter(minute => newReservation.endHour !== null && !isEndTimeDisabled(newReservation.endHour, minute)).map((minute) => (
+                            <SelectContent className="max-h-[200px]">
+                              <ScrollArea>
+                                {generateMinuteOptions().filter(minute => reservationDraft.endHour !== null && !isEndTimeDisabled(reservationDraft.endHour, minute)).map((minute) => (
                                   <SelectItem key={minute} value={minute.toString()}>
                                     {minute.toString().padStart(2, '0')}
                                   </SelectItem>
@@ -437,6 +407,7 @@ export function ReservationPage() {
                           isReservationButtonDisabled() && "opacity-50 cursor-not-allowed"
                         )}
                       >
+                        {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         予約
                       </Button>
                     </form>
@@ -457,9 +428,9 @@ export function ReservationPage() {
                       <div className="space-y-4">
                         <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
                         <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
-                          <p><strong>予約名:</strong> {selectedReservation.title}</p>
-                          <p><strong>開始:</strong> {format(selectedReservation.start, 'yyyy/MM/dd HH:mm', { locale: jaLocale })}</p>
-                          <p><strong>終了:</strong> {format(selectedReservation.end, 'yyyy/MM/dd HH:mm', { locale: jaLocale })}</p>
+                          <p><strong>ID: </strong> #{selectedReservation.id}</p>
+                          <p><strong>開始:</strong> {format(selectedReservation.start_time, 'yyyy/MM/dd HH:mm', { locale: jaLocale })}</p>
+                          <p><strong>終了:</strong> {format(selectedReservation.end_time, 'yyyy/MM/dd HH:mm', { locale: jaLocale })}</p>
                         </div>
                         <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full">
                           キャンセル
@@ -506,31 +477,26 @@ export function ReservationPage() {
               </div>
           </CardDescription>
           <CardContent className="p-6">
-            <div className="overflow-x-auto">
-              <BigCalendar
-                localizer={localizer}
-                events={reservations}
-                startAccessor="start"
-                endAccessor="end"
-                defaultView={Views.WEEK}
-                views={['week', 'day']}
-                messages={messages}
-                culture='ja'
-                min={new Date(0, 0, 0, 6, 0, 0)}
-                max={new Date(0, 0, 0, 23, 0, 0)}
-                date={currentDate}
-                formats={{
-                  timeGutterFormat: (date, culture, localizer) => {
-                    if (!localizer) return '';
-                    return localizer.format(date, 'HH:mm', culture);
-                  },
-                }}
-                components={{
-                  timeGutterHeader: () => <div style={{ height: '100%', display: 'flex', alignItems: 'flex-end', paddingRight: '8px' }}>時間</div>,
-                }}
-                className="rbc-calendar-fullscreen"
-              />
-            </div>
+            <BigCalendar
+              localizer={localizer}
+              events={reservationData}
+              startAccessor={(event) => event.start_time}
+              endAccessor={(event) => event.end_time}
+              onSelectEvent={handleSelectEvent}
+              defaultView={Views.WEEK}
+              views={['week', 'agenda']}
+              messages={messages}
+              culture='ja'
+              min={new Date(0, 0, 0, 6, 0, 0)}
+              max={new Date(0, 0, 0, 23, 0, 0)}
+              date={currentDate}
+              formats={{
+                timeGutterFormat: (date, culture, localizer) => {
+                  if (!localizer) return '';
+                  return localizer.format(date, 'HH:mm', culture);
+                },
+              }}
+            />
           </CardContent>
         </Card>
       </div>
