@@ -37,10 +37,10 @@ export default function Page() {
 
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
+        } else if (data === null) {
+          setError('ユーザーデータが存在しません。');
         } else if ('error' in data) {
           setError('データの処理中にエラーが発生しました。' + data.error);
-        } else if (data === null) {
-          setError('ユーザーデータが取得できませんでした。');
         } else {
           const hasNullValue = Object.values(data).some(value => value === null);
           if (hasNullValue) {

@@ -45,3 +45,28 @@ export const roleNames: Record<Role, string> = {
   [Role.member]: '部員',
   [Role.admin]: '管理者',
 }
+
+export interface ReservationData {
+    id: number;
+    creator: string;
+    group?: string | null;
+    start_time: Date;
+    end_time: Date;
+    options?: string | null;
+    state: ReservationState;
+}
+
+export enum ReservationState {
+    PENDING = 'PENDING',
+    WITHDRAWN = 'WITHDRAWN',
+    DECLINED = 'DECLINED',
+    CONFIRMED = 'CONFIRMED',
+    CANCELLED = 'CANCELLED',
+    COMPLETED = 'COMPLETED',
+}
+
+export interface ReservationHolder {
+    name: string;
+    id: string | null;
+}
+

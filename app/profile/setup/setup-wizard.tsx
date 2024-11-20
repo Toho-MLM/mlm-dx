@@ -234,19 +234,24 @@ export function SetupWizard(initialUserData: UserData) {
   const handleSubmit = async () => {
     setIsSending(true);
     const instrumentString = userData.instruments.join(',');
-    const { data, error } = await supabase.rpc('update_user', {
-      p_email: userData.email,
-      p_nickname: userData.nickname,
-      p_instruments: instrumentString,
-    });
-    if (error) {
-      setError('データの取得中にエラーが発生しました。' + error.message);
-    } else if ('error' in data) {
-      setError('データの処理中にエラーが発生しました。' + data.error);
-    } else {
-      router.push('/profile');
+    try {
+      const { data, error } = await supabase.rpc('update_user', {
+        p_email: userData.email,
+        p_nickname: userData.nickname,
+        p_instruments: instrumentString,
+      });
+      if (error) {
+        setError('データの取得中にエラーが発生しました。' + error.message);
+      } else if ('error' in data) {
+        setError('データの処理中にエラーが発生しました。' + data.error);
+      } else {
+        router.push('/profile');
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsSending(false);
     }
-    setIsSending(false);
   };
 
   return (

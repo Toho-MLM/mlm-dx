@@ -35,13 +35,13 @@ export default function Page() {
 
       try {
         const { data, error } = await supabase.rpc('fetch_member');
-
+        console.log(data);
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
+        } else if (data === null) {
+          setError('名簿データが存在しません。');
         } else if ('error' in data) {
           setError('データの処理中にエラーが発生しました。' + data.error);
-        } else if (data === null) {
-          setError('メンバーデータが取得できませんでした。');
         } else {
           setMemberData(data as [MemberData]);
         }
