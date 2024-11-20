@@ -49,7 +49,7 @@ export const roleNames: Record<Role, string> = {
 export interface ReservationData {
     id: number;
     creator: string;
-    group?: string | null;
+    group: string | null;
     start_time: Date;
     end_time: Date;
     options?: string | null;
@@ -69,4 +69,3 @@ export interface ReservationHolder {
     name: string;
     id: string | null;
 }
-
