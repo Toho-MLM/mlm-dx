@@ -22,7 +22,7 @@ export default function Page() {
       return;
     }
 
-    const fetchUserData = async () => {
+    const fetchAndSubscribe = async () => {
       if (!user?.email) {
         setError('ユーザー情報が取得できません。');
         setLoading(false);
@@ -33,6 +33,7 @@ export default function Page() {
       setError(null)
 
       try {
+        // 初回のデータ取得
         const { data, error } = await supabase.rpc('fetch_reservations');
         console.log("raw:" + JSON.stringify(data));
 
@@ -52,6 +53,38 @@ export default function Page() {
           console.log(formattedData);
           setReservationData(formattedData);
         }
+
+        // リアルタイムサブスクリプションの設定
+        const channel = supabase
+          .channel('reservations')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, (payload) => {
+            console.log('変更が検出されました:', payload)
+            const { eventType, new: newData } = payload
+
+            setReservationData(prev => {
+              if (!prev) return prev
+
+              switch(eventType) {
+                case 'INSERT':
+                  return [...prev, newData as ReservationData]
+                case 'UPDATE':
+                  return prev.map(item => item.id === newData.id ? {
+                    ...newData,
+                    start_time: new Date(newData.start_time),
+                    end_time: new Date(newData.end_time),
+                    creator: item.creator,
+                  } as ReservationData : item)
+                default:
+                  return prev
+              }
+            })
+          })
+          .subscribe()
+
+        return () => {
+          channel.unsubscribe();
+        }
+
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -59,8 +92,16 @@ export default function Page() {
       }
     }
 
+    let unsubscribe: () => void = () => {}
     if (user) {
-      fetchUserData();
+      const promise = fetchAndSubscribe()
+      promise.then(unsub => {
+        if (unsub) unsubscribe = unsub
+      })
+    }
+
+    return () => {
+      unsubscribe()
     }
   }, [router, user, authLoading])
 
