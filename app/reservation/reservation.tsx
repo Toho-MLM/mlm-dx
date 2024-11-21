@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, View } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
-import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, setHours, setMinutes, startOfDay } from 'date-fns'
+import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, setHours, setMinutes, startOfDay, set } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -66,6 +66,11 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
   const [isSending, setIsSending] = useState(false)
   const [reservationHolders, setReservationHolders] = useState<ReservationHolder[]>([{ name: '個人', id: null }])
   const [currentView, setCurrentView] = useState<View>(Views.WEEK)
+  const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
+  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null)
+  const [doubleClickedEvent, setDoubleClickedEvent] = useState<ReservationData | null>(null)
+
+  const calendarRef = useRef<HTMLDivElement>(null)
 
   const handleInputChange = (name: string, value: number | Date | string | null) => {
     setReservationDraft(prev => {
@@ -90,7 +95,9 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
     })
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
     if (
       reservationDraft.startHour === null ||
       reservationDraft.startMinute === null ||
@@ -122,6 +129,7 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
     }
 
     try {
+      setIsSending(true)
       const { data, error } = await supabase.rpc('create_reservation', {
         p_group: reservationDraft.group,
         p_start_time: start.toISOString(),
@@ -134,9 +142,9 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
       } else if (data === null) {
         setErrorMessage('データの受信中にエラーが発生しました。');
       } else if ('error' in data) {
-        setErrorMessage('データの処理中にエラーが発生しました。' + data.error);
+        setErrorMessage('データの処理中にエラーが発生しました。' + data.error + data.details);
       } else {
-
+        console.log(data.message)
       }
     } catch (err) {
       setErrorMessage((err as Error).message);
@@ -145,9 +153,28 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
     }
   }
 
-  const handleCancel = (id: number) => {
-    // TODO: 予約の削除
-    setSelectedReservation(null)
+  const handleCancel = async (id: string) => {
+    setIsSending(true)
+    try {
+      const { data, error } = await supabase.rpc('cancel_reservation', {
+        p_id: id,
+      })
+      if (error) {
+        console.error(error)
+        setErrorMessage('データの送信中にエラーが発生しました。' + error.message)
+      } else if (data === null) {
+        setErrorMessage('データの受信中にエラーが発生しました。')
+      } else if ('error' in data) {
+        setErrorMessage('データの処理中にエラーが発生しました。' + data.error + data.details)
+      } else {
+        console.log(data.message)
+        setSelectedReservation(null)
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsSending(false)
+    }
   }
 
   const handleSelectEvent = (event: ReservationData) => {
@@ -207,9 +234,32 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
     setCurrentView(view)
   }
 
+  const handleDoubleClickEvent = (event: ReservationData, e: React.SyntheticEvent<HTMLElement>) => {
+    if (calendarRef.current) {
+      const calendarRect = calendarRef.current.getBoundingClientRect()
+      const mouseEvent = e.nativeEvent as MouseEvent
+      const relativeX = mouseEvent.clientX - calendarRect.left
+      const relativeY = mouseEvent.clientY - calendarRect.top
+      setPopoverPosition({ top: relativeY, left: relativeX })
+    }
+    setDoubleClickedEvent(event)
+    setIsEventDetailOpen(true)
+  }
+
+  const closePopover = () => {
+    setIsEventDetailOpen(false)
+    setDoubleClickedEvent(null)
+    setPopoverPosition(null)
+  }
+
+  const handleRangeChange = () => {
+    setIsEventDetailOpen(false)
+    setPopoverPosition(null)
+  }
+
   return (
     <div>
-      <div className="mx-auto px-5 mt-5 min-w-fit">
+      <div className="mx-auto px-5 mt-5 min-w-fit" ref={calendarRef} style={{ position: 'relative' }}>
         <Card className="bg-white shadow-lg rounded-lg overflow-hidden">
           <CardHeader className="bg-gray-100 p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -260,13 +310,6 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                       </ul>
                     </AlertDescription>
                   </Alert>
-                  {errorMessage && (
-                    <Alert variant="destructive" className="my-4">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>エラー</AlertTitle>
-                      <AlertDescription>{errorMessage}</AlertDescription>
-                    </Alert>
-                  )}
                   <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                       <Label htmlFor="reservationName" className="text-sm font-medium">予約名義</Label>
@@ -440,6 +483,13 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                       予約
                     </Button>
                   </form>
+                  {errorMessage && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>エラー</AlertTitle>
+                      <AlertDescription>{errorMessage}</AlertDescription>
+                    </Alert>
+                  )}
                 </DialogContent>
               </Dialog>
               <Dialog>
@@ -457,9 +507,8 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                     <div className="space-y-4">
                       <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
                       <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
-                        <p><strong>ID: </strong> #{selectedReservation.id}</p>
-                        <p><strong>開始:</strong> {format(selectedReservation.start_time, 'yyyy/MM/dd HH:mm', { locale: jaLocale })}</p>
-                        <p><strong>終了:</strong> {format(selectedReservation.end_time, 'yyyy/MM/dd HH:mm', { locale: jaLocale })}</p>
+                        <p><strong>ID</strong> # {selectedReservation.id}</p>
+                        <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
                       </div>
                       <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full">
                         キャンセル
@@ -476,7 +525,7 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
             <BigCalendar
               localizer={localizer}
               events={reservationData}
-              titleAccessor={(event) => event.state}
+              titleAccessor={(event) => event.creator}
               startAccessor={(event) => event.start_time}
               endAccessor={(event) => event.end_time}
               onSelectEvent={handleSelectEvent}
@@ -488,14 +537,13 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
               max={new Date(0, 0, 0, 23, 0, 0)}
               date={currentDate}
               view={currentView}
-              dayLayoutAlgorithm='no-overlap'
               onView={handleViewChange}
               onNavigate={handleNavigate}
               formats={{
                 dayFormat: (date) => format(date, 'dd日（eee）', { locale: jaLocale }),
                 dayHeaderFormat: (date) => format(date, 'yyyy年M月d日（eee）', { locale: jaLocale }),
                 dayRangeHeaderFormat: (dates) => format(dates.start, 'yyyy年M月d日', { locale: jaLocale }) + ' 〜 ' + format(dates.end, 'M月d日', { locale: jaLocale }),
-                eventTimeRangeFormat: (event) => format(event.start, 'H:mm', { locale: jaLocale }) + ' 〜 ' + format(event.end, 'H:mm', { locale: jaLocale }),
+                eventTimeRangeFormat: (event) => format(event.start, 'H:mm', { locale: jaLocale }) + ' 〜 ' + format(event.end, 'H:mm', { locale: jaLocale })
               }}
               eventPropGetter={(event) => ({
                 style: {
@@ -504,7 +552,7 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                       case ReservationState.PENDING:
                         return '#FFE599'; // 少し濃いクリームイエロー
                       case ReservationState.DECLINED:
-                        return '#F9C6C0'; // 少し濃いピンクレッド
+                        return '#F9C6C0'; // 少し濃いピクレッド
                       case ReservationState.CONFIRMED:
                         return '#C8E6CD'; // 少し濃いペパーミントグリーン
                       default:
@@ -526,37 +574,34 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                   })()
                 }
               })}
-              components={{
-                // eventContainerWrapper: (props) => (
-                //   <div className="rbc-time-gutter-header">
-                //     {props.children}
-                //   </div>
-                // ),
+              onDoubleClickEvent={handleDoubleClickEvent}
+              onRangeChange={handleRangeChange}
+              style={{
+                height: '100%',
               }}
             />
           </CardContent>
         </Card>
       </div>
-      <style jsx global>{`
-        .rbc-time-header {
-          min-width: 200px;
-        }
-        .rbc-time-content {
-          min-width: 300px;
-        }
-        .rbc-time-gutter {
-          position: sticky;
-          left: 0;
-          background-color: white;
-          z-index: 1;
-        }
-        .rbc-timeslot-group {
-          min-width: 100px;
-        }
-        .rbc-events-container {
-          min-width: 100px;
-        }
-      `}</style>
+      {isEventDetailOpen && doubleClickedEvent && popoverPosition && (
+        <div
+          className="absolute bg-white border rounded shadow-lg p-4 max-w-xs"
+          style={{
+            top: popoverPosition.top,
+            left: popoverPosition.left,
+            zIndex: 10,
+          }}
+        >
+          <div>
+            <p><strong>ID</strong> # {doubleClickedEvent.id}</p>
+            <p><strong>時間</strong> {format(doubleClickedEvent.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(doubleClickedEvent.end_time, 'H:mm', { locale: jaLocale })}</p>
+            <p><strong>作成者</strong> {doubleClickedEvent.creator}</p>
+            <Button onClick={closePopover} variant="outline" className="mt-2 w-full">
+              閉じる
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
