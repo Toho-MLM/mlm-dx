@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, View } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
 import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, setHours, setMinutes, startOfDay, set } from 'date-fns'
-import { ja as jaLocale } from 'date-fns/locale'
+import { is, ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -142,9 +142,10 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
       } else if (data === null) {
         setErrorMessage('データの受信中にエラーが発生しました。');
       } else if ('error' in data) {
-        setErrorMessage('データの処理中にエラーが発生しました。' + data.error + data.details);
+        setErrorMessage('データの処理中にエラーが発生しました。' + data.details);
       } else {
         console.log(data.message)
+        setIsReservationFormOpen(false)
       }
     } catch (err) {
       setErrorMessage((err as Error).message);
@@ -165,10 +166,11 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
       } else if (data === null) {
         setErrorMessage('データの受信中にエラーが発生しました。')
       } else if ('error' in data) {
-        setErrorMessage('データの処理中にエラーが発生しました。' + data.error + data.details)
+        setErrorMessage('データの処理中にエラーが発生しました。' + data.details)
       } else {
         console.log(data.message)
         setSelectedReservation(null)
+        setIsCancelFormOpen(false)
       }
     } catch (err) {
       console.error(err)
@@ -178,7 +180,6 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
   }
 
   const handleSelectEvent = (event: ReservationData) => {
-    // TODO: 予約の選択
     setSelectedReservation(event)
   }
 
@@ -258,9 +259,9 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
   }
 
   return (
-    <div>
-      <div className="mx-auto px-5 mt-5 min-w-fit" ref={calendarRef} style={{ position: 'relative' }}>
-        <Card className="bg-white shadow-lg rounded-lg overflow-hidden">
+    <div className="h-screen" ref={calendarRef} style={{ position: 'relative' }}>
+      <div className="mx-auto p-5 min-w-fit">
+        <Card className="bg-white shadow-lg rounded-lg overflow-hidden h-full">
           <CardHeader className="bg-gray-100 p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <CardTitle className="text-2xl font-semibold text-gray-800">ホール予約</CardTitle>
@@ -287,8 +288,8 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
               <Dialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen}>
                 <DialogTrigger asChild>
                   <Button className="bg-blue-500 hover:bg-blue-600 text-white">
-                    <PlusCircleIcon className="mr-2 h-4 w-4" />
-                    新規予約
+                    <PlusCircleIcon className="h-4 w-4" />
+                    予約
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
@@ -479,7 +480,7 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                         isReservationButtonDisabled() && "opacity-50 cursor-not-allowed"
                       )}
                     >
-                      {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
                       予約
                     </Button>
                   </form>
@@ -492,11 +493,11 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                   )}
                 </DialogContent>
               </Dialog>
-              <Dialog>
+              <Dialog open={isCancelFormOpen} onOpenChange={setIsCancelFormOpen}>
                 <DialogTrigger asChild>
                   <Button variant="destructive">
-                    <XCircleIcon className="mr-2 h-4 w-4" />
-                    予約取消
+                    <XCircleIcon className="h-4 w-4" />
+                    取消
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
@@ -510,12 +511,13 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                         <p><strong>ID</strong> # {selectedReservation.id}</p>
                         <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
                       </div>
-                      <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full">
+                      <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full" disabled={isSending}>
+                        {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
                         キャンセル
                       </Button>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-600 dark:text-gray-300">予約を選択しください。</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">キャンセルしたい予約を選択してください。</p>
                   )}
                 </DialogContent>
               </Dialog>
@@ -576,9 +578,6 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
               })}
               onDoubleClickEvent={handleDoubleClickEvent}
               onRangeChange={handleRangeChange}
-              style={{
-                height: '100%',
-              }}
             />
           </CardContent>
         </Card>
