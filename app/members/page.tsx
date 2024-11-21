@@ -41,7 +41,7 @@ export default function Page() {
         } else if (data === null) {
           setError('名簿データが存在しません。');
         } else if ('error' in data) {
-          setError('データの処理中にエラーが発生しました。' + data.error);
+          setError('データの処理中にエラーが発生しました。' + data.details);
         } else {
           setMemberData(data as [MemberData]);
         }

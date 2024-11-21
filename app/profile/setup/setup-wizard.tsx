@@ -235,7 +235,7 @@ export function SetupWizard(initialUserData: UserData) {
     if (error) {
       setError('データの取得中にエラーが発生しました。' + error.message);
     } else if ('error' in data) {
-      setError('データの処理中にエラーが発生しました。' + data.error);
+      setError('データの処理中にエラーが発生しました。' + data.details);
     } else {
       router.push('/profile');
     }

@@ -23,7 +23,7 @@ export default function Page() {
     }
 
     const fetchAndSubscribe = async () => {
-      if (!user?.email) {
+      if (!user) {
         setError('ユーザー情報が取得できません。');
         setLoading(false);
         return;
@@ -35,14 +35,13 @@ export default function Page() {
       try {
         // 初回のデータ取得
         const { data, error } = await supabase.rpc('fetch_reservations');
-        console.log("raw:" + JSON.stringify(data));
 
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
         } else if (data === null) {
           setError('予約データが取得できませんでした。');
         } else if ('error' in data) {
-          setError('データの処理中にエラーが発生しました。' + data.error);
+          setError('データの処理中にエラーが発生しました。' + data.details);
         } else {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const formattedData: ReservationData[] = (data as any[]).map(item => ({
@@ -50,7 +49,6 @@ export default function Page() {
             start_time: new Date(item.start_time),
             end_time: new Date(item.end_time),
           }));
-          console.log(formattedData);
           setReservationData(formattedData);
         }
 
@@ -66,7 +64,7 @@ export default function Page() {
 
               switch(eventType) {
                 case 'INSERT':
-                  return [...prev, newData as ReservationData]
+                  return [...prev, { ...newData, start_time: new Date(newData.start_time), end_time: new Date(newData.end_time), creator: (newData.creator === user.id) ? 'New!' : newData.creator } as ReservationData]
                 case 'UPDATE':
                   return prev.map(item => item.id === newData.id ? {
                     ...newData,

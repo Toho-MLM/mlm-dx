@@ -40,7 +40,7 @@ export default function Page() {
         } else if (data === null) {
           setError('ユーザーデータが存在しません。');
         } else if ('error' in data) {
-          setError('データの処理中にエラーが発生しました。' + data.error);
+          setError('データの処理中にエラーが発生しました。' + data.details);
         } else {
           const hasNullValue = Object.values(data).some(value => value === null);
           if (hasNullValue) {
