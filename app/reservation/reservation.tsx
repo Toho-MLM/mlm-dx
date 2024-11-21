@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
-import { Calendar as BigCalendar, dateFnsLocalizer, Views, View } from 'react-big-calendar'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
 import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, setHours, setMinutes, startOfDay, set } from 'date-fns'
 import { is, ja as jaLocale } from 'date-fns/locale'
@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ReservationData, ReservationHolder, ReservationState } from '../types'
 import { supabase } from '@/supabase/supabaseClient'
+import TimeGrid from 'react-big-calendar/lib/TimeGrid'
 
 const locales = {
   'ja': jaLocale,
@@ -45,6 +46,63 @@ const messages = {
   today: '今日',
   agenda: 'リスト',
   showMore: (total: number) => `+${total} 件`,
+}
+
+function ThreeDayView({
+  date,
+  localizer,
+  ...props
+}: {
+  date: Date
+  localizer: DateLocalizer
+  [key: string]: any
+}) {
+  const currRange = useMemo(
+    () => ThreeDayView.range(date, { localizer }),
+    [date, localizer]
+  )
+
+  return (
+    <TimeGrid
+      {...props}
+      date={date}
+      localizer={localizer}
+      range={currRange}
+      eventOffset={15}
+    />
+  )
+}
+
+ThreeDayView.range = (date: Date, { localizer }: { localizer: DateLocalizer }) => {
+  const start = startOfDay(date)
+  const end = addDays(start, 2) // 三日間
+
+  let current = start
+  const range = []
+
+  while (localizer.lte(current, end, 'day')) {
+    range.push(current)
+    current = addDays(current, 1)
+  }
+
+  return range
+}
+
+ThreeDayView.navigate = (date: Date, action: string, { localizer }: { localizer: DateLocalizer }) => {
+  switch (action) {
+    case Navigate.PREVIOUS:
+      return addDays(date, -3)
+    case Navigate.NEXT:
+      return addDays(date, 3)
+    default:
+      return date
+  }
+}
+
+ThreeDayView.title = (date: Date, options: { localizer: DateLocalizer }) => {
+  const start = options.localizer.format(date, 'MM/dd')
+  const end = options.localizer.format(addDays(date, 2), 'MM/dd')
+  return `3日間表示: ${start} - ${end}`
 }
 
 export function ReservationPage({ reservationData }: { reservationData: ReservationData[] }) {
@@ -257,6 +315,14 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
     setIsEventDetailOpen(false)
     setPopoverPosition(null)
   }
+
+  const customViews = useMemo(
+    () => ({
+      week: ThreeDayView,
+      day: Views.DAY,
+    }),
+    []
+  )
 
   return (
     <div className="h-screen" ref={calendarRef} style={{ position: 'relative' }}>
@@ -531,8 +597,8 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
               startAccessor={(event) => event.start_time}
               endAccessor={(event) => event.end_time}
               onSelectEvent={handleSelectEvent}
-              defaultView={Views.WEEK}
-              views={['week', 'day']}
+              defaultView="week"
+              views={{ week: ThreeDayView, day: Views.DAY }}
               messages={messages}
               culture='ja'
               min={new Date(0, 0, 0, 6, 0, 0)}
@@ -552,26 +618,26 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                   backgroundColor: (() => {
                     switch (event.state) {
                       case ReservationState.PENDING:
-                        return '#FFE599'; // 少し濃いクリームイエロー
+                        return '#FFE599';
                       case ReservationState.DECLINED:
-                        return '#F9C6C0'; // 少し濃いピクレッド
+                        return '#F9C6C0';
                       case ReservationState.CONFIRMED:
-                        return '#C8E6CD'; // 少し濃いペパーミントグリーン
+                        return '#C8E6CD';
                       default:
-                        return '#D5D8DC'; // デフォルトの少し濃いグレー
+                        return '#D5D8DC';
                     }
                   })(),
                   color: 'black',
-                  border: '2px solid' + (() => {
+                  border: '2px solid ' + (() => {
                     switch (event.state) {
                       case ReservationState.PENDING:
-                        return '#F1C40F'; // サフランイエロー
+                        return '#F1C40F';
                       case ReservationState.DECLINED:
-                        return '#E74C3C'; // サーモンレッド
+                        return '#E74C3C';
                       case ReservationState.CONFIRMED:
-                        return '#2ECC71'; // ミントグリーン
+                        return '#2ECC71';
                       default:
-                        return '#BDC3C7'; // グレー（デフォルト）
+                        return '#BDC3C7';
                     }
                   })()
                 }
