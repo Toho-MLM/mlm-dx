@@ -69,3 +69,12 @@ export interface ReservationHolder {
     name: string;
     id: string | null;
 }
+
+export const eventStateNames: Record<ReservationState, string> = {
+    [ReservationState.PENDING]: '保留中',
+    [ReservationState.WITHDRAWN]: '取り下げ',
+    [ReservationState.DECLINED]: '拒否',
+    [ReservationState.CONFIRMED]: '確定',
+    [ReservationState.CANCELLED]: 'キャンセル',
+    [ReservationState.COMPLETED]: '完了',
+}

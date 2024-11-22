@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { CalendarIcon, PlusCircleIcon, XCircleIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, AlertTriangle } from 'lucide-react'
+import { CalendarIcon, PlusCircleIcon, XCircleIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, AlertTriangle, CalendarRangeIcon, Info } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -22,12 +22,18 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ReservationData, ReservationHolder, ReservationState } from '../types'
+import { ReservationData, ReservationHolder, ReservationState, eventStateNames } from '../types'
 import { supabase } from '@/supabase/supabaseClient'
+// @ts-ignore
 import TimeGrid from 'react-big-calendar/lib/TimeGrid'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 const locales = {
   'ja': jaLocale,
+}
+
+function isMobile() {
+  return /Mobi|Android/i.test(navigator.userAgent);
 }
 
 const localizer = dateFnsLocalizer({
@@ -40,6 +46,7 @@ const localizer = dateFnsLocalizer({
 
 const messages = {
   week: '週',
+  myRange: '3日',
   day: '日',
   previous: '前',
   next: '次',
@@ -99,13 +106,13 @@ ThreeDayView.navigate = (date: Date, action: string, { localizer }: { localizer:
   }
 }
 
-ThreeDayView.title = (date: Date, options: { localizer: DateLocalizer }) => {
-  const start = options.localizer.format(date, 'MM/dd')
-  const end = options.localizer.format(addDays(date, 2), 'MM/dd')
+ThreeDayView.title = (date: Date, options: any) => {
+  const start = format(date, 'MM/dd', { locale: jaLocale })
+  const end = format(addDays(date, 2), 'MM/dd', { locale: jaLocale })
   return `3日間表示: ${start} - ${end}`
 }
 
-export function ReservationPage({ reservationData }: { reservationData: ReservationData[] }) {
+export function ReservationPage({ reservationData, userName }: { reservationData: ReservationData[], userName: string }) {
   const [reservationDraft, setReservationDraft] = useState({
     date: new Date(),
     group: null as string | null,
@@ -122,11 +129,12 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
   const [currentDate, setCurrentDate] = useState(new Date())
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [reservationHolders, setReservationHolders] = useState<ReservationHolder[]>([{ name: '個人', id: null }])
-  const [currentView, setCurrentView] = useState<View>(Views.WEEK)
+  const [reservationHolders, setReservationHolders] = useState<ReservationHolder[]>([{ name: userName, id: null }])
+  const [currentView, setCurrentView] = useState<View>(
+    isMobile() ? 'myRange' as View : Views.WEEK
+  )
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
   const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null)
-  const [doubleClickedEvent, setDoubleClickedEvent] = useState<ReservationData | null>(null)
 
   const calendarRef = useRef<HTMLDivElement>(null)
 
@@ -237,7 +245,16 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
     }
   }
 
-  const handleSelectEvent = (event: ReservationData) => {
+  const handleSelectEvent = (event: ReservationData, e: React.SyntheticEvent<HTMLElement>) => {
+    console.log(event)
+    if (calendarRef.current) {
+      const calendarRect = calendarRef.current.getBoundingClientRect()
+      const mouseEvent = e.nativeEvent as MouseEvent
+      const relativeX = mouseEvent.clientX - calendarRect.left
+      const relativeY = mouseEvent.clientY - calendarRect.top
+      setPopoverPosition({ top: relativeY, left: relativeX })
+    }
+    setIsEventDetailOpen(true)
     setSelectedReservation(event)
   }
 
@@ -293,21 +310,9 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
     setCurrentView(view)
   }
 
-  const handleDoubleClickEvent = (event: ReservationData, e: React.SyntheticEvent<HTMLElement>) => {
-    if (calendarRef.current) {
-      const calendarRect = calendarRef.current.getBoundingClientRect()
-      const mouseEvent = e.nativeEvent as MouseEvent
-      const relativeX = mouseEvent.clientX - calendarRect.left
-      const relativeY = mouseEvent.clientY - calendarRect.top
-      setPopoverPosition({ top: relativeY, left: relativeX })
-    }
-    setDoubleClickedEvent(event)
-    setIsEventDetailOpen(true)
-  }
-
   const closePopover = () => {
     setIsEventDetailOpen(false)
-    setDoubleClickedEvent(null)
+    setSelectedReservation(null)
     setPopoverPosition(null)
   }
 
@@ -316,10 +321,13 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
     setPopoverPosition(null)
   }
 
-  const customViews = useMemo(
+  const { customViews } = useMemo(
     () => ({
-      week: ThreeDayView,
-      day: Views.DAY,
+      customViews: {
+        week: true,
+        myRange: ThreeDayView,
+        day: true,
+      },
     }),
     []
   )
@@ -339,10 +347,10 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                 <PopoverTrigger asChild>
                   <Button variant="outline">
                     <CalendarIcon className=" h-4 w-4" />
-                    日付選択
+                    {currentView === 'day' ? format(currentDate, 'yyyy年M月d日', { locale: jaLocale }) : format(currentDate, 'yyyy年M月', { locale: jaLocale })}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className="w-auto p-0" align="center">
                   <CalendarPrimitive
                     mode="single"
                     selected={currentDate}
@@ -351,245 +359,21 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                   />
                 </PopoverContent>
               </Popover>
-              <Dialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen}>
-                <DialogTrigger asChild>
-                  <Button className="bg-blue-500 hover:bg-blue-600 text-white">
-                    <PlusCircleIcon className="h-4 w-4" />
-                    予約
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <CalendarRangeIcon className="h-4 w-4" />
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle className="text-xl font-semibold">新規予約</DialogTitle>
-                  </DialogHeader>
-                  <Alert className="my-4">
-                    <div className="flex items-center gap-1">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertTitle>注意事項</AlertTitle>
-                    </div>
-                    <AlertDescription>
-                      <ul className="list-disc pl-5 text-sm">
-                        <li>二週間以上先の予約を取ることはできません。</li>
-                        <li>予約の上限は4件です。</li>
-                        <li>日をまたいで予約することはできません。</li>
-                        <li>利用時間は30分から4時間までで選択してください。</li>
-                        <li>ホールは朝6時から夜11時まで利用できます。</li>
-                      </ul>
-                    </AlertDescription>
-                  </Alert>
-                  <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                      <Label htmlFor="reservationName" className="text-sm font-medium">予約名義</Label>
-                      <Select
-                        onValueChange={(value) => handleInputChange('reservationName', value === 'none' ? null : value)}
-                        value={reservationDraft.group || 'none'}
-                        defaultValue={'none'}
-                      >
-                        <SelectTrigger id="reservationName" className="w-full">
-                          <SelectValue placeholder="予約名義を選択" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <ScrollArea className="max-h-[200px]">
-                            {reservationHolders.map((option) => (
-                              <SelectItem key={option.id} value={option.id || 'none'}>
-                                {option.name}
-                              </SelectItem>
-                            ))}
-                          </ScrollArea>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="date" className="text-sm font-medium">予約日</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant={"outline"}
-                            className="w-full justify-start text-left font-normal"
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {reservationDraft.date ? format(reservationDraft.date, "PPP", { locale: jaLocale }) : <span>日付を選択</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <CalendarPrimitive
-                            mode="single"
-                            selected={reservationDraft.date}
-                            onSelect={(date) => {
-                              if (date) {
-                                handleInputChange('date', date)
-                                handleInputChange('startHour', null)
-                                handleInputChange('startMinute', null)
-                                handleInputChange('endHour', null)
-                                handleInputChange('endMinute', null)
-                              }
-                            }}
-                            disabled={(date) =>
-                              date > maxDate || isBefore(date, startOfDay(new Date()))
-                            }
-                            initialFocus
-                            locale={jaLocale}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="startHour" className="text-sm font-medium">開始時刻（時）</Label>
-                        <Select
-                          open={openPicker === 'startHour'}
-                          onOpenChange={(isOpen) => {
-                            if (isOpen) setOpenPicker('startHour')
-                            else setOpenPicker(null)
-                          }}
-                          onValueChange={(value) => handleInputChange('startHour', parseInt(value))}
-                          value={reservationDraft.startHour?.toString() || ''}
-                        >
-                          <SelectTrigger id="startHour">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-[200px]">
-                            <ScrollArea>
-                              {generateHourOptions().filter(hour => !isTimeDisabled(hour, 0)).map((hour) => (
-                                <SelectItem key={hour} value={hour.toString()}>
-                                  {hour.toString().padStart(2, '0')}
-                                </SelectItem>
-                              ))}
-                            </ScrollArea>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="startMinute" className="text-sm font-medium">開始時刻（分）</Label>
-                        <Select
-                          open={openPicker === 'startMinute'}
-                          onOpenChange={(isOpen) => {
-                            if (isOpen) setOpenPicker('startMinute')
-                            else setOpenPicker(null)
-                          }}
-                          onValueChange={(value) => handleInputChange('startMinute', parseInt(value))}
-                          value={reservationDraft.startMinute?.toString() || ''}
-                          disabled={reservationDraft.startHour === null}
-                        >
-                          <SelectTrigger id="startMinute">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-[200px]">
-                            <ScrollArea>
-                              {generateMinuteOptions().filter(minute => reservationDraft.startHour !== null && !isTimeDisabled(reservationDraft.startHour, minute)).map((minute) => (
-                                <SelectItem key={minute} value={minute.toString()}>
-                                  {minute.toString().padStart(2, '0')}
-                                </SelectItem>
-                              ))}
-                            </ScrollArea>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="endHour" className="text-sm font-medium">終了時刻（時）</Label>
-                        <Select
-                          open={openPicker === 'endHour'}
-                          onOpenChange={(isOpen) => {
-                            if (isOpen) setOpenPicker('endHour')
-                            else setOpenPicker(null)
-                          }}
-                          onValueChange={(value) => handleInputChange('endHour', parseInt(value))}
-                          value={reservationDraft.endHour?.toString() || ''}
-                          disabled={reservationDraft.startMinute === null}
-                        >
-                          <SelectTrigger id="endHour">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-[200px]">
-                            <ScrollArea>
-                              {generateHourOptions().filter(hour => !isEndTimeDisabled(hour, 0)).map((hour) => (
-                                <SelectItem key={hour} value={hour.toString()}>
-                                  {hour.toString().padStart(2, '0')}
-                                </SelectItem>
-                              ))}
-                            </ScrollArea>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="endMinute" className="text-sm font-medium">終了時刻（分）</Label>
-                        <Select
-                          open={openPicker === 'endMinute'}
-                          onOpenChange={(isOpen) => {
-                            if (isOpen) setOpenPicker('endMinute')
-                            else setOpenPicker(null)
-                          }}
-                          onValueChange={(value) => handleInputChange('endMinute', parseInt(value))}
-                          value={reservationDraft.endMinute?.toString() || ''}
-                          disabled={reservationDraft.endHour === null}
-                        >
-                          <SelectTrigger id="endMinute">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-[200px]">
-                            <ScrollArea>
-                              {generateMinuteOptions().filter(minute => reservationDraft.endHour !== null && !isEndTimeDisabled(reservationDraft.endHour, minute)).map((minute) => (
-                                <SelectItem key={minute} value={minute.toString()}>
-                                  {minute.toString().padStart(2, '0')}
-                                </SelectItem>
-                              ))}
-                            </ScrollArea>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <Button
-                      type="submit"
-                      disabled={isReservationButtonDisabled()}
-                      className={cn(
-                        "w-full",
-                        isReservationButtonDisabled() && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
-                      予約
-                    </Button>
-                  </form>
-                  {errorMessage && (
-                    <Alert variant="destructive">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>エラー</AlertTitle>
-                      <AlertDescription>{errorMessage}</AlertDescription>
-                    </Alert>
-                  )}
-                </DialogContent>
-              </Dialog>
-              <Dialog open={isCancelFormOpen} onOpenChange={setIsCancelFormOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="destructive">
-                    <XCircleIcon className="h-4 w-4" />
-                    取消
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl font-semibold">予約取消</DialogTitle>
-                  </DialogHeader>
-                  {selectedReservation ? (
-                    <div className="space-y-4">
-                      <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
-                      <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
-                        <p><strong>ID</strong> # {selectedReservation.id}</p>
-                        <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
-                      </div>
-                      <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full" disabled={isSending}>
-                        {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
-                        キャンセル
-                      </Button>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-600 dark:text-gray-300">キャンセルしたい予約を選択してください。</p>
-                  )}
-                </DialogContent>
-              </Dialog>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => handleViewChange('day')}>日</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleViewChange('myRange' as View)}>3日</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleViewChange('week')}>週</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </CardDescription>
-          <CardContent className="p-6">
+          <CardContent>
             <BigCalendar
               localizer={localizer}
               events={reservationData}
@@ -597,10 +381,10 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
               startAccessor={(event) => event.start_time}
               endAccessor={(event) => event.end_time}
               onSelectEvent={handleSelectEvent}
-              defaultView="week"
-              views={{ week: ThreeDayView, day: Views.DAY }}
+              views={customViews}
               messages={messages}
               culture='ja'
+              toolbar={false}
               min={new Date(0, 0, 0, 6, 0, 0)}
               max={new Date(0, 0, 0, 23, 0, 0)}
               date={currentDate}
@@ -642,13 +426,12 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
                   })()
                 }
               })}
-              onDoubleClickEvent={handleDoubleClickEvent}
               onRangeChange={handleRangeChange}
             />
           </CardContent>
         </Card>
       </div>
-      {isEventDetailOpen && doubleClickedEvent && popoverPosition && (
+      {isEventDetailOpen && selectedReservation && popoverPosition && (
         <div
           className="absolute bg-white border rounded shadow-lg p-4 max-w-xs"
           style={{
@@ -658,15 +441,255 @@ export function ReservationPage({ reservationData }: { reservationData: Reservat
           }}
         >
           <div>
-            <p><strong>ID</strong> # {doubleClickedEvent.id}</p>
-            <p><strong>時間</strong> {format(doubleClickedEvent.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(doubleClickedEvent.end_time, 'H:mm', { locale: jaLocale })}</p>
-            <p><strong>作成者</strong> {doubleClickedEvent.creator}</p>
+            <p><strong>ID</strong> # {selectedReservation.id}</p>
+            <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
+            <p><strong>作成者</strong> {selectedReservation.creator}</p>
+            {selectedReservation.group && <p><strong>グループ</strong> {selectedReservation.group}</p>}
+            <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
             <Button onClick={closePopover} variant="outline" className="mt-2 w-full">
               閉じる
             </Button>
           </div>
         </div>
       )}
+      <div className="fixed bottom-4 right-4 flex flex-col gap-2">
+        <Dialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen}>
+          <DialogTrigger asChild>
+            <Button size="icon" variant="secondary" className="bg-blue-500 hover:bg-blue-600 text-white rounded-full">
+              <PlusCircleIcon className="h-4 w-4" />
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-xl font-semibold">新規予約</DialogTitle>
+            </DialogHeader>
+            <Alert className="my-4">
+              <div className="flex items-center gap-1">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>注意事項</AlertTitle>
+              </div>
+              <AlertDescription>
+                <ul className="list-disc pl-5 text-sm">
+                  <li>二週間以上先の予約を取ることはできません。</li>
+                  <li>予約の上限は4件です。</li>
+                  <li>日をまたいで予約することはできません。</li>
+                  <li>利用時間は30分から4時間までで選択してください。</li>
+                  <li>ホールは朝6時から夜11時まで利用できます。</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="reservationName" className="text-sm font-medium">予約名義</Label>
+                <Select
+                  onValueChange={(value) => handleInputChange('reservationName', value === 'none' ? null : value)}
+                  value={reservationDraft.group || 'none'}
+                  defaultValue={'none'}
+                >
+                  <SelectTrigger id="reservationName" className="w-full">
+                    <SelectValue placeholder="予約名義を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <ScrollArea className="max-h-[200px]">
+                      {reservationHolders.map((option) => (
+                        <SelectItem key={option.id} value={option.id || 'none'}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </ScrollArea>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="date" className="text-sm font-medium">予約日</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {reservationDraft.date ? format(reservationDraft.date, "PPP", { locale: jaLocale }) : <span>日付を選択</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarPrimitive
+                      mode="single"
+                      selected={reservationDraft.date}
+                      onSelect={(date) => {
+                        if (date) {
+                          handleInputChange('date', date)
+                          handleInputChange('startHour', null)
+                          handleInputChange('startMinute', null)
+                          handleInputChange('endHour', null)
+                          handleInputChange('endMinute', null)
+                        }
+                      }}
+                      disabled={(date) =>
+                        date > maxDate || isBefore(date, startOfDay(new Date()))
+                      }
+                      initialFocus
+                      locale={jaLocale}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="startHour" className="text-sm font-medium">開始時刻（時）</Label>
+                  <Select
+                    open={openPicker === 'startHour'}
+                    onOpenChange={(isOpen) => {
+                      if (isOpen) setOpenPicker('startHour')
+                      else setOpenPicker(null)
+                    }}
+                    onValueChange={(value) => handleInputChange('startHour', parseInt(value))}
+                    value={reservationDraft.startHour?.toString() || ''}
+                  >
+                    <SelectTrigger id="startHour">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[200px]">
+                      <ScrollArea>
+                        {generateHourOptions().filter(hour => !isTimeDisabled(hour, 0)).map((hour) => (
+                          <SelectItem key={hour} value={hour.toString()}>
+                            {hour.toString().padStart(2, '0')}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="startMinute" className="text-sm font-medium">開始時刻（分）</Label>
+                  <Select
+                    open={openPicker === 'startMinute'}
+                    onOpenChange={(isOpen) => {
+                      if (isOpen) setOpenPicker('startMinute')
+                      else setOpenPicker(null)
+                    }}
+                    onValueChange={(value) => handleInputChange('startMinute', parseInt(value))}
+                    value={reservationDraft.startMinute?.toString() || ''}
+                    disabled={reservationDraft.startHour === null}
+                  >
+                    <SelectTrigger id="startMinute">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[200px]">
+                      <ScrollArea>
+                        {generateMinuteOptions().filter(minute => reservationDraft.startHour !== null && !isTimeDisabled(reservationDraft.startHour, minute)).map((minute) => (
+                          <SelectItem key={minute} value={minute.toString()}>
+                            {minute.toString().padStart(2, '0')}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="endHour" className="text-sm font-medium">終了時刻（時）</Label>
+                  <Select
+                    open={openPicker === 'endHour'}
+                    onOpenChange={(isOpen) => {
+                      if (isOpen) setOpenPicker('endHour')
+                      else setOpenPicker(null)
+                    }}
+                    onValueChange={(value) => handleInputChange('endHour', parseInt(value))}
+                    value={reservationDraft.endHour?.toString() || ''}
+                    disabled={reservationDraft.startMinute === null}
+                  >
+                    <SelectTrigger id="endHour">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[200px]">
+                      <ScrollArea>
+                        {generateHourOptions().filter(hour => !isEndTimeDisabled(hour, 0)).map((hour) => (
+                          <SelectItem key={hour} value={hour.toString()}>
+                            {hour.toString().padStart(2, '0')}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="endMinute" className="text-sm font-medium">終了時刻（分）</Label>
+                  <Select
+                    open={openPicker === 'endMinute'}
+                    onOpenChange={(isOpen) => {
+                      if (isOpen) setOpenPicker('endMinute')
+                      else setOpenPicker(null)
+                    }}
+                    onValueChange={(value) => handleInputChange('endMinute', parseInt(value))}
+                    value={reservationDraft.endMinute?.toString() || ''}
+                    disabled={reservationDraft.endHour === null}
+                  >
+                    <SelectTrigger id="endMinute">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[200px]">
+                      <ScrollArea>
+                        {generateMinuteOptions().filter(minute => reservationDraft.endHour !== null && !isEndTimeDisabled(reservationDraft.endHour, minute)).map((minute) => (
+                          <SelectItem key={minute} value={minute.toString()}>
+                            {minute.toString().padStart(2, '0')}
+                          </SelectItem>
+                        ))}
+                      </ScrollArea>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button
+                type="submit"
+                disabled={isReservationButtonDisabled()}
+                className={cn(
+                  "w-full",
+                  isReservationButtonDisabled() && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
+                予約
+              </Button>
+            </form>
+            {errorMessage && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>エラー</AlertTitle>
+                <AlertDescription>{errorMessage}</AlertDescription>
+              </Alert>
+            )}
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isCancelFormOpen} onOpenChange={setIsCancelFormOpen}>
+          <DialogTrigger asChild>
+            <Button size="icon" variant="secondary" className="bg-red-500 hover:bg-red-600 text-white rounded-full">
+              <XCircleIcon className="h-4 w-4" />
+              <span className="sr-only">Cancel Calendar</span>
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-semibold">予約取消</DialogTitle>
+            </DialogHeader>
+            {selectedReservation ? (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
+                <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
+                  <p><strong>ID</strong> # {selectedReservation.id}</p>
+                  <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
+                </div>
+                <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full" disabled={isSending}>
+                  {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  キャンセル
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600 dark:text-gray-300">キャンセルしたい予約を選択してください。</p>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
+
   )
 }
