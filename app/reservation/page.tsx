@@ -15,7 +15,7 @@ export default function Page() {
   const [loading, setLoading] = useState<boolean>(true)
   const router = useRouter()
   const { user, loading: authLoading } = useAuth();
-
+  const [userName, setUserName] = useState<string | null>(null)
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
@@ -29,17 +29,26 @@ export default function Page() {
         return;
       }
 
-      setLoading(true)
-      setError(null)
+      setLoading(true);
+      setError(null);
 
       try {
-        // 初回のデータ取得
-        const { data, error } = await supabase.rpc('fetch_reservations');
+        const [reservationsResult, usernameResult] = await Promise.all([
+          supabase.rpc('fetch_reservations'),
+          supabase.rpc('fetch_username')
+        ]);
+
+        const { data, error } = reservationsResult;
+        const { data: userData, error: error2 } = usernameResult;
 
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
+        } else if (error2) {
+          setError('データの取得中にエラーが発生しました。' + error2.message);
         } else if (data === null) {
           setError('予約データが取得できませんでした。');
+        } else if (userData === null) {
+          setError('ユーザーデータが取得できませんでした。');
         } else if ('error' in data) {
           setError('データの処理中にエラーが発生しました。' + data.details);
         } else {
@@ -50,6 +59,8 @@ export default function Page() {
             end_time: new Date(item.end_time),
           }));
           setReservationData(formattedData);
+          setUserName(userData.nickname);
+          console.log(userData)
         }
 
         // リアルタイムサブスクリプションの設定
@@ -64,7 +75,7 @@ export default function Page() {
 
               switch(eventType) {
                 case 'INSERT':
-                  return [...prev, { ...newData, start_time: new Date(newData.start_time), end_time: new Date(newData.end_time), creator: (newData.creator === user.id) ? 'New!' : newData.creator } as ReservationData]
+                  return [...prev, { ...newData, start_time: new Date(newData.start_time), end_time: new Date(newData.end_time), creator: (newData.creator === user.id) ? 'あなた' : "？" } as ReservationData]
                 case 'UPDATE':
                   return prev.map(item => item.id === newData.id ? {
                     ...newData,
@@ -111,8 +122,8 @@ export default function Page() {
     return <ErrorAlert error={error} />
   }
 
-  if (reservationData) {
-    return <ReservationPage reservationData={reservationData} />
+  if (reservationData && userName) {
+    return <ReservationPage reservationData={reservationData} userName={userName} />
   }
 
   return null
