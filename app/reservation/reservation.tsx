@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
-import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, setHours, setMinutes, startOfDay, set } from 'date-fns'
+import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, setHours, setMinutes, startOfDay, set, subDays } from 'date-fns'
 import { is, ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { CalendarIcon, PlusCircleIcon, XCircleIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, AlertTriangle, CalendarRangeIcon, Info } from 'lucide-react'
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, AlertTriangle, CalendarRangeIcon, CalendarX2, CalendarPlus } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,8 @@ import { ReservationData, ReservationHolder, ReservationState, eventStateNames }
 import { supabase } from '@/supabase/supabaseClient'
 // @ts-ignore
 import TimeGrid from 'react-big-calendar/lib/TimeGrid'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import Fab from '@mui/material/Fab';
 
 const locales = {
   'ja': jaLocale,
@@ -128,13 +129,14 @@ export function ReservationPage({ reservationData, userName }: { reservationData
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+  const [isFormDatePickerOpen, setIsFormDatePickerOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [reservationHolders, setReservationHolders] = useState<ReservationHolder[]>([{ name: userName, id: null }])
   const [currentView, setCurrentView] = useState<View>(
     isMobile() ? 'myRange' as View : Views.WEEK
   )
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
-  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null)
+  const [popoverPosition, setPopoverPosition] = useState<{ y: number; x: number } | null>(null)
 
   const calendarRef = useRef<HTMLDivElement>(null)
 
@@ -170,7 +172,6 @@ export function ReservationPage({ reservationData, userName }: { reservationData
       reservationDraft.endHour === null ||
       reservationDraft.endMinute === null
     ) {
-      setErrorMessage('すべての項目を入力してください。')
       return
     }
 
@@ -178,21 +179,6 @@ export function ReservationPage({ reservationData, userName }: { reservationData
     start.setHours(reservationDraft.startHour, reservationDraft.startMinute)
     const end = new Date(reservationDraft.date)
     end.setHours(reservationDraft.endHour, reservationDraft.endMinute)
-
-    if (end.getTime() - start.getTime() < 30 * 60 * 1000) {
-      setErrorMessage('予約時間は30分以上にしてください。')
-      return
-    }
-
-    if (end.getTime() - start.getTime() > 4 * 60 * 60 * 1000) {
-      setErrorMessage('予約時間は4時間以内にしてください。')
-      return
-    }
-
-    if (start.getHours() < 6 || end.getHours() > 23 || (end.getHours() === 23 && end.getMinutes() > 0)) {
-      setErrorMessage('予約時間は朝6時から夜11時までの間で設定してください。')
-      return
-    }
 
     try {
       setIsSending(true)
@@ -211,6 +197,14 @@ export function ReservationPage({ reservationData, userName }: { reservationData
         setErrorMessage('データの処理中にエラーが発生しました。' + data.details);
       } else {
         console.log(data.message)
+        setReservationDraft({
+          date: new Date(),
+          group: null,
+          startHour: null,
+          startMinute: null,
+          endHour: null,
+          endMinute: null,
+        })
         setIsReservationFormOpen(false)
       }
     } catch (err) {
@@ -252,7 +246,7 @@ export function ReservationPage({ reservationData, userName }: { reservationData
       const mouseEvent = e.nativeEvent as MouseEvent
       const relativeX = mouseEvent.clientX - calendarRect.left
       const relativeY = mouseEvent.clientY - calendarRect.top
-      setPopoverPosition({ top: relativeY, left: relativeX })
+      setPopoverPosition({ y: relativeY, x: relativeX })
     }
     setIsEventDetailOpen(true)
     setSelectedReservation(event)
@@ -301,6 +295,19 @@ export function ReservationPage({ reservationData, userName }: { reservationData
     }
   }
 
+  const getRangeSkip = () => {
+    switch (currentView) {
+      case Views.DAY:
+        return 1
+      case 'myRange' as View:
+        return 3
+      case Views.WEEK:
+        return 7
+      default:
+        return 1
+    }
+  }
+
   const handleViewChange = (view: View) => {
     setCurrentView(view)
   }
@@ -321,6 +328,7 @@ export function ReservationPage({ reservationData, userName }: { reservationData
     setPopoverPosition(null)
   }
 
+
   const { customViews } = useMemo(
     () => ({
       customViews: {
@@ -336,23 +344,26 @@ export function ReservationPage({ reservationData, userName }: { reservationData
     <div className="h-screen" ref={calendarRef} style={{ position: 'relative' }}>
       <div className="mx-auto p-5 min-w-fit">
         <Card className="bg-white shadow-lg rounded-lg overflow-hidden h-full">
-          <CardHeader className="bg-gray-100 p-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <CardHeader className="bg-gray-100">
+            <div>
               <CardTitle className="text-2xl font-semibold text-gray-800">ホール予約</CardTitle>
             </div>
           </CardHeader>
           <CardDescription>
-            <div className="p-5 flex flex-wrap gap-2 justify-end">
+            <div className={"p-2 flex flex-wrap gap-2 " + (isMobile() ? "justify-center" : "justify-end")}>
+              <Button variant="outline" onClick={() => handleNavigate(subDays(currentDate, getRangeSkip()), currentView)}>
+                <ChevronLeftIcon className=" h-4 w-4" />
+              </Button>
               <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline">
-                    <CalendarIcon className=" h-4 w-4" />
-                    {currentView === 'day' ? format(currentDate, 'yyyy年M月d日', { locale: jaLocale }) : format(currentDate, 'yyyy年M月', { locale: jaLocale })}
+                    {currentView === Views.DAY ? format(currentDate, 'yyyy年M月d日', { locale: jaLocale }) : format(currentDate, 'yyyy年M月', { locale: jaLocale })}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="center">
                   <CalendarPrimitive
                     mode="single"
+                    locale={jaLocale}
                     selected={currentDate}
                     onSelect={handleDateChange}
                     initialFocus
@@ -366,11 +377,14 @@ export function ReservationPage({ reservationData, userName }: { reservationData
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => handleViewChange('day')}>日</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleViewChange('myRange' as View)}>3日</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleViewChange('week')}>週</DropdownMenuItem>
+                  <DropdownMenuCheckboxItem checked={currentView === Views.DAY} onCheckedChange={() => handleViewChange(Views.DAY)}>１日</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={currentView === 'myRange' as View} onCheckedChange={() => handleViewChange('myRange' as View)}>３日</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={currentView === Views.WEEK} onCheckedChange={() => handleViewChange(Views.WEEK)} disabled={isMobile()}>週</DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <Button variant="outline" onClick={() => handleNavigate(addDays(currentDate, getRangeSkip()), currentView)}>
+                <ChevronRightIcon className=" h-4 w-4" />
+              </Button> 
             </div>
           </CardDescription>
           <CardContent>
@@ -433,11 +447,12 @@ export function ReservationPage({ reservationData, userName }: { reservationData
       </div>
       {isEventDetailOpen && selectedReservation && popoverPosition && (
         <div
-          className="absolute bg-white border rounded shadow-lg p-4 max-w-xs"
+          className="absolute bg-white border rounded-lg shadow-lg p-4 max-w-xs"
           style={{
-            top: popoverPosition.top,
-            left: popoverPosition.left,
-            zIndex: 10,
+            top: popoverPosition.y,
+            left: popoverPosition.x,
+            transform: 'translate(-50%, 0%)',
+            zIndex: 10
           }}
         >
           <div>
@@ -455,11 +470,11 @@ export function ReservationPage({ reservationData, userName }: { reservationData
       <div className="fixed bottom-4 right-4 flex flex-col gap-2">
         <Dialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen}>
           <DialogTrigger asChild>
-            <Button size="icon" variant="secondary" className="bg-blue-500 hover:bg-blue-600 text-white rounded-full">
-              <PlusCircleIcon className="h-4 w-4" />
-            </Button>
+            <Fab color="primary" aria-label="add">
+              <CalendarPlus />
+            </Fab>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className= "p-6">
             <DialogHeader>
               <DialogTitle className="text-xl font-semibold">新規予約</DialogTitle>
             </DialogHeader>
@@ -469,7 +484,7 @@ export function ReservationPage({ reservationData, userName }: { reservationData
                 <AlertTitle>注意事項</AlertTitle>
               </div>
               <AlertDescription>
-                <ul className="list-disc pl-5 text-sm">
+                <ul className="list-disc pl-6 text-sm">
                   <li>二週間以上先の予約を取ることはできません。</li>
                   <li>予約の上限は4件です。</li>
                   <li>日をまたいで予約することはできません。</li>
@@ -502,7 +517,7 @@ export function ReservationPage({ reservationData, userName }: { reservationData
               </div>
               <div>
                 <Label htmlFor="date" className="text-sm font-medium">予約日</Label>
-                <Popover>
+                <Popover open={isFormDatePickerOpen} onOpenChange={setIsFormDatePickerOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant={"outline"}
@@ -524,6 +539,7 @@ export function ReservationPage({ reservationData, userName }: { reservationData
                           handleInputChange('endHour', null)
                           handleInputChange('endMinute', null)
                         }
+                        setIsFormDatePickerOpen(false)
                       }}
                       disabled={(date) =>
                         date > maxDate || isBefore(date, startOfDay(new Date()))
@@ -662,10 +678,10 @@ export function ReservationPage({ reservationData, userName }: { reservationData
         </Dialog>
         <Dialog open={isCancelFormOpen} onOpenChange={setIsCancelFormOpen}>
           <DialogTrigger asChild>
-            <Button size="icon" variant="secondary" className="bg-red-500 hover:bg-red-600 text-white rounded-full">
-              <XCircleIcon className="h-4 w-4" />
+            <Fab color="error" aria-label="cancel">
+              <CalendarX2/>
               <span className="sr-only">Cancel Calendar</span>
-            </Button>
+            </Fab>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
