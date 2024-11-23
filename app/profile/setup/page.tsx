@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { SetupWizard } from './setup-wizard'
 import { UserData } from '@/app/types'
@@ -16,38 +16,59 @@ export default function Page() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth();
 
+  // フラグを追加して一度だけ実行
+  const hasFetched = useRef(false)
+
   useEffect(() => {
-    if (!authLoading) {
-      if (!user) {
-        router.push('/login');
-      } else {
-        const fetchUserData = async () => {
-          setLoading(true)
-          setError(null)
+    if (authLoading) {
+      // 認証状態がロード中の場合は何もしない
+      return
+    }
 
-          try {
-            const { data, error } = await supabase.rpc('fetch_user', { p_email: user.email });
+    if (!user) {
+      // ユーザーが存在しない場合はログインページにリダイレクト
+      router.push('/login');
+      return;
+    }
 
-            if (error) {
-              setError('データの取得中にエラーが発生しました。' + error.message);
-            } else if (data === null) {
-              setError('ユーザーデータが存在しません。');
-            } else if ('error' in data) {
-              setError(data.error);
-            } else {
-              setUserData(data as UserData);
-            }
-          } catch (err) {
-            setError((err as Error).message);
-          } finally {
-            setLoading(false);
-          }
+    if (hasFetched.current) {
+      // 既にフェッチ済みの場合は何もしない
+      return;
+    }
+
+    hasFetched.current = true
+
+    const fetchUserData = async () => {
+      if (!user?.email) {
+        setError('ユーザー情報が取得できません。');
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        const { data, error } = await supabase.rpc('fetch_user', { p_email: user.email });
+
+        if (error) {
+          setError('データの取得中にエラーが発生しました。' + error.message);
+        } else if (data === null) {
+          setError('ユーザーデータが存在しません。');
+        } else if ('error' in data) {
+          setError(data.error);
+        } else {
+          setUserData(data as UserData);
         }
-
-        fetchUserData()
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setLoading(false);
       }
     }
-  }, [router, user, authLoading])
+
+    fetchUserData();
+  }, [user, authLoading])
 
   if (loading) {
     return <LoadingScreen />

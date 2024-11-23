@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MemberList } from './member-list'
 import { MemberData } from '@/app/types'
@@ -17,11 +17,27 @@ export default function Page() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth();
 
+  // フラグを追加して一度だけ実行
+  const hasFetched = useRef(false)
+
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (authLoading) {
+      // 認証状態がロード中の場合は何もしない
+      return
+    }
+
+    if (!user) {
+      // ユーザーが存在しない場合はログインページにリダイレクト
       router.push('/login');
       return;
     }
+
+    if (hasFetched.current) {
+      // 既にフェッチ済みの場合は何もしない
+      return;
+    }
+
+    hasFetched.current = true
 
     const fetchUserData = async () => {
       if (!user?.email) {
@@ -43,7 +59,7 @@ export default function Page() {
         } else if ('error' in data) {
           setError('データの処理中にエラーが発生しました。' + data.details);
         } else {
-          setMemberData(data as [MemberData]);
+          setMemberData(data as MemberData[]);
         }
       } catch (err) {
         setError((err as Error).message);
@@ -55,7 +71,7 @@ export default function Page() {
     if (user) {
       fetchUserData();
     }
-  }, [router, user, authLoading])
+  }, [user, authLoading, router])
 
   if (loading) {
     return <LoadingScreen />
