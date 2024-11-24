@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useTitle } from "@/app/context/TitleContext";
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton } from "@/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, useSidebar } from "@/components/ui/sidebar"
 import { CalendarIcon, GuitarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, UserIcon } from "lucide-react"
 
 const sidebarData = [
@@ -33,6 +33,7 @@ const sidebarData = [
 
 export function AppSidebar() {
   const { setTitle } = useTitle();
+  const { setOpen } = useSidebar();
 
   return (
     <Sidebar>
@@ -46,9 +47,9 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item, idx) => (
-                  <SidebarMenuButton key={idx}>
+                  <SidebarMenuButton key={idx} onClick={() => { setTitle(item.text); setOpen(false); }}>
                     {item.icon}
-                    <Link href={item.href} onClick={() => setTitle(item.text)}>
+                    <Link href={item.href}>
                       <span>{item.text}</span>
                     </Link>
                   </SidebarMenuButton>
