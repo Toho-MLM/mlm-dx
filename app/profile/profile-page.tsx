@@ -36,10 +36,7 @@ export function ProfilePage({ userData }: { userData: UserData }) {
         transition={{ duration: 0.5 }}
       >
         <Card className="min-w-fit max-w-2xl mx-auto">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xl font-bold">プロフィール</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="p-5 space-y-3">
             <div className="space-y-2">
               <div className="bg-gray-50 p-2 rounded-lg">
                 <p className="text-xs font-medium text-gray-500">メールアドレス</p>

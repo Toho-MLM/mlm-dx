@@ -342,13 +342,8 @@ export function ReservationPage({ reservationData, userName }: { reservationData
 
   return (
     <div className="h-screen" ref={calendarRef} style={{ position: 'relative' }}>
-      <div className="mx-auto p-5 min-w-fit">
+      <div className="mx-auto px-5 min-w-fit">
         <Card className="bg-white shadow-lg rounded-lg overflow-hidden h-full">
-          <CardHeader className="bg-gray-100">
-            <div>
-              <CardTitle className="text-2xl font-semibold text-gray-800">ホール予約</CardTitle>
-            </div>
-          </CardHeader>
           <CardDescription>
             <div className={"p-2 flex flex-wrap gap-2 " + (isMobile() ? "justify-center" : "justify-end")}>
               <Button variant="outline" onClick={() => handleNavigate(subDays(currentDate, getRangeSkip()), currentView)}>
@@ -689,15 +684,24 @@ export function ReservationPage({ reservationData, userName }: { reservationData
             </DialogHeader>
             {selectedReservation ? (
               <div className="space-y-4">
-                <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
-                <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
+                {selectedReservation.creator === userName ?
+                  <>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
+                    <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
                   <p><strong>ID</strong> # {selectedReservation.id}</p>
                   <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
+                  <p><strong>作成者</strong> {selectedReservation.creator}</p>
+                  {selectedReservation.group && <p><strong>グループ</strong> {selectedReservation.group}</p>}
+                  <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
                 </div>
                 <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full" disabled={isSending}>
                   {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
-                  キャンセル
-                </Button>
+                    キャンセル
+                  </Button>
+                  </>
+                :
+                  <p className="text-sm text-gray-600 dark:text-gray-300">他の人の予約はキャンセルできません。</p>
+                }
               </div>
             ) : (
               <p className="text-sm text-gray-600 dark:text-gray-300">キャンセルしたい予約を選択してください。</p>

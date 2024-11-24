@@ -35,9 +35,6 @@ export function MemberList({ memberData }: { memberData: MemberData[] }) {
   return (
     <div className="p-5">
       <Card className="w-full max-w-6xl min-w-fit mx-auto">
-        <CardHeader className="bg-gray-200">
-          <CardTitle className="text-3xl font-bold text-center text-gray-800">部員名簿</CardTitle>
-        </CardHeader>
         <CardContent className="p-6">
           <div className="mb-6">
             <Input
