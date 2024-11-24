@@ -78,3 +78,28 @@ export const eventStateNames: Record<ReservationState, string> = {
     [ReservationState.CANCELLED]: 'キャンセル',
     [ReservationState.COMPLETED]: '完了',
 }
+
+export interface Member {
+    id: string
+    name: string
+  }
+  
+  export interface BandMember {
+    memberId: string
+    instruments: Instrument[]
+  }
+  
+  export interface Band {
+    id: string
+    name: string
+    isMain: boolean
+    members: BandMember[]
+}
+
+export const instrumentColors: Record<Instrument, string> = {
+    [Instrument.vocal]: 'bg-blue-100 text-blue-800',
+    [Instrument.guitar]: 'bg-green-100 text-green-800',
+    [Instrument.keyboard]: 'bg-purple-100 text-purple-800',
+    [Instrument.drums]: 'bg-yellow-100 text-yellow-800',
+    [Instrument.bass]: 'bg-red-100 text-red-800',
+}
