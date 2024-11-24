@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import localFont from "next/font/local";
 import "./globals.css";
 import { usePathname } from 'next/navigation';
+import { TitleProvider, useTitle } from './context/TitleContext';
 
 const notoSansJP = localFont({
   src: "./fonts/NotoSansJP-VariableFont_wght.ttf",
@@ -15,15 +16,11 @@ const notoSansJP = localFont({
   weight: "100 900",
 });
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+function MainContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { title } = useTitle();
 
-
-  const shouldHideSidebar = pathname == "/" || pathname == "/login";
+  const shouldHideSidebar = pathname === "/" || pathname === "/login";
 
   useEffect(() => {
     // クライアントサイドでのみ supabaseDebug.js を読み込む
@@ -31,18 +28,39 @@ export default function RootLayout({
   }, []);
 
   return (
-    <html lang="ja">
-      <body className={`${notoSansJP.variable} antialiased`}>
-        <SidebarProvider >
-          {!shouldHideSidebar && <AppSidebar />}
-          <div className="w-full bg-gray-100">
-            {!shouldHideSidebar && <SidebarTrigger className="p-6" />}
-            <AuthProvider>
-              {children}
-            </AuthProvider>
+    <SidebarProvider>
+      {!shouldHideSidebar && <AppSidebar />}
+      <div className="w-full">
+        {!shouldHideSidebar && 
+          <div className="w-full sticky top-0 bg-gray-100 p-3 z-10 flex items-center gap-2">
+            <div className="flex items-center gap-2 whitespace-nowrap">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">{title}</h1>
+            </div>
           </div>
-        </SidebarProvider>
-        <Analytics />
+        }
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </div>
+    </SidebarProvider>
+  )
+}
+
+export default function RootLayout({
+  children
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="ja">
+      <body className={`${notoSansJP.variable} antialiased bg-gray-100`}>
+        <TitleProvider>
+          <MainContent>
+            {children}
+          </MainContent>
+          <Analytics />
+        </TitleProvider>
       </body>
     </html>
   );

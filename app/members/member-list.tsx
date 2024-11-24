@@ -6,15 +6,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AnimatePresence, motion } from 'framer-motion'
-import { Instrument, MemberData, instrumentNames, roleNames } from '@/app/types'
+import { MemberData, instrumentNames, roleNames, instrumentColors } from '@/app/types'
 
-const instrumentColors: Record<Instrument, string> = {
-  VO: 'bg-blue-100 text-blue-800',
-  GT: 'bg-green-100 text-green-800',
-  KEY: 'bg-purple-100 text-purple-800',
-  DR: 'bg-yellow-100 text-yellow-800',
-  BA: 'bg-red-100 text-red-800',
-}
 
 export function MemberList({ memberData }: { memberData: MemberData[] }) {
   const [searchTerm, setSearchTerm] = useState('')
