@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MemberList } from './member-list'
-import { MemberData } from '@/app/types'
+import { MemberListItem } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
 import LoadingScreen from '@/components/loading';
@@ -11,7 +11,7 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { AlertTriangle } from 'lucide-react';
 
 export default function Page() {
-  const [memberData, setMemberData] = useState<MemberData[] | null>(null)
+  const [memberData, setMemberData] = useState<MemberListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const router = useRouter()
@@ -50,7 +50,7 @@ export default function Page() {
       setError(null)
 
       try {
-        const { data, error } = await supabase.rpc('fetch_members');
+        const { data, error } = await supabase.rpc('fetch_member_list');
         console.log(data);
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
@@ -59,7 +59,7 @@ export default function Page() {
         } else if ('error' in data) {
           setError('データの処理中にエラーが発生しました。' + data.details);
         } else {
-          setMemberData(data as MemberData[]);
+          setMemberData(data as MemberListItem[]);
         }
       } catch (err) {
         setError((err as Error).message);
