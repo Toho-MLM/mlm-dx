@@ -3,19 +3,19 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { BandList } from './band-list'
-import { ReservationData } from '@/app/types'
+import { Group, Member } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
 import LoadingScreen from '@/components/loading';
 import ErrorAlert from '@/components/errorAlert';
 
 export default function Page() {
-  const [reservationData, setReservationData] = useState<ReservationData[] | null>(null)
+  const [groupData, setGroupData] = useState<Group[] | null>(null)
+  const [memberData, setMemberData] = useState<Member[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const router = useRouter()
   const { user, loading: authLoading } = useAuth();
-  const [userName, setUserName] = useState<string | null>(null)
   
   // フラグを追加して一度だけ実行
   const hasFetched = useRef(false);
@@ -44,70 +44,40 @@ export default function Page() {
       setError(null);
 
       try {
-        const [reservationsResult, usernameResult] = await Promise.all([
-          supabase.rpc('fetch_reservations'),
-          supabase.rpc('fetch_user_holder')
+        const [groupResult, memberResult] = await Promise.all([
+          supabase.rpc('fetch_user_groups'),
+          supabase.rpc('fetch_members')
         ]);
 
-        const { data, error } = reservationsResult;
-        const { data: userData, error: error2 } = usernameResult;
+        const { data, error } = groupResult;
+        const { data: memberData, error: error2 } = memberResult;
 
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
         } else if (error2) {
           setError('データの取得中にエラーが発生しました。' + error2.message);
         } else if (data === null) {
-          setError('予約データが取得できませんでした。');
-        } else if (userData === null) {
-          setError('ユーザーデータが取得できませんでした。');
+          setError('バンドデータが取得できませんでした。');
+        } else if (memberData === null) {
+          setError('メンバーデータが取得できませんでした。');
         } else if ('error' in data) {
           setError('データの処理中にエラーが発生しました。' + data.details);
         } else {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const formattedData: ReservationData[] = (data as any[]).map(item => ({
-            ...item,
-            start_time: new Date(item.start_time),
-            end_time: new Date(item.end_time),
-          }));
-          setReservationData(formattedData);
-          const currentUserName = userData.user.nickname;
-          setUserName(currentUserName);
-          
-          // リアルタイムサブスクリプションの設定
-          const channel = supabase
-            .channel('reservations')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, (payload) => {
-              console.log('変更が検出されました:', payload)
-              const { eventType, new: newData } = payload
-
-              setReservationData(prev => {
-                if (!prev) return prev
-
-                switch(eventType) {
-                  case 'INSERT':
-                    return [...prev, { 
-                      ...newData, 
-                      start_time: new Date(newData.start_time), 
-                      end_time: new Date(newData.end_time), 
-                      creator: (newData.creator === user.id) ? currentUserName : "？" 
-                    } as ReservationData]
-                  case 'UPDATE':
-                    return prev.map(item => item.id === newData.id ? {
-                      ...newData,
-                      start_time: new Date(newData.start_time),
-                      end_time: new Date(newData.end_time),
-                      creator: item.creator,
-                    } as ReservationData : item)
-                  default:
-                    return prev
-                }
-              })
-            })
-            .subscribe()
-
-          return () => {
-            channel.unsubscribe();
-          }
+          const formattedGroupData: Group[] = (data as any[]).map((group) => {
+            return {
+              id: group.id,
+              name: group.name,
+              isMain: group.is_main,
+              members: group.assignments.map((assignment: any) => ({
+                memberId: assignment.member_id,
+                instruments: assignment.instrument,
+              })),
+            };
+          });
+          setGroupData(formattedGroupData);
+          const formattedMemberData = memberData as Member[];
+          setMemberData(formattedMemberData);
         }
 
       } catch (err) {
@@ -129,8 +99,8 @@ export default function Page() {
     return <ErrorAlert error={error} />
   }
 
-  if (reservationData && userName) {
-    return <BandList bands={[]} members={[]} />
+  if (groupData && memberData) {
+    return <BandList bands={groupData} members={memberData} />
   }
 
   return null

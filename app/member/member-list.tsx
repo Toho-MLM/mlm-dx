@@ -6,10 +6,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AnimatePresence, motion } from 'framer-motion'
-import { MemberData, instrumentNames, roleNames, instrumentColors } from '@/app/types'
+import { MemberListItem, instrumentNames, roleNames, instrumentColors } from '@/app/types'
 
 
-export function MemberList({ memberData }: { memberData: MemberData[] }) {
+export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
   const [searchTerm, setSearchTerm] = useState('')
 
   const sortedUsers = useMemo(() => {

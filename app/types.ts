@@ -26,7 +26,7 @@ export interface UserData {
     instruments: Instrument[];
 }
 
-export type MemberData = Omit<UserData, 'email'>;
+export type MemberListItem = Omit<UserData, 'email'>;
 
 export const instrumentNames: Record<Instrument, string> = {
     [Instrument.vocal]: 'ボーカル',
@@ -82,14 +82,14 @@ export const eventStateNames: Record<ReservationState, string> = {
 export interface Member {
     id: string
     name: string
-  }
-  
-  export interface GroupMember {
+}
+
+export interface GroupMember {
     memberId: string
     instruments: Instrument[]
-  }
-  
-  export interface Group {
+}
+
+export interface Group {
     id: string
     name: string
     isMain: boolean

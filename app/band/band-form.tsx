@@ -154,8 +154,9 @@ export function BandForm({ band, members, isOpen, onClose, onSave }: BandFormPro
                 メンバーを追加 <ChevronDown className="ml-2 h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent>
+            <DropdownMenuContent className="max-h-[200px] overflow-y-auto">
               {members
+                .sort((a, b) => a.name.localeCompare(b.name))
                 .filter(m => !bandMembers.some(bm => bm.memberId === m.id))
                 .map((member) => (
                   <DropdownMenuItem
@@ -164,7 +165,7 @@ export function BandForm({ band, members, isOpen, onClose, onSave }: BandFormPro
                   >
                     {member.name}
                   </DropdownMenuItem>
-                ))}
+                  ))}
             </DropdownMenuContent>
           </DropdownMenu>
           {error && <p className="text-red-500">{error}</p>}

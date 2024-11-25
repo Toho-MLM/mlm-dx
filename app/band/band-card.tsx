@@ -1,19 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Group, Instrument, Member } from "@/app/types"
+import { Group, instrumentColors, Member } from "@/app/types"
 
 interface BandCardProps {
   band: Group
   members: Member[]
   onEdit: (id: string) => void
-}
-
-const instrumentColors: Record<Instrument, string> = {
-  VO: 'bg-blue-100 text-blue-800',
-  GT: 'bg-green-100 text-green-800',
-  KEY: 'bg-purple-100 text-purple-800',
-  DR: 'bg-yellow-100 text-yellow-800',
-  BA: 'bg-red-100 text-red-800',
 }
 
 export function BandCard({ band, members, onEdit }: BandCardProps) {

@@ -21,7 +21,7 @@ export const sidebarData = [
     label: "資料",
     items: [
       { icon: <SquarePlayIcon />, href: "#", text: "ライブアーカイブ" },
-      { icon: <FileUserIcon />, href: "/members", text: "部員名簿" }
+      { icon: <FileUserIcon />, href: "/member", text: "部員名簿" }
     ]
   },
   {
