@@ -84,16 +84,16 @@ export interface Member {
     name: string
   }
   
-  export interface BandMember {
+  export interface GroupMember {
     memberId: string
     instruments: Instrument[]
   }
   
-  export interface Band {
+  export interface Group {
     id: string
     name: string
     isMain: boolean
-    members: BandMember[]
+    members: GroupMember[]
 }
 
 export const instrumentColors: Record<Instrument, string> = {

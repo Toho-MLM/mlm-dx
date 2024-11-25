@@ -50,7 +50,7 @@ export default function Page() {
       setError(null)
 
       try {
-        const { data, error } = await supabase.rpc('fetch_member');
+        const { data, error } = await supabase.rpc('fetch_members');
         console.log(data);
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);

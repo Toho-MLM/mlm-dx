@@ -1,9 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Band, Instrument, Member } from "../types"
+import { Group, Instrument, Member } from "@/app/types"
 
 interface BandCardProps {
-  band: Band
+  band: Group
   members: Member[]
   onEdit: (id: string) => void
 }
