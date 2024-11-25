@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { useTitle } from "@/app/context/TitleContext";
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, useSidebar } from "@/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, useSidebar } from "@/components/ui/sidebar"
 import { CalendarIcon, GuitarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, UserIcon } from "lucide-react"
 
-const sidebarData = [
+export const sidebarData = [
   {
     label: "ホール",
     items: [
@@ -13,7 +13,8 @@ const sidebarData = [
   {
     label: "バンド",
     items: [
-      { icon: <UsersIcon />, href: "/band", text: "バンド管理" }
+      { icon: <UsersIcon />, href: "/band", text: "バンド管理" },
+      { icon: <GuitarIcon />, href: "/band", text: "バンド管理" }
     ]
   },
   {
@@ -33,7 +34,7 @@ const sidebarData = [
 
 export function AppSidebar() {
   const { setTitle } = useTitle();
-  const { setOpen } = useSidebar();
+  const { setOpenMobile } = useSidebar();
 
   return (
     <Sidebar>
@@ -47,12 +48,12 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item, idx) => (
-                  <SidebarMenuButton key={idx} onClick={() => { setTitle(item.text); setOpen(false); }}>
-                    {item.icon}
-                    <Link href={item.href}>
+                  <Link key={idx} href={item.href}>
+                    <SidebarMenuButton onClick={() => { setTitle(item.text); setOpenMobile(false); }}>
+                      {item.icon}
                       <span>{item.text}</span>
-                    </Link>
-                  </SidebarMenuButton>
+                    </SidebarMenuButton>
+                  </Link>
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>

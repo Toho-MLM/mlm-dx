@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { BandPage } from './band-list'
+import { BandList } from './band-list'
 import { ReservationData } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
@@ -130,7 +130,7 @@ export default function Page() {
   }
 
   if (reservationData && userName) {
-    return <BandPage/>
+    return <BandList bands={[]} members={[]} />
   }
 
   return null

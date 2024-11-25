@@ -43,7 +43,7 @@
   "devDependencies": {
     "@types/node": "20.17.6",
     "@types/react": "18.3.12",
-    "@types/react-big-calendar": "^1.15.0",
+    "@types/react-big-calendar": "^1.16.0",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.20",
     "eslint": "^8",

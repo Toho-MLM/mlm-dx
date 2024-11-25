@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Loader2, LogOut, Pencil } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { UserData, instrumentNames, roleNames } from '@/app/types'

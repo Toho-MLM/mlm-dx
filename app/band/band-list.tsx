@@ -1,177 +1,64 @@
-import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
+'use client'
+
+import { useState } from 'react'
+import { BandCard } from "./band-card"
+import { BandForm } from "./band-form"
 import { Button } from "@/components/ui/button"
-import { Band, BandMember, Instrument, Member, instrumentColors } from "@/app/types"
-import { X, Plus, ChevronDown } from 'lucide-react'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Badge } from "@/components/ui/badge"
+import { Group, Member } from "@/app/types"
 
-interface BandFormProps {
-  band?: Band
-  members: Member[]
-  isOpen: boolean
-  onClose: () => void
-  onSave: (band: Omit<Band, 'id'>) => void
-}
+export function BandList({ bands, members }: { bands: Group[], members: Member[] }) {
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [editingBand, setEditingBand] = useState<Group | undefined>()
 
-const allInstruments: Instrument[] = Object.values(Instrument)
-
-export function BandForm({ band, members, isOpen, onClose, onSave }: BandFormProps) {
-  const [name, setName] = useState(band?.name || '')
-  const [bandMembers, setBandMembers] = useState<BandMember[]>(band?.members || [])
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
+  const handleEdit = (id: string) => {
+    const band = bands.find(b => b.id === id)
     if (band) {
-      setName(band.name)
-      setBandMembers(band.members)
+      setEditingBand(band)
+      setIsFormOpen(true)
+    }
+  }
+
+  const handleAdd = () => {
+    setEditingBand(undefined)
+    setIsFormOpen(true)
+  }
+
+  const handleSave = (updatedBand: Omit<Group, 'id'>) => {
+    if (editingBand) {
+    //   setBands(bands.map(b => b.id === editingBand.id ? { ...b, ...updatedBand } : b))
     } else {
-      setName('')
-      setBandMembers([])
-    }
-    setError(null)
-  }, [band])
-
-  const handleSave = () => {
-    if (name.trim() === '') {
-      setError('バンド名を入力してください。')
-      return
-    }
-    if (bandMembers.length === 0) {
-      setError('少なくとも1人のメンバーを追加してください。')
-      return
-    }
-    if (bandMembers.some(member => member.instruments.length === 0)) {
-      setError('全てのメンバーに少なくとも1つの楽器を割り当ててください。')
-      return
-    }
-    onSave({
-      name,
-      isMain: band?.isMain ?? false,
-      members: bandMembers,
-    })
-    onClose()
-  }
-
-  const addMember = (memberId: string) => {
-    setBandMembers([...bandMembers, { memberId, instruments: [] }])
-  }
-
-  const removeMember = (memberId: string) => {
-    setBandMembers(bandMembers.filter(bm => bm.memberId !== memberId))
-  }
-
-  const addInstrument = (memberId: string, instrument: Instrument) => {
-    setBandMembers(bandMembers.map(bm => {
-      if (bm.memberId === memberId) {
-        return { ...bm, instruments: [...bm.instruments, instrument] }
+      const newBand: Group = {
+        ...updatedBand,
+        id: Math.random().toString(36).substr(2, 9),
+        isMain: false
       }
-      return bm
-    }))
-  }
-
-  const removeInstrument = (memberId: string, instrument: Instrument) => {
-    setBandMembers(bandMembers.map(bm => {
-      if (bm.memberId === memberId) {
-        return { ...bm, instruments: bm.instruments.filter(i => i !== instrument) }
-      }
-      return bm
-    }))
+    //   setBands([...bands, newBand])
+    }
+    setIsFormOpen(false)
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>{band ? 'バンドを編集' : 'バンドを追加'}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <Input
-            placeholder="バンド名"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+    <div className="container mx-auto py-8 px-4">
+      <h1 className="text-3xl font-bold mb-8 text-center">バンド一覧</h1>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {bands.map((band) => (
+          <BandCard
+            key={band.id}
+            band={band}
+            members={members}
+            onEdit={handleEdit}
           />
-          <div className="space-y-2">
-            <h3 className="font-medium">メンバー</h3>
-            {bandMembers.map((bandMember) => {
-              const member = members.find(m => m.id === bandMember.memberId)
-              const availableInstruments = allInstruments.filter(i => !bandMember.instruments.includes(i))
-              return (
-                <div key={bandMember.memberId} className="flex items-center space-x-2 p-2 border rounded">
-                  <span className="flex-grow">{member?.name}</span>
-                  <div className="flex items-center space-x-1">
-                    {bandMember.instruments.map((instrument) => (
-                      <Badge 
-                        key={instrument} 
-                        variant="secondary" 
-                        className={`text-xs ${instrumentColors[instrument]}`}
-                      >
-                        {instrument}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-4 w-4 ml-1 p-0"
-                          onClick={() => removeInstrument(bandMember.memberId, instrument)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </Badge>
-                    ))}
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-8 w-8">
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      {availableInstruments.map((instrument) => (
-                        <DropdownMenuItem
-                          key={instrument}
-                          onClick={() => addInstrument(bandMember.memberId, instrument)}
-                        >
-                          {instrument}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <Button variant="ghost" size="icon" onClick={() => removeMember(bandMember.memberId)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              )
-            })}
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                メンバーを追加 <ChevronDown className="ml-2 h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {members
-                .filter(m => !bandMembers.some(bm => bm.memberId === m.id))
-                .map((member) => (
-                  <DropdownMenuItem
-                    key={member.id}
-                    onClick={() => addMember(member.id)}
-                  >
-                    {member.name}
-                  </DropdownMenuItem>
-                ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {error && <p className="text-red-500">{error}</p>}
-          <Button onClick={handleSave}>保存</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        ))}
+      </div>
+      <Button onClick={handleAdd} className="mt-8">バンドを追加</Button>
+      <BandForm
+        band={editingBand}
+        members={members}
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        onSave={handleSave}
+      />
+    </div>
   )
 }
 

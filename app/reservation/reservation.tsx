@@ -1,12 +1,12 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useMemo } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
-import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, setHours, setMinutes, startOfDay, set, subDays } from 'date-fns'
-import { is, ja as jaLocale } from 'date-fns/locale'
+import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, setHours, setMinutes, startOfDay, subDays } from 'date-fns'
+import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -24,10 +24,11 @@ import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ReservationData, ReservationHolder, ReservationState, eventStateNames } from '../types'
 import { supabase } from '@/supabase/supabaseClient'
-// @ts-ignore
 import TimeGrid from 'react-big-calendar/lib/TimeGrid'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import Fab from '@mui/material/Fab';
+import { useAuth } from '../context/AuthContext'
+
 
 const locales = {
   'ja': jaLocale,
@@ -63,6 +64,7 @@ function ThreeDayView({
 }: {
   date: Date
   localizer: DateLocalizer
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any
 }) {
   const currRange = useMemo(
@@ -96,7 +98,7 @@ ThreeDayView.range = (date: Date, { localizer }: { localizer: DateLocalizer }) =
   return range
 }
 
-ThreeDayView.navigate = (date: Date, action: string, { localizer }: { localizer: DateLocalizer }) => {
+ThreeDayView.navigate = (date: Date, action: string) => {
   switch (action) {
     case Navigate.PREVIOUS:
       return addDays(date, -3)
@@ -107,13 +109,13 @@ ThreeDayView.navigate = (date: Date, action: string, { localizer }: { localizer:
   }
 }
 
-ThreeDayView.title = (date: Date, options: any) => {
+ThreeDayView.title = (date: Date) => {
   const start = format(date, 'MM/dd', { locale: jaLocale })
   const end = format(addDays(date, 2), 'MM/dd', { locale: jaLocale })
   return `3日間表示: ${start} - ${end}`
 }
 
-export function ReservationPage({ reservationData, userName }: { reservationData: ReservationData[], userName: string }) {
+export function ReservationPage({ reservationData, userHolder }: { reservationData: ReservationData[], userHolder: ReservationHolder[] }) {
   const [reservationDraft, setReservationDraft] = useState({
     date: new Date(),
     group: null as string | null,
@@ -131,12 +133,12 @@ export function ReservationPage({ reservationData, userName }: { reservationData
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [isFormDatePickerOpen, setIsFormDatePickerOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [reservationHolders, setReservationHolders] = useState<ReservationHolder[]>([{ name: userName, id: null }])
   const [currentView, setCurrentView] = useState<View>(
     isMobile() ? 'myRange' as View : Views.WEEK
   )
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
   const [popoverPosition, setPopoverPosition] = useState<{ y: number; x: number } | null>(null)
+  const { user } = useAuth();
 
   const calendarRef = useRef<HTMLDivElement>(null)
 
@@ -470,9 +472,7 @@ export function ReservationPage({ reservationData, userName }: { reservationData
             </Fab>
           </DialogTrigger>
           <DialogContent className= "p-6">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">新規予約</DialogTitle>
-            </DialogHeader>
+            <DialogTitle className="text-xl font-semibold">新規予約</DialogTitle>
             <Alert className="my-4">
               <div className="flex items-center gap-1">
                 <AlertCircle className="h-4 w-4" />
@@ -501,9 +501,9 @@ export function ReservationPage({ reservationData, userName }: { reservationData
                   </SelectTrigger>
                   <SelectContent>
                     <ScrollArea className="max-h-[200px]">
-                      {reservationHolders.map((option) => (
-                        <SelectItem key={option.id} value={option.id || 'none'}>
-                          {option.name}
+                      {userHolder.map((holder) => (
+                        <SelectItem key={holder.id} value={holder.id || 'none'}>
+                          {holder.name}
                         </SelectItem>
                       ))}
                     </ScrollArea>
@@ -684,7 +684,7 @@ export function ReservationPage({ reservationData, userName }: { reservationData
             </DialogHeader>
             {selectedReservation ? (
               <div className="space-y-4">
-                {selectedReservation.creator === userName ?
+                {selectedReservation.creator === userHolder.find(holder => holder.id === user?.id)?.name ?
                   <>
                     <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
                     <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
