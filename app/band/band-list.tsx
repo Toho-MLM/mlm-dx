@@ -9,6 +9,8 @@ import { Group, Member } from "@/app/types"
 export function BandList({ bands, members }: { bands: Group[], members: Member[] }) {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBand, setEditingBand] = useState<Group | undefined>()
+  const [isSending, setIsSending] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const handleEdit = (id: string) => {
     const band = bands.find(b => b.id === id)
@@ -24,17 +26,19 @@ export function BandList({ bands, members }: { bands: Group[], members: Member[]
   }
 
   const handleSave = (updatedBand: Omit<Group, 'id'>) => {
+    setIsSending(true)
     if (editingBand) {
     //   setBands(bands.map(b => b.id === editingBand.id ? { ...b, ...updatedBand } : b))
     } else {
       const newBand: Group = {
         ...updatedBand,
-        id: Math.random().toString(36).substr(2, 9),
+        id: Math.random().toString(36).substring(2, 9),
         isMain: false
       }
     //   setBands([...bands, newBand])
     }
     setIsFormOpen(false)
+    setIsSending(false)
   }
 
   return (
@@ -56,6 +60,8 @@ export function BandList({ bands, members }: { bands: Group[], members: Member[]
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         onSave={handleSave}
+        isSending={isSending}
+        errorMessage={errorMessage}
       />
     </div>
   )
