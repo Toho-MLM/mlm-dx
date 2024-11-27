@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { useTitle } from "@/app/context/TitleContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, useSidebar } from "@/components/ui/sidebar"
-import { CalendarIcon, GuitarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, UserIcon } from "lucide-react"
+import { CalendarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, UserIcon } from "lucide-react"
 
 export const sidebarData = [
   {
@@ -13,14 +13,13 @@ export const sidebarData = [
   {
     label: "バンド",
     items: [
-      { icon: <UsersIcon />, href: "/band", text: "バンド管理" },
-      { icon: <GuitarIcon />, href: "/band", text: "バンド管理" }
+      { icon: <UsersIcon />, href: "/band", text: "バンド管理" }
     ]
   },
   {
     label: "資料",
     items: [
-      { icon: <SquarePlayIcon />, href: "#", text: "ライブアーカイブ" },
+      { icon: <SquarePlayIcon />, href: "/archive", text: "ライブアーカイブ" },
       { icon: <FileUserIcon />, href: "/member", text: "部員名簿" }
     ]
   },

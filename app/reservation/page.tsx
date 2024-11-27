@@ -70,23 +70,23 @@ export default function Page() {
             end_time: new Date(item.end_time),
           }));
           setReservationData(formattedData);
-          const currentUserName = userHolderData.user.nickname;
+          const userName = userHolderData.user.nickname;
+          console.log(userHolderData)
+          console.log(Array.isArray(userHolderData.bands))
           const result: ReservationHolder[] = [];
 
           // 自分の情報をリストの一番目に追加
           result.push({
               name: userHolderData.user.nickname,
-              id: user.id
+              id: null
           });
           // バンド情報をリストに追加
-          if (Array.isArray(userHolderData.bands)) {
-              userHolderData.bands.forEach((band: { name: string; id: string }) => {
-                  result.push({
-                      name: band.name,
-                      id: band.id
-                  });
+          userHolderData.bands.forEach((band: { name: string; id: string }) => {
+              result.push({
+                  name: band.name,
+                  id: band.id
               });
-          }
+          });
           setUserHolder(result);
           // リアルタイムサブスクリプションの設定
           const channel = supabase
@@ -104,7 +104,7 @@ export default function Page() {
                       ...newData, 
                       start_time: new Date(newData.start_time), 
                       end_time: new Date(newData.end_time), 
-                      creator: (newData.creator === user.id) ? currentUserName : "？" 
+                      creator: (newData.creator === user.id) ? userName : "？" 
                     } as ReservationData]
                   case 'UPDATE':
                     return prev.map(item => item.id === newData.id ? {

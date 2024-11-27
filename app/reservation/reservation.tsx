@@ -207,6 +207,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
           endHour: null,
           endMinute: null,
         })
+        setErrorMessage(null)
         setIsReservationFormOpen(false)
       }
     } catch (err) {
@@ -235,7 +236,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
         setIsCancelFormOpen(false)
       }
     } catch (err) {
-      console.error(err)
+      setErrorMessage((err as Error).message);
     } finally {
       setIsSending(false)
     }
@@ -494,7 +495,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
                 <Select
                   onValueChange={(value) => handleInputChange('reservationName', value === 'none' ? null : value)}
                   value={reservationDraft.group || 'none'}
-                  defaultValue={'none'}
+                  defaultValue='none'
                 >
                   <SelectTrigger id="reservationName" className="w-full">
                     <SelectValue placeholder="予約名義を選択" />
@@ -684,7 +685,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
             </DialogHeader>
             {selectedReservation ? (
               <div className="space-y-4">
-                {selectedReservation.creator === userHolder.find(holder => holder.id === user?.id)?.name ?
+                {!(selectedReservation.creator === user?.id) ?
                   <>
                     <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
                     <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
