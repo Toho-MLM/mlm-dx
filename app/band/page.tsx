@@ -69,6 +69,7 @@ export default function Page() {
               id: group.id,
               name: group.name,
               isMain: group.is_main,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               members: group.assignments.map((assignment: any) => ({
                 memberId: assignment.member_id,
                 instruments: assignment.instrument,
