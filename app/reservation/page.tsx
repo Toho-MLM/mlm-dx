@@ -51,7 +51,6 @@ export default function Page() {
 
         const { data: reservationData, error } = reservationsResult;
         const { data: userHolderData, error: error2 } = userHolderResult;
-
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
         } else if (error2) {
@@ -71,6 +70,9 @@ export default function Page() {
           }));
           setReservationData(formattedData);
           const userName = userHolderData.user.nickname;
+          if (userName === null) {
+            router.push('/profile')
+          }
           console.log(userHolderData)
           console.log(Array.isArray(userHolderData.bands))
           const result: ReservationHolder[] = [];

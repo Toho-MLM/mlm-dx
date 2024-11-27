@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Group, GroupMember, Instrument, Member, instrumentColors } from "@/app/types"
-import { X, Plus, ChevronDown } from 'lucide-react'
+import { Group, GroupMember, Instrument, Member, instrumentColors, instrumentNames } from "@/app/types"
+import { X, Plus, ChevronDown, Loader2 } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,11 +18,11 @@ interface BandFormProps {
   isOpen: boolean
   onClose: () => void
   onSave: (band: Omit<Group, 'id'>) => void
+  isSending: boolean
+  errorMessage: string | null
 }
 
-const allInstruments: Instrument[] = Object.values(Instrument)
-
-export function BandForm({ band, members, isOpen, onClose, onSave }: BandFormProps) {
+export function BandForm({ band, members, isOpen, onClose, onSave, isSending, errorMessage }: BandFormProps) {
   const [name, setName] = useState(band?.name || '')
   const [bandMembers, setBandMembers] = useState<GroupMember[]>(band?.members || [])
   const [error, setError] = useState<string | null>(null)
@@ -85,6 +85,8 @@ export function BandForm({ band, members, isOpen, onClose, onSave }: BandFormPro
     }))
   }
 
+  const availableInstruments = (bandMember: GroupMember) => members.find(m => m.id === bandMember.memberId)?.instruments.filter(i => !bandMember.instruments.includes(i))
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
@@ -101,15 +103,14 @@ export function BandForm({ band, members, isOpen, onClose, onSave }: BandFormPro
             <h3 className="font-medium">メンバー</h3>
             {bandMembers.map((bandMember) => {
               const member = members.find(m => m.id === bandMember.memberId)
-              const availableInstruments = allInstruments.filter(i => !bandMember.instruments.includes(i))
               return (
                 <div key={bandMember.memberId} className="flex items-center space-x-2 p-2 border rounded">
                   <span className="flex-grow">{member?.name}</span>
                   <div className="flex items-center space-x-1">
                     {bandMember.instruments.map((instrument) => (
-                      <Badge 
-                        key={instrument} 
-                        variant="secondary" 
+                      <Badge
+                        key={instrument}
+                        variant="secondary"
                         className={`text-xs ${instrumentColors[instrument]}`}
                       >
                         {instrument}
@@ -126,17 +127,17 @@ export function BandForm({ band, members, isOpen, onClose, onSave }: BandFormPro
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-8 w-8">
+                      <Button variant="outline" size="icon" className="h-8 w-8" disabled={availableInstruments(bandMember)?.length === 0}>
                         <Plus className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      {availableInstruments.map((instrument) => (
+                      {availableInstruments(bandMember)?.map((instrument) => (
                         <DropdownMenuItem
                           key={instrument}
                           onClick={() => addInstrument(bandMember.memberId, instrument)}
                         >
-                          {instrument}
+                          {instrumentNames[instrument]}
                         </DropdownMenuItem>
                       ))}
                     </DropdownMenuContent>
@@ -148,29 +149,35 @@ export function BandForm({ band, members, isOpen, onClose, onSave }: BandFormPro
               )
             })}
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                メンバーを追加 <ChevronDown className="ml-2 h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="max-h-[200px] overflow-y-auto">
-              {members
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .filter(m => !bandMembers.some(bm => bm.memberId === m.id))
-                .map((member) => (
-                  <DropdownMenuItem
-                    key={member.id}
-                    onClick={() => addMember(member.id)}
-                  >
-                    {member.name}
-                  </DropdownMenuItem>
+          <div className="flex items-center justify-between">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  メンバーを追加 <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="max-h-[200px] overflow-y-auto">
+                {members
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .filter(m => !bandMembers.some(bm => bm.memberId === m.id))
+                  .map((member) => (
+                    <DropdownMenuItem
+                      key={member.id}
+                      onClick={() => addMember(member.id)}
+                    >
+                      {member.name}
+                    </DropdownMenuItem>
                   ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {error && <p className="text-red-500">{error}</p>}
-          <Button onClick={handleSave}>保存</Button>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {error && <p className="text-red-500">{error}</p>}
+            <Button onClick={handleSave} disabled={isSending}>
+              {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
+              保存
+            </Button>
+          </div>
         </div>
+
       </DialogContent>
     </Dialog>
   )
