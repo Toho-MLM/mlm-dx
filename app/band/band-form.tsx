@@ -39,6 +39,11 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
     setErrorMessage(null)
   }, [band])
 
+  const onDialogClose = () => {
+    setErrorMessage(null)
+    onClose()
+  }
+
   const handleSubmit = async () => {
     if (name.trim() === '') {
       setErrorMessage('バンド名を入力してください。')
@@ -63,7 +68,7 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
         p_id: band ? band.id : null,
         p_name: name,
         p_is_main: true,
-        p_assignments: bandMembers.map(bm => ({ memberId: bm.id, instruments: bm.instruments }))
+        p_assignments: bandMembers.map(bm => ({ id: bm.id, instruments: bm.instruments }))
       })
       if (error) {
         setErrorMessage('データの送信中にエラーが発生しました。' + error.message);
@@ -71,6 +76,7 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
         setErrorMessage('データの処理中にエラーが発生しました。' + data.details);
       } else {
         onClose()
+        window.location.reload()
       }
     } catch (error) {
       setErrorMessage((error as Error).message)
@@ -108,8 +114,8 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
   const availableInstruments = (bandMember: GroupMember) => members.find(m => m.id === bandMember.id)?.instruments.filter(i => !bandMember.instruments.includes(i))
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+    <Dialog open={isOpen} onOpenChange={onDialogClose}>
+      <DialogContent className="p-5">
         <DialogHeader>
           <DialogTitle>{band ? 'バンドを編集' : 'バンドを追加'}</DialogTitle>
         </DialogHeader>
@@ -133,7 +139,7 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
                         variant="secondary"
                         className={`text-xs ${instrumentColors[instrument]}`}
                       >
-                        {instrument}
+                        {instrumentNames[instrument]}
                         <Button
                           variant="ghost"
                           size="icon"

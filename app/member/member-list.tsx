@@ -25,7 +25,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
   }, [memberData])
 
   const filteredUsers = useMemo(() => {
-    return sortedUsers.filter(user => 
+    return sortedUsers.filter(user =>
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (user.nickname && user.nickname.toLowerCase().includes(searchTerm.toLowerCase())) ||
       user.student_number.includes(searchTerm)
@@ -34,7 +34,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
 
   return (
     <div className="p-5">
-      <Card className="w-full max-w-6xl min-w-fit mx-auto">
+      <Card className="w-full max-w-6xl max-w-screen mx-auto">
         <CardContent className="p-6">
           <div className="mb-6">
             <Input
@@ -45,7 +45,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
               className="max-w-sm mx-auto"
             />
           </div>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <div className="rounded-lg border border-gray-200">
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-100">
