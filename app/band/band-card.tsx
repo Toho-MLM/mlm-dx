@@ -21,10 +21,10 @@ export function BandCard({ band, members, onEdit }: BandCardProps) {
       </CardHeader>
       <CardContent>
         <ul className="space-y-2">
-          {band.members.map((bandMember) => {
-            const member = members.find(m => m.id === bandMember.memberId)
+          {band.assignments.map((bandMember) => {
+            const member = members.find(m => m.id === bandMember.id)
             return (
-              <li key={bandMember.memberId} className="flex justify-between items-center">
+              <li key={bandMember.id} className="flex justify-between items-center">
                 <span className="font-medium">{member?.name}</span>
                 <div className="flex gap-1">
                   {bandMember.instruments.map((instrument) => (

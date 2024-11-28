@@ -86,7 +86,7 @@ export interface Member {
 }
 
 export interface GroupMember {
-    memberId: string
+    id: string
     instruments: Instrument[]
 }
 
@@ -94,7 +94,7 @@ export interface Group {
     id: string
     name: string
     isMain: boolean
-    members: GroupMember[]
+    assignments: GroupMember[]
 }
 
 export const instrumentColors: Record<Instrument, string> = {
