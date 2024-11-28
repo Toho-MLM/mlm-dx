@@ -24,8 +24,8 @@ export function BandList({ bands, members }: { bands: Group[], members: Member[]
   }
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+    <div className="container mx-auto p-5">
+      <div className="grid gap-5 md:grid-cols-2">
         {bands.map((band) => (
           <BandCard
             key={band.id}
@@ -35,7 +35,9 @@ export function BandList({ bands, members }: { bands: Group[], members: Member[]
           />
         ))}
       </div>
-      <Button onClick={handleAdd} className="mt-8">バンドを追加</Button>
+      <div className="flex justify-center">
+        <Button onClick={handleAdd} className="mt-5">バンドを追加</Button>
+      </div>
       <BandForm
         band={editingBand}
         members={members}
