@@ -24,15 +24,17 @@ export function BandList({ bands, members }: { bands: Group[], members: Member[]
   }
 
   return (
-    <div className="container mx-auto p-5">
+    <div className="p-5">
       <div className="grid gap-5 md:grid-cols-2">
         {bands.map((band) => (
-          <BandCard
-            key={band.id}
+          <div className="flex justify-center">
+            <BandCard
+              key={band.id}
             band={band}
             members={members}
-            onEdit={handleEdit}
-          />
+              onEdit={handleEdit}
+            />
+          </div>
         ))}
       </div>
       <div className="flex justify-center">

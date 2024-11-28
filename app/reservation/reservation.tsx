@@ -491,14 +491,14 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
             </Alert>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="reservationName" className="text-sm font-medium">予約名義</Label>
+                <Label className="text-sm font-medium">予約名義</Label>
                 <Select
-                  onValueChange={(value) => handleInputChange('reservationName', value === 'none' ? null : value)}
+                  onValueChange={(value) => setReservationDraft({ ...reservationDraft, group: value === 'none' ? null : value })}
                   value={reservationDraft.group || 'none'}
                   defaultValue='none'
                 >
-                  <SelectTrigger id="reservationName" className="w-full">
-                    <SelectValue placeholder="予約名義を選択" />
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <ScrollArea className="max-h-[200px]">
@@ -516,7 +516,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
                 <Popover open={isFormDatePickerOpen} onOpenChange={setIsFormDatePickerOpen}>
                   <PopoverTrigger asChild>
                     <Button
-                      variant={"outline"}
+                      variant="outline"
                       className="w-full justify-start text-left font-normal"
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />

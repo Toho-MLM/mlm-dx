@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Group, GroupMember, Instrument, Member, instrumentColors, instrumentNames } from "@/app/types"
-import { X, Plus, ChevronDown, Loader2, AlertTriangle } from 'lucide-react'
+import { X, Plus, ChevronDown, Loader2, AlertTriangle, UserRoundMinus } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,7 +67,7 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
       const { data, error } = await supabase.rpc('upsert_group', {
         p_id: band ? band.id : null,
         p_name: name,
-        p_is_main: true,
+        p_is_main: false,
         p_assignments: bandMembers.map(bm => ({ id: bm.id, instruments: bm.instruments }))
       })
       if (error) {
@@ -137,17 +137,17 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
                       <Badge
                         key={instrument}
                         variant="secondary"
-                        className={`text-xs ${instrumentColors[instrument]}`}
+                        className={`text-sm ${instrumentColors[instrument]}`}
                       >
-                        {instrumentNames[instrument]}
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-4 w-4 ml-1 p-0"
+                          className="h-4 w-4 mr-1 p-0"
                           onClick={() => removeInstrument(bandMember.id, instrument)}
                         >
-                          <X className="h-3 w-3" />
+                          <X className="h-3 w-3 p-0" />
                         </Button>
+                        {instrument}
                       </Badge>
                     ))}
                   </div>
@@ -168,8 +168,8 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <Button variant="ghost" size="icon" onClick={() => removeMember(bandMember.id)}>
-                    <X className="h-4 w-4" />
+                  <Button variant="outline" size="icon" onClick={() => removeMember(bandMember.id)}>
+                    <UserRoundMinus className="h-4 w-4" />
                   </Button>
                 </div>
               )

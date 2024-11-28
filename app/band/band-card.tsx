@@ -40,12 +40,13 @@ export function BandCard({ band, members, onEdit }: BandCardProps) {
             })}
           </ul>
           <div className="flex items-center justify-between">
-            <Button className="bg-red-500 text-white hover:bg-red-600">
+            <Button className="bg-red-500 text-white hover:bg-red-600" disabled={band.isMain}>
               削除
             </Button>
             <Button
               onClick={() => onEdit(band.id)}
               className="bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              disabled={band.isMain}
             >
               編集
             </Button>
