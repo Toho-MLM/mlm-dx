@@ -51,7 +51,7 @@ export default function Page() {
 
         const { data, error } = groupResult;
         const { data: memberData, error: error2 } = memberResult;
-
+        console.log(data)
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
         } else if (error2) {
@@ -70,9 +70,9 @@ export default function Page() {
               name: group.name,
               isMain: group.is_main,
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              members: group.assignments.map((assignment: any) => ({
-                memberId: assignment.member_id,
-                instruments: assignment.instrument,
+              assignments: group.assignments.map((assignment: any) => ({
+                id: assignment.member_id,
+                instruments: assignment.instruments,
               })),
             };
           });
