@@ -117,7 +117,7 @@ ThreeDayView.title = (date: Date) => {
 
 export function ReservationPage({ reservationData, userHolder }: { reservationData: ReservationData[], userHolder: ReservationHolder[] }) {
   const [reservationDraft, setReservationDraft] = useState({
-    date: new Date(),
+    date: startOfDay(new Date()),
     group: null as string | null,
     startHour: null as number | null,
     startMinute: null as number | null,
@@ -256,7 +256,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
   }
 
   const generateHourOptions = () => {
-    return Array.from({ length: 18 }, (_, i) => i + 6)
+    return Array.from({ length: 17 }, (_, i) => i + 6)
   }
 
   const generateMinuteOptions = () => {
@@ -265,11 +265,13 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
 
   const maxDate = addDays(new Date(), 14)
 
-  const isTimeDisabled = (hour: number, minute: number) => {
+  const isStartTimeDisabled = (hour: number, minute: number) => {
     const now = new Date()
     const selectedDate = new Date(reservationDraft.date)
-    const selectedTime = setMinutes(setHours(selectedDate, hour), minute)
-    return isBefore(selectedTime, now) || hour < 6 || hour >= 23
+    selectedDate.setHours(hour)
+    selectedDate.setMinutes(minute)
+    console.log(selectedDate)
+    return isBefore(selectedDate, now) || hour < 6 || hour >= 23
   }
 
   const isEndTimeDisabled = (hour: number, minute: number) => {
@@ -563,7 +565,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
                     </SelectTrigger>
                     <SelectContent className="max-h-[200px]">
                       <ScrollArea>
-                        {generateHourOptions().filter(hour => !isTimeDisabled(hour, 0)).map((hour) => (
+                        {generateHourOptions().filter(hour => !isStartTimeDisabled(hour + 1, 0)).map((hour) => (
                           <SelectItem key={hour} value={hour.toString()}>
                             {hour.toString().padStart(2, '0')}
                           </SelectItem>
@@ -589,7 +591,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
                     </SelectTrigger>
                     <SelectContent className="max-h-[200px]">
                       <ScrollArea>
-                        {generateMinuteOptions().filter(minute => reservationDraft.startHour !== null && !isTimeDisabled(reservationDraft.startHour, minute)).map((minute) => (
+                        {generateMinuteOptions().filter(minute => reservationDraft.startHour !== null && !isStartTimeDisabled(reservationDraft.startHour, minute)).map((minute) => (
                           <SelectItem key={minute} value={minute.toString()}>
                             {minute.toString().padStart(2, '0')}
                           </SelectItem>
