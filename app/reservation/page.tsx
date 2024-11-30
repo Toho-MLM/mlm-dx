@@ -73,8 +73,6 @@ export default function Page() {
           if (userName === null) {
             router.push('/profile')
           }
-          console.log(userHolderData)
-          console.log(Array.isArray(userHolderData.bands))
           const result: ReservationHolder[] = [];
 
           // 自分の情報をリストの一番目に追加
@@ -106,14 +104,14 @@ export default function Page() {
                       ...newData, 
                       start_time: new Date(newData.start_time), 
                       end_time: new Date(newData.end_time), 
-                      creator: (newData.creator === user.id) ? userName : "？" 
+                      creator_name: (newData.creator === user.id) ? userName : "？" 
                     } as ReservationData]
                   case 'UPDATE':
                     return prev.map(item => item.id === newData.id ? {
                       ...newData,
                       start_time: new Date(newData.start_time),
                       end_time: new Date(newData.end_time),
-                      creator: item.creator,
+                      creator_name: item.creator_name,
                     } as ReservationData : item)
                   default:
                     return prev

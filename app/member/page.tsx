@@ -51,7 +51,6 @@ export default function Page() {
 
       try {
         const { data, error } = await supabase.rpc('fetch_member_list');
-        console.log(data);
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
         } else if (data === null) {

@@ -5,6 +5,7 @@ import { BandCard } from "./band-card"
 import { BandForm } from "./band-form"
 import { Button } from "@/components/ui/button"
 import { Group, Member } from "@/app/types"
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 
 export function BandList({ bands, members }: { bands: Group[], members: Member[] }) {
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -25,20 +26,24 @@ export function BandList({ bands, members }: { bands: Group[], members: Member[]
 
   return (
     <div className="p-5">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-center">近日登場</CardTitle>
+        </CardHeader>
+      </Card>
       <div className="grid gap-5 md:grid-cols-2">
         {bands.map((band) => (
-          <div className="flex justify-center">
+          <div className="flex justify-center" key={band.id}>
             <BandCard
-              key={band.id}
-            band={band}
-            members={members}
+              band={band}
+              members={members}
               onEdit={handleEdit}
             />
           </div>
         ))}
       </div>
       <div className="flex justify-center">
-        <Button onClick={handleAdd} className="mt-5">バンドを追加</Button>
+        <Button onClick={handleAdd} disabled={true} className="mt-5">バンドを追加</Button>
       </div>
       <BandForm
         band={editingBand}

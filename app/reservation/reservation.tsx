@@ -3,7 +3,7 @@
 import React, { useState, useRef, useMemo } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
-import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, setHours, setMinutes, startOfDay, subDays } from 'date-fns'
+import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, startOfDay, subDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { Card, CardContent, CardDescription } from "@/components/ui/card"
@@ -182,6 +182,12 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
     const end = new Date(reservationDraft.date)
     end.setHours(reservationDraft.endHour, reservationDraft.endMinute)
 
+    const currentHour = new Date().getHours();
+    if (currentHour >= 0 && currentHour < 1) {
+      setErrorMessage('現在、予約処理中のため予約を作成できません。1時以降に再度お試しください。');
+      return;
+    }
+
     try {
       setIsSending(true)
       const { data, error } = await supabase.rpc('create_reservation', {
@@ -243,7 +249,6 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
   }
 
   const handleSelectEvent = (event: ReservationData, e: React.SyntheticEvent<HTMLElement>) => {
-    console.log(event)
     if (calendarRef.current) {
       const calendarRect = calendarRef.current.getBoundingClientRect()
       const mouseEvent = e.nativeEvent as MouseEvent
@@ -270,8 +275,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
     const selectedDate = new Date(reservationDraft.date)
     selectedDate.setHours(hour)
     selectedDate.setMinutes(minute)
-    console.log(selectedDate)
-    return isBefore(selectedDate, now) || hour < 6 || hour >= 23
+    return isBefore(selectedDate, now) || hour < 6 || (hour === 23 && minute > 0)
   }
 
   const isEndTimeDisabled = (hour: number, minute: number) => {
@@ -282,7 +286,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
     endDate.setHours(hour, minute)
     const minEndTime = addMinutes(startDate, 30)
     const maxEndTime = addHours(startDate, 4)
-    return isBefore(endDate, minEndTime) || endDate.getTime() > maxEndTime.getTime() || hour > 23 || (hour === 23 && minute > 0)
+    return isBefore(endDate, minEndTime) || endDate.getTime() > maxEndTime.getTime()
   }
 
   const isReservationButtonDisabled = () => {
@@ -391,7 +395,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
             <BigCalendar
               localizer={localizer}
               events={reservationData}
-              titleAccessor={(event) => event.creator}
+              titleAccessor={(event) => event.creator_name}
               startAccessor={(event) => event.start_time}
               endAccessor={(event) => event.end_time}
               onSelectEvent={handleSelectEvent}
@@ -458,7 +462,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
           <div>
             <p><strong>ID</strong> # {selectedReservation.id}</p>
             <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
-            <p><strong>作成者</strong> {selectedReservation.creator}</p>
+            <p><strong>作成者</strong> {selectedReservation.creator_name}</p>
             {selectedReservation.group && <p><strong>グループ</strong> {selectedReservation.group}</p>}
             <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
             <Button onClick={closePopover} variant="outline" className="mt-2 w-full">
@@ -474,9 +478,9 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
               <CalendarPlus />
             </Fab>
           </DialogTrigger>
-          <DialogContent className= "p-6">
+          <DialogContent>
             <DialogTitle className="text-xl font-semibold">新規予約</DialogTitle>
-            <Alert className="my-4">
+            <Alert className="p-1">
               <div className="flex items-center gap-1">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>注意事項</AlertTitle>
@@ -484,10 +488,10 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
               <AlertDescription>
                 <ul className="list-disc pl-6 text-sm">
                   <li>二週間以上先の予約を取ることはできません。</li>
-                  <li>予約の上限は4件です。</li>
                   <li>日をまたいで予約することはできません。</li>
-                  <li>利用時間は30分から4時間までで選択してください。</li>
+                  <li>利用時間は最短30分から最長4時間です。</li>
                   <li>ホールは朝6時から夜11時まで利用できます。</li>
+                  <li>予約が処理される午前0〜1時の間は予約できません。</li>
                 </ul>
               </AlertDescription>
             </Alert>
@@ -617,7 +621,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
                     </SelectTrigger>
                     <SelectContent className="max-h-[200px]">
                       <ScrollArea>
-                        {generateHourOptions().filter(hour => !isEndTimeDisabled(hour, 0)).map((hour) => (
+                        {generateHourOptions().filter(hour => !isEndTimeDisabled(hour + 1, 0)).map((hour) => (
                           <SelectItem key={hour} value={hour.toString()}>
                             {hour.toString().padStart(2, '0')}
                           </SelectItem>
@@ -683,29 +687,31 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">予約取消</DialogTitle>
+              <DialogTitle className="text-xl font-semibold">予約のキャンセル</DialogTitle>
             </DialogHeader>
             {selectedReservation ? (
-              <div className="space-y-4">
-                {!(selectedReservation.creator === user?.id) ?
-                  <>
+              (selectedReservation.state === ReservationState.PENDING || selectedReservation.state === ReservationState.CONFIRMED) ? (
+                selectedReservation.creator === user!.id ? (
+                  <div className="space-y-4">
                     <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
                     <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
-                  <p><strong>ID</strong> # {selectedReservation.id}</p>
-                  <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
-                  <p><strong>作成者</strong> {selectedReservation.creator}</p>
-                  {selectedReservation.group && <p><strong>グループ</strong> {selectedReservation.group}</p>}
-                  <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
-                </div>
-                <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full" disabled={isSending}>
-                  {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
-                    キャンセル
-                  </Button>
-                  </>
-                :
+                      <p><strong>ID</strong> # {selectedReservation.id}</p>
+                      <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
+                      <p><strong>作成者</strong> {selectedReservation.creator_name}</p>
+                      {selectedReservation.group && <p><strong>グループ</strong> {selectedReservation.group}</p>}
+                      <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
+                    </div>
+                    <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full" disabled={isSending}>
+                      {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
+                      キャンセル
+                    </Button>
+                  </div>
+                ) : (
                   <p className="text-sm text-gray-600 dark:text-gray-300">他の人の予約はキャンセルできません。</p>
-                }
-              </div>
+                )
+              ) : (
+                <p className="text-sm text-gray-600 dark:text-gray-300">キャンセル可能な予約を選択してください。</p>
+              )
             ) : (
               <p className="text-sm text-gray-600 dark:text-gray-300">キャンセルしたい予約を選択してください。</p>
             )}

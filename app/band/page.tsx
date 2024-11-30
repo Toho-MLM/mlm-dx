@@ -51,7 +51,6 @@ export default function Page() {
 
         const { data, error } = groupResult;
         const { data: memberData, error: error2 } = memberResult;
-        console.log(groupResult)
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
         } else if (error2) {
