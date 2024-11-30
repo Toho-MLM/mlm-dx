@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { useTitle } from "@/app/context/TitleContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, useSidebar } from "@/components/ui/sidebar"
-import { CalendarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, UserIcon } from "lucide-react"
+import { CalendarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, UserIcon, HelpCircleIcon } from "lucide-react"
 
 export const sidebarData = [
   {
-    label: "ホール",
+    label: "ホール予約",
     items: [
-      { icon: <CalendarIcon />, href: "/reservation", text: "予約表" }
+      { icon: <CalendarIcon />, href: "/reservation", text: "予約表" },
+      { icon: <HelpCircleIcon />, href: "/reservation/help", text: "使い方" }
     ]
   },
   {

@@ -49,6 +49,7 @@ export const roleNames: Record<Role, string> = {
 export interface ReservationData {
     id: string;
     creator: string;
+    creator_name: string;
     group: string | null;
     start_time: Date;
     end_time: Date;
@@ -104,3 +105,14 @@ export const instrumentColors: Record<Instrument, string> = {
     [Instrument.drums]: 'bg-yellow-100 text-yellow-800',
     [Instrument.bass]: 'bg-red-100 text-red-800',
 }
+
+export const reservationStateColors: Record<ReservationState, string> = {
+    [ReservationState.PENDING]: 'bg-yellow-100 text-yellow-800',
+    [ReservationState.WITHDRAWN]: 'bg-gray-100 text-gray-800',
+    [ReservationState.DECLINED]: 'bg-red-100 text-red-800',
+    [ReservationState.CONFIRMED]: 'bg-green-100 text-green-800',
+    [ReservationState.CANCELLED]: 'bg-gray-100 text-gray-800',
+    [ReservationState.COMPLETED]: 'bg-gray-100 text-gray-800',
+}
+
+
