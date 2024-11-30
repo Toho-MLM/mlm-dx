@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { UserData } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
@@ -16,13 +16,34 @@ export default function Page() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth();
 
+  // フラグを追加して一度だけ実行
+  const hasFetched = useRef(false)
+
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
+    if (authLoading) {
+      // 認証状態がロード中の場合は何もしない
+      return
     }
 
+    if (!user) {
+      // ユーザーが存在しない場合はログインページにリダイレクト
+      router.push('/login');
+      return;
+    }
+
+    if (hasFetched.current) {
+      // 既にフェッチ済みの場合は何もしない
+      return;
+    }
+
+    hasFetched.current = true
+
     const fetchUserData = async () => {
-      if (!user) return;
+      if (!user?.email) {
+        setError('ユーザー情報が取得できません。');
+        setLoading(false);
+        return;
+      }
 
       setLoading(true)
       setError(null)
@@ -32,10 +53,10 @@ export default function Page() {
 
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
-        } else if ('error' in data) {
-          setError(data.error);
         } else if (data === null) {
           setError('ユーザーデータが取得できませんでした。');
+        } else if ('error' in data) {
+          setError(data.error);
         } else {
           setUserData(data as UserData);
         }
@@ -46,10 +67,8 @@ export default function Page() {
       }
     }
 
-    if (user) {
-      fetchUserData();
-    }
-  }, [router, user, authLoading])
+    fetchUserData();
+  }, [user, authLoading])
 
   if (loading) {
     return <LoadingScreen />
