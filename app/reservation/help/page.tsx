@@ -68,7 +68,7 @@ const AboutPage = () => {
           </ol>
           <h3 className="mt-4 text-lg font-semibold">予約の処理</h3>
           <p className="ml-2">
-            予約は毎日午前3〜4時の間に処理されます。これにより、前日の予約が完了としてマークされ、当日の予約が処理されます。
+            予約は毎日午前0〜1時の間に処理されます。これにより、前日の予約が完了としてマークされ、当日の予約が処理されます。
           </p>
           <h4 className="text-md font-semibold ml-2">処理の内容</h4>
           <ul className="list-disc ml-6">
@@ -85,7 +85,7 @@ const AboutPage = () => {
           </Alert>
           <h4 className="text-md font-semibold ml-2">当日の予約について</h4>
           <p className="ml-2">
-            午前4時以降に予約をした場合、その予約は即時確定します。既存の予約と重複している場合は、却下されてしまうのでご注意ください。
+            午前1時以降に予約をした場合、その予約は即時確定します。既存の予約と重複している場合は、却下されてしまうのでご注意ください。
           </p>
           <h3 className="mt-4 text-lg font-semibold">今後実装予定の機能</h3>
           <ul className="list-disc ml-6">
