@@ -182,11 +182,11 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
     const end = new Date(reservationDraft.date)
     end.setHours(reservationDraft.endHour, reservationDraft.endMinute)
 
-    const currentHour = new Date().getHours();
-    if (currentHour >= 0 && currentHour < 1) {
-      setErrorMessage('現在、予約処理中のため予約を作成できません。1時以降に再度お試しください。');
-      return;
-    }
+    // const currentHour = new Date().getHours();
+    // if (currentHour >= 0 && currentHour < 1) {
+    //   setErrorMessage('現在、予約処理中のため予約を作成できません。1時以降に再度お試しください。');
+    //   return;
+    // }
 
     try {
       setIsSending(true)
@@ -519,11 +519,15 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
               </div>
               <div>
                 <Label htmlFor="date" className="text-sm font-medium">予約日</Label>
-                <Popover open={isFormDatePickerOpen} onOpenChange={setIsFormDatePickerOpen}>
-                  <PopoverTrigger asChild>
+                <Popover open={isFormDatePickerOpen}>
+                  <PopoverTrigger asChild onClick={() => setIsFormDatePickerOpen(!isFormDatePickerOpen)}>
                     <Button
                       variant="outline"
                       className="w-full justify-start text-left font-normal"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setIsFormDatePickerOpen(true);
+                      }}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {reservationDraft.date ? format(reservationDraft.date, "PPP", { locale: jaLocale }) : <span>日付を選択</span>}
