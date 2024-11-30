@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { AuthProvider } from "./context/AuthContext";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
-import { TitleProvider, useTitle } from './context/TitleContext';
+import { useTitle } from './context/TitleContext';
 
 export function MainContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
