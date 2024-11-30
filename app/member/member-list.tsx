@@ -3,20 +3,13 @@
 import { useState, useMemo } from 'react'
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AnimatePresence, motion } from 'framer-motion'
-import { Instrument, MemberData, instrumentNames, roleNames } from '@/app/types'
+import { MemberListItem, instrumentNames, roleNames, instrumentColors } from '@/app/types'
 
-const instrumentColors: Record<Instrument, string> = {
-  VO: 'bg-blue-100 text-blue-800',
-  GT: 'bg-green-100 text-green-800',
-  KEY: 'bg-purple-100 text-purple-800',
-  DR: 'bg-yellow-100 text-yellow-800',
-  BA: 'bg-red-100 text-red-800',
-}
 
-export function MemberList({ memberData }: { memberData: MemberData[] }) {
+export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
   const [searchTerm, setSearchTerm] = useState('')
 
   const sortedUsers = useMemo(() => {
@@ -32,7 +25,7 @@ export function MemberList({ memberData }: { memberData: MemberData[] }) {
   }, [memberData])
 
   const filteredUsers = useMemo(() => {
-    return sortedUsers.filter(user => 
+    return sortedUsers.filter(user =>
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (user.nickname && user.nickname.toLowerCase().includes(searchTerm.toLowerCase())) ||
       user.student_number.includes(searchTerm)
@@ -41,10 +34,7 @@ export function MemberList({ memberData }: { memberData: MemberData[] }) {
 
   return (
     <div className="p-5">
-      <Card className="w-full max-w-6xl min-w-fit mx-auto">
-        <CardHeader className="bg-gray-200">
-          <CardTitle className="text-3xl font-bold text-center text-gray-800">部員名簿</CardTitle>
-        </CardHeader>
+      <Card className="w-full max-w-6xl max-w-screen mx-auto">
         <CardContent className="p-6">
           <div className="mb-6">
             <Input
@@ -55,7 +45,7 @@ export function MemberList({ memberData }: { memberData: MemberData[] }) {
               className="max-w-sm mx-auto"
             />
           </div>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <div className="rounded-lg border border-gray-200">
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-100">

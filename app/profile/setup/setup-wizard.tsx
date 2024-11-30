@@ -9,17 +9,9 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { motion } from 'framer-motion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { ChevronDown, ChevronUp, InfoIcon, Loader2 } from 'lucide-react'
-import { UserData, Instrument } from '@/app/types'
+import { UserData, Instrument, instrumentNames } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
 import { useRouter } from 'next/navigation'
-
-const instrumentNames: Record<Instrument, string> = {
-  [Instrument.vocal]: 'ボーカル',
-  [Instrument.guitar]: 'ギター',
-  [Instrument.keyboard]: 'キーボード',
-  [Instrument.drums]: 'ドラム',
-  [Instrument.bass]: 'ベース',
-}
 
 const stepVariants = {
   hidden: { opacity: 0, x: -20 },
@@ -234,6 +226,7 @@ export function SetupWizard(initialUserData: UserData) {
   const handleSubmit = async () => {
     setIsSending(true);
     const instrumentString = userData.instruments.join(',');
+    try {
     const { data, error } = await supabase.rpc('update_user', {
       p_email: userData.email,
       p_nickname: userData.nickname,
@@ -242,11 +235,15 @@ export function SetupWizard(initialUserData: UserData) {
     if (error) {
       setError('データの取得中にエラーが発生しました。' + error.message);
     } else if ('error' in data) {
-      setError('データの処理中にエラーが発生しました。' + data.error);
+      setError('データの処理中にエラーが発生しました。' + data.details);
     } else {
       router.push('/profile');
     }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
     setIsSending(false);
+    }
   };
 
   return (

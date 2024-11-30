@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MemberList } from './member-list'
-import { MemberData } from '@/app/types'
+import { MemberListItem } from '@/app/types'
 import { supabase } from '@/supabase/supabaseClient'
 import { useAuth } from '@/app/context/AuthContext';
 import LoadingScreen from '@/components/loading';
@@ -11,17 +11,33 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { AlertTriangle } from 'lucide-react';
 
 export default function Page() {
-  const [memberData, setMemberData] = useState<MemberData[] | null>(null)
+  const [memberData, setMemberData] = useState<MemberListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const router = useRouter()
   const { user, loading: authLoading } = useAuth();
 
+  // フラグを追加して一度だけ実行
+  const hasFetched = useRef(false)
+
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (authLoading) {
+      // 認証状態がロード中の場合は何もしない
+      return
+    }
+
+    if (!user) {
+      // ユーザーが存在しない場合はログインページにリダイレクト
       router.push('/login');
       return;
     }
+
+    if (hasFetched.current) {
+      // 既にフェッチ済みの場合は何もしない
+      return;
+    }
+
+    hasFetched.current = true
 
     const fetchUserData = async () => {
       if (!user?.email) {
@@ -34,16 +50,15 @@ export default function Page() {
       setError(null)
 
       try {
-        const { data, error } = await supabase.rpc('fetch_member');
-
+        const { data, error } = await supabase.rpc('fetch_member_list');
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
-        } else if ('error' in data) {
-          setError('データの処理中にエラーが発生しました。' + data.error);
         } else if (data === null) {
-          setError('メンバーデータが取得できませんでした。');
+          setError('名簿データが存在しません。');
+        } else if ('error' in data) {
+          setError('データの処理中にエラーが発生しました。' + data.details);
         } else {
-          setMemberData(data as [MemberData]);
+          setMemberData(data as MemberListItem[]);
         }
       } catch (err) {
         setError((err as Error).message);
@@ -55,7 +70,7 @@ export default function Page() {
     if (user) {
       fetchUserData();
     }
-  }, [router, user, authLoading])
+  }, [user, authLoading, router])
 
   if (loading) {
     return <LoadingScreen />

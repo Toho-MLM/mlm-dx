@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ProfilePage } from './profile-page'
 import { UserData } from '@/app/types'
@@ -16,11 +16,23 @@ export default function Page() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth();
 
+  const hasFetched = useRef(false)
+
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (authLoading) {
+      return
+    }
+
+    if (!user) {
       router.push('/login');
       return;
     }
+
+    if (hasFetched.current) {
+      return;
+    }
+
+    hasFetched.current = true
 
     const fetchUserData = async () => {
       if (!user?.email) {
@@ -37,10 +49,10 @@ export default function Page() {
 
         if (error) {
           setError('データの取得中にエラーが発生しました。' + error.message);
-        } else if ('error' in data) {
-          setError('データの処理中にエラーが発生しました。' + data.error);
         } else if (data === null) {
-          setError('ユーザーデータが取得できませんでした。');
+          setError('ユーザーデータが存在しません。');
+        } else if ('error' in data) {
+          setError('データの処理中にエラーが発生しました。' + data.details);
         } else {
           const hasNullValue = Object.values(data).some(value => value === null);
           if (hasNullValue) {
@@ -56,10 +68,8 @@ export default function Page() {
       }
     }
 
-    if (user) {
-      fetchUserData();
-    }
-  }, [router, user, authLoading])
+    fetchUserData();
+  }, [user, authLoading])
 
   if (loading) {
     return <LoadingScreen />
