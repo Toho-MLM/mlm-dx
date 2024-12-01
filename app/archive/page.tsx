@@ -51,11 +51,7 @@ const YouTubeArchiveList: React.FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-4xl font-bold mb-8 text-center">ライブアーカイブ</h1>
-      
-      {/* 目次 */}
-      <nav className="mb-12 p-4 bg-gray-100 rounded-lg shadow">
-        <h2 className="text-2xl font-semibold mb-4">目次</h2>
+      <nav className="mb-12 p-4 bg-white rounded-lg shadow">
         <ul className="flex flex-wrap gap-4">
           {years.map((year) => (
             <li key={year}>
@@ -63,7 +59,7 @@ const YouTubeArchiveList: React.FC = () => {
                 onClick={() => scrollToSection(year)}
                 className="text-blue-600 hover:text-blue-800 transition-colors"
               >
-                {year}年
+                {year}年度
               </button>
             </li>
           ))}
