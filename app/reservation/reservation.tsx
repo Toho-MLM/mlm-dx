@@ -519,7 +519,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
               </div>
               <div>
                 <Label htmlFor="date" className="text-sm font-medium">予約日</Label>
-                <Popover open={isFormDatePickerOpen} onOpenChange={setIsFormDatePickerOpen}>
+                <Popover open={isFormDatePickerOpen} onOpenChange={setIsFormDatePickerOpen} modal={true}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"

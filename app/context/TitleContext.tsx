@@ -1,8 +1,11 @@
+'use client'
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { sidebarData } from '@/components/app-sidebar';
+
 interface TitleContextType {
   title: string;
-  setTitle: (title: string) => void;
+  setTitle: React.Dispatch<React.SetStateAction<string>>;
 }
 
 const TitleContext = createContext<TitleContextType | undefined>(undefined);
@@ -25,10 +28,10 @@ export const TitleProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export const useTitle = (): TitleContextType => {
+export const useTitle = () => {
   const context = useContext(TitleContext);
   if (!context) {
-    throw new Error("useTitle must be used within a TitleProvider");
+    throw new Error('useTitle must be used within a TitleProvider');
   }
   return context;
 };
