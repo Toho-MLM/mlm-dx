@@ -8,7 +8,7 @@ export const sidebarData = [
     label: "ホール予約",
     items: [
       { icon: <CalendarIcon />, href: "/reservation", text: "予約表" },
-      { icon: <HelpCircleIcon />, href: "/reservation/help", text: "使い方" }
+      { icon: <HelpCircleIcon />, href: "/support/reservation", text: "使い方" }
     ]
   },
   {
