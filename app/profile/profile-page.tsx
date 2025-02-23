@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter } from '@/components/ui/card'
+import { Card, CardContent, CardFooter, CardTitle, CardHeader } from '@/components/ui/card'
 import { Loader2, LogOut, Pencil } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { UserData, instrumentNames, roleNames } from '@/app/types'
@@ -34,6 +34,7 @@ export function ProfilePage({ userData }: { userData: UserData }) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
+        className ="space-y-5"
       >
         <Card className="min-w-fit max-w-2xl mx-auto">
           <CardContent className="p-5 space-y-3">
@@ -90,6 +91,20 @@ export function ProfilePage({ userData }: { userData: UserData }) {
               </div>
             </Button>
           </CardFooter>
+        </Card>
+        <Card className="min-w-fit max-w-2xl mx-auto">
+          <CardHeader>
+            <CardTitle>パスワード設定</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Button
+              onClick={() => router.push('/support/reset-password')}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              size="sm"
+            >
+              パスワードを変更
+            </Button>
+          </CardContent>
         </Card>
       </motion.div>
     </div>

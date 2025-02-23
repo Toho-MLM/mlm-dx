@@ -68,7 +68,7 @@ export default function Page() {
     }
 
     fetchUserData();
-  }, [user, authLoading])
+  }, [user, authLoading, router])
 
   if (loading) {
     return <LoadingScreen />
