@@ -93,11 +93,6 @@ const AboutPage = () => {
             <li>団体予約の実装</li>
             <li>予約確定のメールでの通知</li>
           </ul>
-          {/* <h3 className="mt-4 text-lg font-semibold">よくある質問</h3>
-          <p className="ml-2">
-            Q: 予約が「DECLINED」になった場合、どうすれば良いですか？<br />
-            A: 予約が「DECLINED」になった場合、以下の理由が考えられます：指定した時間帯が既に他の予約で使用中、ホールの利用可能時間外
-          </p> */}
         </CardContent>
       </Card>
     </div>
