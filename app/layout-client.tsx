@@ -11,7 +11,7 @@ export function MainContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { title } = useTitle();
 
-  const shouldHideSidebar = pathname === "/" || pathname === "/login";
+  const shouldHideSidebar = pathname === "/" || pathname === "/login" || pathname === "/support/recover";
 
   useEffect(() => {
     // クライアントサイドでのみ supabaseDebug.js を読み込む

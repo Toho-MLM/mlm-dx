@@ -106,7 +106,7 @@ export function LoginPage() {
         setErrorMessage('この機能を利用するための必要な権限がありません。\n管理者にお問い合わせください。')
         break
       case 422:
-        setErrorMessage('このメールアドレスは登録されていません。\nメールアドレスが正しい場合は管理者にお問い合わせください。')
+        setErrorMessage('このメールアドレスは登録されていません。\nメールアドレスが正しい場合はアカウント復元をお試しください。')
         break
       case 429:
         setErrorMessage('アクセスが多すぎます。\nしばらくしてから再試行してください。')
@@ -383,6 +383,13 @@ export function LoginPage() {
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {activeTab === "otp" ? (otp.length === 6 ? "確認コードを認証" : "確認コードを送信") : "ログイン"}
               </div>
+            </Button>
+            <Button
+              variant="link"
+              className="text-sm text-blue-600 hover:text-blue-800"
+              onClick={() => router.push("/support/recover")}
+            >
+              ログインできない場合
             </Button>
           </CardFooter>
         </form>
