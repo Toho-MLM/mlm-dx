@@ -1,5 +1,5 @@
-import { MagicLinkLogin } from "./magic-link-login"
+import { LoginPage } from "./login"
 
 export default function Page() {
-  return <MagicLinkLogin />
+  return <LoginPage />
 }
