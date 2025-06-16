@@ -12,7 +12,21 @@ const notoSansJP = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "MLM DX"
+  title: "MLM DX",
+  description: "MLM ホール予約・バンド管理システム",
+  icons: {
+    icon: "/favicon.ico",
+  },
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+  },
+  other: {
+    'og:title': 'MLM DX',
+    'og:description': 'MLM ホール予約・バンド管理システム',
+    'og:image': '/assets/logo.png',
+  },
 };
 
 export default function RootLayout({
