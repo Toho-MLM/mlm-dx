@@ -39,7 +39,10 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader>
-        <span>MLM DX</span>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <img src="/assets/logo.png" alt="MLM DX logo" style={{ height: '32px', width: 'auto', marginRight: '8px', display: 'block' }} />
+          <span>MLM DX</span>
+        </div>
       </SidebarHeader>
       <SidebarContent>
         {sidebarData.map((group, index) => (
