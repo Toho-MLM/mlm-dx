@@ -76,20 +76,12 @@ const AboutPage = () => {
             <li>予約が重複している場合、早く予約された方が優先されます。</li>
             <li>予約が部分的に重複している場合、予約の時間帯内で最大限の時間が確保できるように調整されます。</li>
           </ul>
-          <Alert>
-            <AlertCircleIcon className="h-4 w-4" />
-            <AlertTitle>注意</AlertTitle>
-            <AlertDescription>
-              予約の処理は午前0〜1時の間に行われるため、その時間帯に予約をした場合、その予約は翌日以降になります。
-            </AlertDescription>
-          </Alert>
           <h4 className="text-md font-semibold ml-2">当日の予約について</h4>
           <p className="ml-2">
             午前1時以降に予約をした場合、その予約は即時確定します。既存の予約と重複している場合は、却下されてしまうのでご注意ください。
           </p>
           <h3 className="mt-4 text-lg font-semibold">今後実装予定の機能</h3>
           <ul className="list-disc ml-6">
-            <li>抽選期間の追加</li>
             <li>団体予約の実装</li>
             <li>予約確定のメールでの通知</li>
           </ul>
