@@ -7,6 +7,17 @@ const userRoutes = new Hono<{ Bindings: Bindings }>();
 // Apply authentication middleware to all routes
 userRoutes.use('*', requireAuth);
 
+// me - Get current user data
+userRoutes.get('/me', async (c) => {
+  try {
+    const user = c.get('user');
+    return c.json({ success: true, data: user });
+  } catch (error) {
+    console.error('Error fetching current user:', error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // fetch_user - Get user data by email
 userRoutes.get('/fetch/:email', async (c) => {
   try {

@@ -6,16 +6,75 @@ import type { ApiResponse, Archive } from '../types';
 
 const archiveRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+archiveRoutes.get('/youtube/playlists', async (c: Context<{ Bindings: Bindings }>) => {
+  try {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: c.env.GOOGLE_CLIENT_ID,
+        client_secret: c.env.GOOGLE_CLIENT_SECRET,
+        refresh_token: (c.env as any).YOUTUBE_REFRESH_TOKEN,
+      }).toString(),
+    });
+
+    if (!tokenRes.ok) {
+      return c.json<ApiResponse>({ success: false, error: 'Failed to obtain access token' }, 500);
+    }
+
+    const { access_token } = await tokenRes.json<any>();
+
+    let pageToken: string | undefined = undefined;
+    const items: any[] = [];
+
+    do {
+      const url = new URL('https://www.googleapis.com/youtube/v3/playlists');
+      url.searchParams.set('part', 'snippet,status,contentDetails');
+      url.searchParams.set('mine', 'true');
+      url.searchParams.set('maxResults', '50');
+      if (pageToken) url.searchParams.set('pageToken', pageToken);
+
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${access_token}` },
+      });
+
+      if (!res.ok) {
+        return c.json<ApiResponse>({ success: false, error: 'Failed to fetch playlists' }, 500);
+      }
+
+      const data = await res.json<any>();
+      const unlisted = (data.items || []).filter((it: any) => it.status?.privacyStatus === 'unlisted');
+      items.push(...unlisted);
+      pageToken = data.nextPageToken;
+    } while (pageToken);
+
+    const mapped = items.map((it: any) => ({
+      id: it.id,
+      title: it.snippet?.title || '',
+      description: it.snippet?.description || '',
+      publishedAt: it.snippet?.publishedAt || '',
+      thumbnails: it.snippet?.thumbnails || {},
+      itemCount: it.contentDetails?.itemCount ?? 0,
+      url: `https://www.youtube.com/playlist?list=${it.id}`,
+    }));
+
+    return c.json<ApiResponse<any[]>>({ success: true, data: mapped });
+  } catch (e) {
+    return c.json<ApiResponse>({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 archiveRoutes.use('*', requireAuth);
 
-archiveRoutes.get('/band/:bandId', async (c: Context<{ Bindings: Bindings }>) => {
+archiveRoutes.get('/group/:groupId', async (c: Context<{ Bindings: Bindings }>) => {
   try {
     const user = (c as any).get('user');
-    const bandId = c.req.param('bandId');
+    const groupId = c.req.param('groupId');
 
     const member = await c.env.DB.prepare(
-      'SELECT * FROM members WHERE band_id = ? AND user_id = ?'
-    ).bind(bandId, user.id).first();
+      'SELECT * FROM group_members WHERE group_id = ? AND user_id = ?'
+    ).bind(groupId, user.id).first();
 
     if (!member) {
       return c.json<ApiResponse>({
@@ -25,10 +84,10 @@ archiveRoutes.get('/band/:bandId', async (c: Context<{ Bindings: Bindings }>) =>
     }
 
     const { results } = await c.env.DB.prepare(`
-      SELECT * FROM archives 
-      WHERE band_id = ? 
+      SELECT * FROM archive 
+      WHERE group_id = ? 
       ORDER BY created_at DESC
-    `).bind(bandId).all();
+    `).bind(groupId).all();
 
     return c.json<ApiResponse<Archive[]>>({
       success: true,
@@ -44,10 +103,10 @@ archiveRoutes.get('/band/:bandId', async (c: Context<{ Bindings: Bindings }>) =>
   }
 });
 
-archiveRoutes.post('/band/:bandId', async (c: Context<{ Bindings: Bindings }>) => {
+archiveRoutes.post('/group/:groupId', async (c: Context<{ Bindings: Bindings }>) => {
   try {
     const user = (c as any).get('user');
-    const bandId = c.req.param('bandId');
+    const groupId = c.req.param('groupId');
     const { title, description, youtube_url } = await c.req.json();
 
     if (!title) {
@@ -58,8 +117,8 @@ archiveRoutes.post('/band/:bandId', async (c: Context<{ Bindings: Bindings }>) =
     }
 
     const member = await c.env.DB.prepare(
-      'SELECT * FROM members WHERE band_id = ? AND user_id = ?'
-    ).bind(bandId, user.id).first();
+      'SELECT * FROM group_members WHERE group_id = ? AND user_id = ?'
+    ).bind(groupId, user.id).first();
 
     if (!member) {
       return c.json<ApiResponse>({
@@ -72,23 +131,25 @@ archiveRoutes.post('/band/:bandId', async (c: Context<{ Bindings: Bindings }>) =
     const now = new Date().toISOString();
 
     await c.env.DB.prepare(
-      'INSERT INTO archives (id, band_id, title, description, youtube_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO archive (id, group_id, title, description, youtube_url, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       archiveId,
-      bandId,
+      groupId,
       title,
       description || '',
       youtube_url || '',
+      user.id,
       now,
       now
     ).run();
 
     const archive: Archive = {
       id: archiveId,
-      band_id: bandId,
+      group_id: groupId,
       title,
       description: description || '',
       youtube_url: youtube_url || '',
+      created_by: user.id,
       created_at: now,
       updated_at: now
     };
@@ -114,7 +175,7 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings }>) => {
     const { title, description, youtube_url } = await c.req.json();
 
     const archive = await c.env.DB.prepare(
-      'SELECT * FROM archives WHERE id = ?'
+      'SELECT * FROM archive WHERE id = ?'
     ).bind(archiveId).first() as any;
 
     if (!archive) {
@@ -125,8 +186,8 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings }>) => {
     }
 
     const member = await c.env.DB.prepare(
-      'SELECT role FROM members WHERE band_id = ? AND user_id = ?'
-    ).bind(archive.band_id, user.id).first() as any;
+      'SELECT role FROM group_members WHERE group_id = ? AND user_id = ?'
+    ).bind(archive.group_id, user.id).first() as any;
 
     if (!member) {
       return c.json<ApiResponse>({
@@ -136,7 +197,7 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings }>) => {
     }
 
     await c.env.DB.prepare(
-      'UPDATE archives SET title = ?, description = ?, youtube_url = ?, updated_at = ? WHERE id = ?'
+      'UPDATE archive SET title = ?, description = ?, youtube_url = ?, updated_at = ? WHERE id = ?'
     ).bind(
       title,
       description,
@@ -146,7 +207,7 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings }>) => {
     ).run();
 
     const updatedArchive = await c.env.DB.prepare(
-      'SELECT * FROM archives WHERE id = ?'
+      'SELECT * FROM archive WHERE id = ?'
     ).bind(archiveId).first() as Archive;
 
     return c.json<ApiResponse<Archive>>({
@@ -169,7 +230,7 @@ archiveRoutes.delete('/:id', async (c: Context<{ Bindings: Bindings }>) => {
     const archiveId = c.req.param('id');
 
     const archive = await c.env.DB.prepare(
-      'SELECT * FROM archives WHERE id = ?'
+      'SELECT * FROM archive WHERE id = ?'
     ).bind(archiveId).first() as any;
 
     if (!archive) {
@@ -180,8 +241,8 @@ archiveRoutes.delete('/:id', async (c: Context<{ Bindings: Bindings }>) => {
     }
 
     const member = await c.env.DB.prepare(
-      'SELECT role FROM members WHERE band_id = ? AND user_id = ?'
-    ).bind(archive.band_id, user.id).first() as any;
+      'SELECT role FROM group_members WHERE group_id = ? AND user_id = ?'
+    ).bind(archive.group_id, user.id).first() as any;
 
     if (!member || member.role !== 'owner') {
       return c.json<ApiResponse>({
@@ -190,7 +251,7 @@ archiveRoutes.delete('/:id', async (c: Context<{ Bindings: Bindings }>) => {
       }, 403);
     }
 
-    await c.env.DB.prepare('DELETE FROM archives WHERE id = ?').bind(archiveId).run();
+    await c.env.DB.prepare('DELETE FROM archive WHERE id = ?').bind(archiveId).run();
 
     return c.json<ApiResponse>({
       success: true,
