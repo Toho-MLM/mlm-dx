@@ -1,0 +1,44 @@
+{
+  "name": "mlm-dx-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MLM-DX Cloudflare Workers backend",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:local": "wrangler dev --local",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "deploy:dev": "wrangler deploy --env development",
+    "db:create": "wrangler d1 create mlm-dx-db",
+    "db:create:dev": "wrangler d1 create mlm-dx-db-dev",
+    "db:migrate": "wrangler d1 migrations apply mlm-dx-db",
+    "db:migrate:dev": "wrangler d1 migrations apply mlm-dx-db-dev",
+    "db:migrate:local": "wrangler d1 migrations apply mlm-dx-db --local",
+    "db:seed": "wrangler d1 execute mlm-dx-db --file=./seed.sql",
+    "db:seed:dev": "wrangler d1 execute mlm-dx-db-dev --file=./seed.sql",
+    "db:seed:local": "wrangler d1 execute mlm-dx-db --file=./seed.sql --local",
+    "db:setup": "npm run db:migrate && npm run db:seed",
+    "db:setup:dev": "npm run db:migrate:dev && npm run db:seed:dev",
+    "db:setup:local": "npm run db:migrate:local && npm run db:seed:local",
+    "lint": "eslint src --ext .ts,.tsx",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "@hono/auth-js": "^0.0.0",
+    "@auth/core": "^0.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "wrangler": "^3.0.0",
+    "typescript": "^5.6.3",
+    "eslint": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}

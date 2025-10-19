@@ -17,6 +17,7 @@ export type Bindings = {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   CORS_ORIGIN: string;
+  YOUTUBE_REFRESH_TOKEN: string;
 };
 
 export type Variables = {
@@ -39,7 +40,12 @@ app.use('*', cors({
 
 app.use('/api/auth/*', async (c, next) => {
   const authConfig = getAuthConfig(c);
-  return authHandler()(c, next);
+  return authHandler({ config: authConfig })(c, next);
+});
+
+app.use('/auth/*', async (c, next) => {
+  const authConfig = getAuthConfig(c);
+  return authHandler({ config: authConfig })(c, next);
 });
 
 app.route('/api/users', userRoutes);

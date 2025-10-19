@@ -85,6 +85,7 @@ CORS_ORIGIN="https://your-frontend-domain.com"
 [env.production.vars]
 GOOGLE_CLIENT_ID="your-production-google-client-id"
 GOOGLE_CLIENT_SECRET="your-production-google-client-secret"
+YOUTUBE_REFRESH_TOKEN="your-youtube-oauth-refresh-token"
 ```
 
 #### 開発環境
@@ -94,6 +95,7 @@ AUTH_SECRET="dev-auth-secret-here-min-32-chars-long-for-development"
 CORS_ORIGIN="http://localhost:3000"
 GOOGLE_CLIENT_ID="your-dev-google-client-id"
 GOOGLE_CLIENT_SECRET="your-dev-google-client-secret"
+YOUTUBE_REFRESH_TOKEN="your-youtube-oauth-refresh-token-for-dev"
 ```
 
 **注意**: `AUTH_SECRET`は最低32文字以上のランダムな文字列である必要があります。
@@ -139,3 +141,6 @@ GOOGLE_CLIENT_SECRET="your-dev-google-client-secret"
 - `POST /api/archive/group/:groupId` - アーカイブ追加
 - `PUT /api/archive/:id` - アーカイブ更新
 - `DELETE /api/archive/:id` - アーカイブ削除
+ 
+### YouTubeアーカイブ
+- `GET /api/archive/youtube/playlists` - 自アカウントの限定公開プレイリスト一覧を返す
