@@ -65,7 +65,7 @@ function ThreeDayView({
   date: Date
   localizer: DateLocalizer
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any
+  [key: string]: unknown
 }) {
   const currRange = useMemo(
     () => ThreeDayView.range(date, { localizer }),

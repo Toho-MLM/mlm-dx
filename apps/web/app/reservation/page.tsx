@@ -50,7 +50,7 @@ export default function Page() {
         ]);
         
         if (reservationsResponse.success && userHolderResponse.success) {
-          const formattedData: ReservationData[] = (reservationsResponse.data as any[]).map(item => ({
+          const formattedData: ReservationData[] = (reservationsResponse.data as unknown[]).map(item => ({
             ...item,
             start_time: new Date(item.start_time),
             end_time: new Date(item.end_time),

@@ -11,23 +11,33 @@ name = "mlm-dx-worker"
 [[d1_databases]]
 binding = "DB"
 database_name = "mlm-dx-db"
-database_id = "your-database-id-here"
+database_id = "your-production-database-id"
 
 [[env.development.d1_databases]]
 binding = "DB"
 database_name = "mlm-dx-db-dev"
-database_id = "your-dev-database-id-here"
+database_id = "your-dev-database-id"
 
+# 共通設定
 [vars]
 AUTH_SECRET = "your-auth-secret-here-min-32-chars-long"
 CORS_ORIGIN = "https://your-frontend-domain.com"
+FRONTEND_URL = "https://your-frontend-domain.com"
 
+# 本番環境設定
 [env.production.vars]
+AUTH_SECRET = "prod-auth-secret-here-min-32-chars-long"
+CORS_ORIGIN = "https://your-frontend-domain.com"
+FRONTEND_URL = "https://your-frontend-domain.com"
 GOOGLE_CLIENT_ID = "your-production-google-client-id"
 GOOGLE_CLIENT_SECRET = "your-production-google-client-secret"
+YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token"
 
+# 開発環境設定
 [env.development.vars]
 AUTH_SECRET = "dev-auth-secret-here-min-32-chars-long-for-development"
 CORS_ORIGIN = "http://localhost:3000"
+FRONTEND_URL = "http://localhost:3000"
 GOOGLE_CLIENT_ID = "your-dev-google-client-id"
 GOOGLE_CLIENT_SECRET = "your-dev-google-client-secret"
+YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token-for-dev"

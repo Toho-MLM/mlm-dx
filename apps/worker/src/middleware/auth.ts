@@ -1,50 +1,53 @@
 import type { Context } from 'hono';
 import type { Bindings, Variables } from '../index';
-import { User } from '../types';
+import type { User } from '../types';
 
-export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Variables }>, next: any) => {
-  const authHeader = c.req.header('Authorization');
+export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Variables }>, next: () => Promise<Response>) => {
+  const sessionToken = c.req.header('cookie')?.split(';')
+    .find(c => c.trim().startsWith('next-auth.session-token='))
+    ?.split('=')[1];
   
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!sessionToken) {
     return c.json({
       success: false,
-      error: 'Authorization header missing or invalid'
+      error: 'Session token missing'
     }, 401);
   }
-
-  const token = authHeader.substring(7);
   
   try {
-    // JWTトークンを検証（簡易版 - 本番では適切な検証が必要）
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    
-    if (!payload.email) {
+    const result = await c.env.DB.prepare(
+      'SELECT s.*, u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.session_token = ? AND s.expires > datetime("now")'
+    ).bind(sessionToken).first() as any;
+
+    if (!result) {
       return c.json({
         success: false,
-        error: 'Invalid token'
+        error: 'Invalid or expired session'
       }, 401);
     }
 
-    // データベースからユーザー情報を取得
-    const user = await c.env.DB.prepare(
-      'SELECT * FROM users WHERE email = ?'
-    ).bind(payload.email).first() as User;
+    const user: User = {
+      id: result.id as string,
+      student_number: result.student_number as string,
+      name: result.name as string,
+      nickname: result.nickname as string | undefined,
+      email: result.email as string,
+      instruments: JSON.parse(result.instruments || '[]') as string[],
+      grade: result.grade as string,
+      role: result.role as 'ADMIN' | 'MBR',
+      image: result.image as string | undefined,
+      created_at: result.created_at as string,
+      updated_at: result.updated_at as string,
+    };
 
-    if (!user) {
-      return c.json({
-        success: false,
-        error: 'User not found'
-      }, 401);
-    }
-
-    // ユーザー情報をContextにセット
     c.set('user', user);
     
     return await next();
   } catch (error) {
+    console.error('Session verification error:', error);
     return c.json({
       success: false,
-      error: 'Token verification failed'
+      error: 'Session verification failed'
     }, 401);
   }
 };

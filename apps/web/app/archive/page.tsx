@@ -15,7 +15,7 @@ export default async function Page() {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">アーカイブ</h1>
       <ul className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {playlists.map((p: any) => (
+        {playlists.map((p: unknown) => (
           <li key={p.id} className="bg-white rounded-lg shadow-md overflow-hidden">
             <div className="aspect-w-16 aspect-h-9">
               <iframe

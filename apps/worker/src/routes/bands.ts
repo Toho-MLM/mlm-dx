@@ -10,7 +10,7 @@ bandRoutes.use('*', requireAuth);
 
 bandRoutes.get('/', async (c: Context<{ Bindings: Bindings }>) => {
   try {
-    const user = (c as any).get('user');
+    const user = (c as unknown).get('user');
     
     const { results } = await c.env.DB.prepare(`
       SELECT b.*, m.role 
@@ -36,7 +36,7 @@ bandRoutes.get('/', async (c: Context<{ Bindings: Bindings }>) => {
 
 bandRoutes.post('/', async (c: Context<{ Bindings: Bindings }>) => {
   try {
-    const user = (c as any).get('user');
+    const user = (c as unknown).get('user');
     const { name, description } = await c.req.json();
 
     if (!name) {
@@ -82,7 +82,7 @@ bandRoutes.post('/', async (c: Context<{ Bindings: Bindings }>) => {
 
 bandRoutes.get('/:id', async (c: Context<{ Bindings: Bindings }>) => {
   try {
-    const user = (c as any).get('user');
+    const user = (c as unknown).get('user');
     const bandId = c.req.param('id');
 
     const band = await c.env.DB.prepare(`
@@ -115,13 +115,13 @@ bandRoutes.get('/:id', async (c: Context<{ Bindings: Bindings }>) => {
 
 bandRoutes.put('/:id', async (c: Context<{ Bindings: Bindings }>) => {
   try {
-    const user = (c as any).get('user');
+    const user = (c as unknown).get('user');
     const bandId = c.req.param('id');
     const { name, description } = await c.req.json();
 
     const member = await c.env.DB.prepare(
       'SELECT role FROM members WHERE band_id = ? AND user_id = ?'
-    ).bind(bandId, user.id).first() as any;
+    ).bind(bandId, user.id).first() as unknown;
 
     if (!member || member.role !== 'owner') {
       return c.json<ApiResponse>({
@@ -154,12 +154,12 @@ bandRoutes.put('/:id', async (c: Context<{ Bindings: Bindings }>) => {
 
 bandRoutes.delete('/:id', async (c: Context<{ Bindings: Bindings }>) => {
   try {
-    const user = (c as any).get('user');
+    const user = (c as unknown).get('user');
     const bandId = c.req.param('id');
 
     const member = await c.env.DB.prepare(
       'SELECT role FROM members WHERE band_id = ? AND user_id = ?'
-    ).bind(bandId, user.id).first() as any;
+    ).bind(bandId, user.id).first() as unknown;
 
     if (!member || member.role !== 'owner') {
       return c.json<ApiResponse>({

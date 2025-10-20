@@ -26,12 +26,12 @@
   },
   "dependencies": {
     "hono": "^4.0.0",
-    "@hono/auth-js": "^0.0.0",
-    "@auth/core": "^0.0.0"
+    "@hono/auth-js": "^1.1.0",
+    "@auth/core": "^0.41.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241218.0",
-    "wrangler": "^3.0.0",
+    "wrangler": "^4.43.0",
     "typescript": "^5.6.3",
     "eslint": "^8.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",

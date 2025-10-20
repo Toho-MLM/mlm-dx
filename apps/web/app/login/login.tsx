@@ -11,15 +11,13 @@ import { apiClient } from '@/lib/api'
 
 export function LoginPage() {
   const router = useRouter()
-  const [session, setSession] = React.useState<{ user: any } | null>(null)
   const [status, setStatus] = React.useState<'loading' | 'authenticated' | 'unauthenticated'>('loading')
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
   useEffect(() => {
-    ;(async () => {
+    (async () => {
       const s = await apiClient.getSession()
-      setSession(s as any)
       setStatus(s ? 'authenticated' : 'unauthenticated')
       if (s) router.push('/')
     })()
@@ -30,8 +28,8 @@ export function LoginPage() {
     setError(null)
     
     try {
-      const callback = encodeURIComponent(`${window.location.origin}/auth/callback`)
-      window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/auth/google?callback=${callback}`
+      const authUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/api/auth/signin/google`
+      window.location.href = authUrl
     } catch (error) {
       console.error('Login failed:', error)
       setError('ログインに失敗しました。もう一度お試しください。')

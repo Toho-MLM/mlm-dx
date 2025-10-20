@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
+import type { Context } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { authHandler } from '@hono/auth-js';
@@ -9,6 +10,7 @@ import { groupRoutes } from './routes/groups';
 import { memberRoutes } from './routes/members';
 import { reservationRoutes } from './routes/reservations';
 import { archiveRoutes } from './routes/archive';
+import { authRoutes } from './routes/auth';
 import type { User } from './types';
 
 export type Bindings = {
@@ -17,6 +19,7 @@ export type Bindings = {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   CORS_ORIGIN: string;
+  FRONTEND_URL: string;
   YOUTUBE_REFRESH_TOKEN: string;
 };
 
@@ -28,31 +31,26 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use('*', logger());
 app.use('*', cors({
-  origin: (c: any) => {
-    const origin = c.req.header('Origin');
+  origin: (origin: string, c: Context) => {
     const allowedOrigins = c.env.CORS_ORIGIN.split(',');
-    return allowedOrigins.includes(origin || '') ? origin : '';
+    return allowedOrigins.includes(origin) ? origin : '';
   },
   allowHeaders: ['Content-Type', 'Authorization'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
 }));
 
-app.use('/api/auth/*', async (c, next) => {
-  const authConfig = getAuthConfig(c);
-  return authHandler({ config: authConfig })(c, next);
-});
-
 app.use('/auth/*', async (c, next) => {
   const authConfig = getAuthConfig(c);
-  return authHandler({ config: authConfig })(c, next);
+  return authHandler()(c, next);
 });
 
-app.route('/api/users', userRoutes);
-app.route('/api/groups', groupRoutes);
-app.route('/api/members', memberRoutes);
-app.route('/api/reservations', reservationRoutes);
-app.route('/api/archive', archiveRoutes);
+app.route('/auth', authRoutes);
+app.route('/users', userRoutes);
+app.route('/groups', groupRoutes);
+app.route('/members', memberRoutes);
+app.route('/reservations', reservationRoutes);
+app.route('/archive', archiveRoutes);
 
 app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() });
