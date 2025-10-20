@@ -10,25 +10,24 @@ groupRoutes.use('*', requireAuth);
 // upsert_group - Create or update a group
 groupRoutes.post('/upsert', async (c) => {
   try {
-    const { id, name, assignments, is_main = false } = await c.req.json();
+    const { id, name, is_main = false } = await c.req.json();
 
     const now = new Date().toISOString();
-    const assignmentsJson = JSON.stringify(assignments || {});
 
     if (id) {
       // Update existing group
       await c.env.DB.prepare(`
         UPDATE groups 
-        SET name = ?, assignments = ?, is_main = ?, updated_at = ?
+        SET name = ?, is_main = ?, updated_at = ?
         WHERE id = ?
-      `).bind(name, assignmentsJson, is_main, now, id).run();
+      `).bind(name, is_main, now, id).run();
     } else {
       // Create new group
       const newId = crypto.randomUUID();
       await c.env.DB.prepare(`
-        INSERT INTO groups (id, name, assignments, is_main, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, TRUE, ?, ?)
-      `).bind(newId, name, assignmentsJson, is_main, now, now).run();
+        INSERT INTO groups (id, name, is_main, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, TRUE, ?, ?)
+      `).bind(newId, name, is_main, now, now).run();
       
       return c.json({ 
         success: true, 
@@ -48,21 +47,15 @@ groupRoutes.post('/upsert', async (c) => {
 groupRoutes.get('/', async (c) => {
   try {
     const groups = await c.env.DB.prepare(`
-      SELECT g.*, COUNT(gm.user_id) as member_count
+      SELECT g.*, COUNT(DISTINCT gmi.user_id) as member_count
       FROM groups g
-      LEFT JOIN group_members gm ON g.id = gm.group_id
+      LEFT JOIN group_member_instruments gmi ON g.id = gmi.group_id
       WHERE g.is_active = TRUE
       GROUP BY g.id
       ORDER BY g.name ASC
     `).all();
 
-    // Parse assignments JSON
-    const processedGroups = groups.results.map((group: unknown) => ({
-      ...group,
-      assignments: JSON.parse(group.assignments || '{}')
-    }));
-
-    return c.json({ success: true, data: processedGroups });
+    return c.json({ success: true, data: groups.results });
   } catch (error) {
     console.error('Error fetching groups:', error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -82,13 +75,7 @@ groupRoutes.get('/:id', async (c) => {
       return c.json({ success: false, error: 'Group not found' }, 404);
     }
 
-    // Parse assignments JSON
-    const processedGroup = {
-      ...group,
-      assignments: JSON.parse(group.assignments || '{}')
-    };
-
-    return c.json({ success: true, data: processedGroup });
+    return c.json({ success: true, data: group });
   } catch (error) {
     console.error('Error fetching group:', error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -99,20 +86,95 @@ groupRoutes.get('/:id', async (c) => {
 groupRoutes.put('/:id', async (c) => {
   try {
     const groupId = c.req.param('id');
-    const { name, assignments, is_main, is_active } = await c.req.json();
+    const { name, is_main, is_active } = await c.req.json();
 
     const now = new Date().toISOString();
-    const assignmentsJson = JSON.stringify(assignments || {});
 
     await c.env.DB.prepare(`
       UPDATE groups 
-      SET name = ?, assignments = ?, is_main = ?, is_active = ?, updated_at = ?
+      SET name = ?, is_main = ?, is_active = ?, updated_at = ?
       WHERE id = ?
-    `).bind(name, assignmentsJson, is_main, is_active, now, groupId).run();
+    `).bind(name, is_main, is_active, now, groupId).run();
 
     return c.json({ success: true, message: 'Group updated successfully' });
   } catch (error) {
     console.error('Error updating group:', error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// Get mapping: user_id -> instruments[] for a group
+groupRoutes.get('/:id/member-instruments', async (c) => {
+  try {
+    const groupId = c.req.param('id');
+
+    const rows = await c.env.DB.prepare(
+      'SELECT user_id, instrument FROM group_member_instruments WHERE group_id = ? ORDER BY user_id'
+    ).bind(groupId).all();
+
+    const mapping: Record<string, ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[]> = {};
+    for (const row of rows.results as { user_id: string; instrument: string }[]) {
+      const uid = row.user_id;
+      const inst = row.instrument as 'VO' | 'GT' | 'KEY' | 'DR' | 'BA';
+      if (!mapping[uid]) mapping[uid] = [];
+      if (!mapping[uid].includes(inst)) mapping[uid].push(inst);
+    }
+
+    return c.json({ success: true, data: mapping });
+  } catch (error) {
+    console.error('Error fetching member instruments:', error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// Add a single instrument assignment for a user in a group
+groupRoutes.post('/:id/member-instruments', async (c) => {
+  try {
+    const groupId = c.req.param('id');
+    const { user_id, instrument } = await c.req.json<{ user_id: string; instrument: string }>();
+
+    const valid = ['VO','GT','KEY','DR','BA'] as const;
+    if (!user_id || !instrument || !valid.includes(instrument as typeof valid[number])) {
+      return c.json({ success: false, error: 'Invalid parameters' }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(
+      'INSERT OR IGNORE INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(id, groupId, user_id, instrument, now, now).run();
+
+    // If it existed, bump updated_at
+    await c.env.DB.prepare(
+      'UPDATE group_member_instruments SET updated_at = ? WHERE group_id = ? AND user_id = ? AND instrument = ?'
+    ).bind(now, groupId, user_id, instrument).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error adding member instrument:', error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// Remove a single instrument assignment for a user in a group
+groupRoutes.delete('/:id/member-instruments', async (c) => {
+  try {
+    const groupId = c.req.param('id');
+    const { user_id, instrument } = await c.req.json<{ user_id: string; instrument: string }>();
+
+    const valid = ['VO','GT','KEY','DR','BA'] as const;
+    if (!user_id || !instrument || !valid.includes(instrument as typeof valid[number])) {
+      return c.json({ success: false, error: 'Invalid parameters' }, 400);
+    }
+
+    await c.env.DB.prepare(
+      'DELETE FROM group_member_instruments WHERE group_id = ? AND user_id = ? AND instrument = ?'
+    ).bind(groupId, user_id, instrument).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error removing member instrument:', error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

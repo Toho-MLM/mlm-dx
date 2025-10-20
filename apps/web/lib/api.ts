@@ -11,7 +11,6 @@ export interface User {
   id: string
   email: string
   name: string
-  image?: string
 }
 
 export interface Session {
@@ -191,8 +190,8 @@ class ApiClient {
   async createReservation(data: {
     start_time: string
     end_time: string
-    group_id?: string
-    notes?: string
+    holder_user_id?: string
+    holder_group_id?: string
   }): Promise<ApiResponse<unknown>> {
     return this.request<ApiResponse<unknown>>('/reservations/create', {
       method: 'POST',
@@ -207,16 +206,16 @@ class ApiClient {
   }
 
   // アーカイブ関連
-  async getArchives(groupId: string): Promise<ApiResponse<unknown[]>> {
-    return this.request<ApiResponse<unknown[]>>(`/archive/group/${groupId}`)
+  async getArchives(): Promise<ApiResponse<unknown[]>> {
+    return this.request<ApiResponse<unknown[]>>(`/archive`)
   }
 
-  async createArchive(groupId: string, data: {
+  async createArchive(data: {
     title: string
-    description?: string
     youtube_url?: string
+    year: number
   }): Promise<ApiResponse<unknown>> {
-    return this.request<ApiResponse<unknown>>(`/archive/group/${groupId}`, {
+    return this.request<ApiResponse<unknown>>(`/archive`, {
       method: 'POST',
       body: JSON.stringify(data),
     })
@@ -224,8 +223,8 @@ class ApiClient {
 
   async updateArchive(id: string, data: {
     title: string
-    description?: string
     youtube_url?: string
+    year: number
   }): Promise<ApiResponse<unknown>> {
     return this.request<ApiResponse<unknown>>(`/archive/${id}`, {
       method: 'PUT',
