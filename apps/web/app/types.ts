@@ -48,12 +48,13 @@ export const roleNames: Record<Role, string> = {
 
 export interface ReservationData {
     id: string;
-    creator: string;
-    creator_name: string;
-    group: string | null;
-    start_time: Date;
-    end_time: Date;
-    options?: string | null;
+    booked_by: string;
+    booked_by_name?: string;
+    holder_group_name?: string;
+    holder_user_id: string | null;
+    holder_group_id: string | null;
+    start: Date;
+    end: Date;
     state: ReservationState;
 }
 

@@ -4,10 +4,9 @@ export interface User {
   name: string;
   nickname?: string;
   email: string;
-  instruments: string[]; // JSON array of instruments
-  grade: string;
-  role: 'ADMIN' | 'MBR';
-  image?: string;
+  instruments: ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[];
+  grade: number;
+  role: 'MGR' | 'CHF' | 'MACT' | 'MBR' | 'ADM' | 'NHD' | 'NACT';
   created_at: string;
   updated_at: string;
 }
@@ -64,23 +63,28 @@ export interface GroupMember {
 
 export interface Reservation {
   id: number;
-  creator: string;
-  group_id?: string;
+  booked_by: string;
+  holder_user_id?: string;
+  holder_group_id?: string;
   start_time: string;
   end_time: string;
-  notes?: string;
-  state: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  state: 'PENDING' | 'WITHDRAWN' | 'DECLINED' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
   created_at: string;
   updated_at: string;
 }
 
 export interface Archive {
   id: string;
-  group_id: string;
   title: string;
-  description?: string;
   youtube_url?: string;
-  created_by: string;
+  year: number;
   created_at: string;
   updated_at: string;
 }
+
+export type ApiResponse<T = unknown> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+};

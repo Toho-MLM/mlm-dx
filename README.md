@@ -88,8 +88,6 @@ https://mlm-dx-worker.your-account.workers.dev/auth/callback/google
 7. 「作成」をクリック
 8. クライアントIDとクライアントシークレットをコピー
 
-**重要**: 「承認済みのJavaScript生成元」は**空にしてはいけません**。これはセキュリティ上重要な設定で、クライアントサイドのJavaScriptがGoogleの認証サービスと安全に通信するために必要です。
-
 ### 4. 環境変数の設定
 
 #### 4.1 AUTH_SECRETの生成

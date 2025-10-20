@@ -11,10 +11,10 @@ memberRoutes.use('*', requireAuth);
 memberRoutes.get('/fetch', async (c) => {
   try {
     const members = await c.env.DB.prepare(`
-      SELECT u.*, gm.group_id, gm.role as member_role, g.name as group_name
+      SELECT u.*, gmi.group_id, g.name as group_name
       FROM users u
-      JOIN group_members gm ON u.id = gm.user_id
-      JOIN groups g ON gm.group_id = g.id
+      JOIN group_member_instruments gmi ON u.id = gmi.user_id
+      JOIN groups g ON gmi.group_id = g.id
       WHERE g.is_active = TRUE
       ORDER BY u.name ASC
     `).all();
@@ -40,11 +40,10 @@ memberRoutes.get('/list', async (c) => {
         u.instruments,
         u.role,
         u.image,
-        GROUP_CONCAT(g.name) as groups,
-        GROUP_CONCAT(gm.role) as group_roles
+        GROUP_CONCAT(DISTINCT g.name) as groups
       FROM users u
-      LEFT JOIN group_members gm ON u.id = gm.user_id
-      LEFT JOIN groups g ON gm.group_id = g.id AND g.is_active = TRUE
+      LEFT JOIN group_member_instruments gmi ON u.id = gmi.user_id
+      LEFT JOIN groups g ON gmi.group_id = g.id AND g.is_active = TRUE
       GROUP BY u.id
       ORDER BY u.name ASC
     `).all();
@@ -53,7 +52,6 @@ memberRoutes.get('/list', async (c) => {
     const processedMembers = members.results.map((member: unknown) => ({
       ...member,
       groups: member.groups ? member.groups.split(',') : [],
-      group_roles: member.group_roles ? member.group_roles.split(',') : [],
       instruments: JSON.parse(member.instruments || '[]')
     }));
 
@@ -90,10 +88,11 @@ memberRoutes.get('/group/:groupId', async (c) => {
     const groupId = c.req.param('groupId');
 
     const members = await c.env.DB.prepare(`
-      SELECT u.*, gm.role as member_role, gm.joined_at
+      SELECT u.*, MIN(gmi.created_at) as joined_at
       FROM users u
-      JOIN group_members gm ON u.id = gm.user_id
-      WHERE gm.group_id = ?
+      JOIN group_member_instruments gmi ON u.id = gmi.user_id
+      WHERE gmi.group_id = ?
+      GROUP BY u.id
       ORDER BY u.name ASC
     `).bind(groupId).all();
 
@@ -114,14 +113,22 @@ memberRoutes.get('/group/:groupId', async (c) => {
 memberRoutes.post('/group/:groupId', async (c) => {
   try {
     const groupId = c.req.param('groupId');
-    const { user_id, role = 'member' } = await c.req.json();
+    const { user_id, instrument } = await c.req.json();
 
     const now = new Date().toISOString();
 
+    if (!user_id || !instrument || !['VO','GT','KEY','DR','BA'].includes(instrument)) {
+      return c.json({ success: false, error: 'Invalid parameters' }, 400);
+    }
+
     await c.env.DB.prepare(`
-      INSERT INTO group_members (id, group_id, user_id, role, joined_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).bind(crypto.randomUUID(), groupId, user_id, role, now).run();
+      INSERT OR IGNORE INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(crypto.randomUUID(), groupId, user_id, instrument, now, now).run();
+
+    await c.env.DB.prepare(
+      'UPDATE group_member_instruments SET updated_at = ? WHERE group_id = ? AND user_id = ? AND instrument = ?'
+    ).bind(now, groupId, user_id, instrument).run();
 
     return c.json({ success: true, message: 'Member added to group successfully' });
   } catch (error) {
@@ -137,7 +144,7 @@ memberRoutes.delete('/group/:groupId/:userId', async (c) => {
     const userId = c.req.param('userId');
 
     await c.env.DB.prepare(
-      'DELETE FROM group_members WHERE group_id = ? AND user_id = ?'
+      'DELETE FROM group_member_instruments WHERE group_id = ? AND user_id = ?'
     ).bind(groupId, userId).run();
 
     return c.json({ success: true, message: 'Member removed from group successfully' });
