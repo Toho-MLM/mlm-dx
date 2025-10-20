@@ -5,7 +5,6 @@ import { BandCard } from "./band-card"
 import { BandForm } from "./band-form"
 import { Button } from "@/components/ui/button"
 import { Group, Member } from "@/app/types"
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 
 export function BandList({ bands, members }: { bands: Group[], members: Member[] }) {
   const [isFormOpen, setIsFormOpen] = useState(false)

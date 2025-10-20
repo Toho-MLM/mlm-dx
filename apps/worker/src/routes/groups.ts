@@ -10,7 +10,6 @@ groupRoutes.use('*', requireAuth);
 // upsert_group - Create or update a group
 groupRoutes.post('/upsert', async (c) => {
   try {
-    const user = c.get('user');
     const { id, name, assignments, is_main = false } = await c.req.json();
 
     const now = new Date().toISOString();
@@ -58,7 +57,7 @@ groupRoutes.get('/', async (c) => {
     `).all();
 
     // Parse assignments JSON
-    const processedGroups = groups.results.map((group: any) => ({
+    const processedGroups = groups.results.map((group: unknown) => ({
       ...group,
       assignments: JSON.parse(group.assignments || '{}')
     }));

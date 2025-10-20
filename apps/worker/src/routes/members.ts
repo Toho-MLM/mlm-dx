@@ -50,7 +50,7 @@ memberRoutes.get('/list', async (c) => {
     `).all();
 
     // Process the results to format groups and roles
-    const processedMembers = members.results.map((member: any) => ({
+    const processedMembers = members.results.map((member: unknown) => ({
       ...member,
       groups: member.groups ? member.groups.split(',') : [],
       group_roles: member.group_roles ? member.group_roles.split(',') : [],
@@ -98,7 +98,7 @@ memberRoutes.get('/group/:groupId', async (c) => {
     `).bind(groupId).all();
 
     // Parse instruments JSON
-    const processedMembers = members.results.map((member: any) => ({
+    const processedMembers = members.results.map((member: unknown) => ({
       ...member,
       instruments: JSON.parse(member.instruments || '[]')
     }));
@@ -113,7 +113,6 @@ memberRoutes.get('/group/:groupId', async (c) => {
 // Add member to group
 memberRoutes.post('/group/:groupId', async (c) => {
   try {
-    const user = c.get('user');
     const groupId = c.req.param('groupId');
     const { user_id, role = 'member' } = await c.req.json();
 

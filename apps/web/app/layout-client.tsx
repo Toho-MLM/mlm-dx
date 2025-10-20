@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { AuthProvider } from "./context/AuthContext";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"

@@ -12,10 +12,42 @@ export interface User {
   updated_at: string;
 }
 
+export interface AuthUser {
+  id?: string;
+  email: string;
+  name?: string | null;
+  image?: string | null;
+  emailVerified?: Date | null;
+}
+
+export interface AuthAccount {
+  userId: string;
+  providerAccountId: string;
+  refresh_token?: string | null;
+  access_token?: string | null;
+  expires_at?: number | null;
+  token_type?: string | null;
+  scope?: string | null;
+  id_token?: string | null;
+  session_state?: string | null;
+}
+
+export interface AuthSession {
+  sessionToken: string;
+  userId: string;
+  expires: Date;
+}
+
+export interface AuthVerificationToken {
+  identifier: string;
+  token: string;
+  expires: Date;
+}
+
 export interface Group {
   id: string;
   name: string;
-  assignments?: any; // JSON object
+  assignments?: unknown; // JSON object
   is_main: boolean;
   is_active: boolean;
   created_at: string;
