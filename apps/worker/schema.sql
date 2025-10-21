@@ -60,41 +60,6 @@ CREATE TABLE IF NOT EXISTS archive (
   updated_at DATETIME NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS google_accounts (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  google_id TEXT NOT NULL,
-  refresh_token TEXT,
-  access_token TEXT,
-  expires_at INTEGER,
-  token_type TEXT,
-  scope TEXT,
-  id_token TEXT,
-  session_state TEXT,
-  created_at DATETIME NOT NULL,
-  updated_at DATETIME NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-  id TEXT PRIMARY KEY,
-  session_token TEXT UNIQUE NOT NULL,
-  user_id TEXT NOT NULL,
-  expires DATETIME NOT NULL,
-  created_at DATETIME NOT NULL,
-  updated_at DATETIME NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS verification_tokens (
-  identifier TEXT NOT NULL,
-  token TEXT NOT NULL,
-  expires DATETIME NOT NULL,
-  PRIMARY KEY (identifier, token)
-);
-
-
-
 -- Sample data for development/testing
 INSERT OR IGNORE INTO users (id, student_number, name, nickname, email, instruments, grade, role, created_at, updated_at) VALUES 
 ('550e8400-e29b-41d4-a716-446655440000', '12345678', 'Admin User', 'Admin', 'admin@example.com', '["GT", "BA"]', 4, 'ADM', '2024-01-01 00:00:00', '2024-01-01 00:00:00'),

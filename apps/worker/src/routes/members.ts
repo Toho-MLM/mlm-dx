@@ -2,6 +2,15 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import { Bindings } from '../index';
 
+// 安全なJSON解析関数
+function safeJsonParse<T>(json: string, fallback: T): T {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return fallback;
+  }
+}
+
 const memberRoutes = new Hono<{ Bindings: Bindings }>();
 
 // Apply authentication middleware to all routes
@@ -52,7 +61,7 @@ memberRoutes.get('/list', async (c) => {
     const processedMembers = members.results.map((member: unknown) => ({
       ...member,
       groups: member.groups ? member.groups.split(',') : [],
-      instruments: JSON.parse(member.instruments || '[]')
+      instruments: safeJsonParse(member.instruments, [])
     }));
 
     return c.json({ success: true, data: processedMembers });
@@ -99,7 +108,7 @@ memberRoutes.get('/group/:groupId', async (c) => {
     // Parse instruments JSON
     const processedMembers = members.results.map((member: unknown) => ({
       ...member,
-      instruments: JSON.parse(member.instruments || '[]')
+      instruments: safeJsonParse(member.instruments, [])
     }));
 
     return c.json({ success: true, data: processedMembers });
