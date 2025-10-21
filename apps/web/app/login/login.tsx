@@ -1,20 +1,21 @@
 'use client'
 
-import { signIn, useSession } from 'next-auth/react'
+import { signIn } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Chrome } from 'lucide-react'
+import { useAuth } from '@/app/context/AuthContext'
 
 export function LoginPage() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { user, loading } = useAuth()
 
-  if (status === 'loading') {
+  if (loading) {
     return <div className="min-h-screen flex items-center justify-center">読み込み中...</div>
   }
 
-  if (session) {
+  if (user) {
     router.push('/')
     return null
   }
@@ -27,7 +28,7 @@ export function LoginPage() {
         </CardHeader>
         <CardContent>
           <Button
-            onClick={() => signIn('google', { callbackUrl: '/' })}
+            onClick={() => signIn()}
             className="w-full bg-white hover:bg-gray-50 text-gray-900 border border-gray-300"
           >
             <Chrome className="h-5 w-5 mr-2" />

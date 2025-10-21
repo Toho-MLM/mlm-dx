@@ -10,7 +10,7 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
     const authConfig = getAuthConfig(c);
 
     // Honoの公式Cookieミドルウェアを使用してJWTトークンを取得
-    const sessionToken = getCookie(c, '__Host-next-auth.session-token');
+    const sessionToken = getCookie(c, 'next-auth.session-token');
 
     if (!sessionToken) {
       return c.json({ success: false, error: 'No session token' }, 401);

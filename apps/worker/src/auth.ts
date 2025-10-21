@@ -95,12 +95,12 @@ export function getAuthConfig(c: Context): any {
     },
     cookies: {
       sessionToken: {
-        name: "__Host-next-auth.session-token",
+        name: "next-auth.session-token",
         options: {
           httpOnly: true,
           sameSite: 'lax',
           path: '/',
-          secure: true,
+          secure: c.env.NODE_ENV === 'production',
         },
       },
     },

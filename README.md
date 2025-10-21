@@ -135,6 +135,9 @@ openssl rand -base64 32
 
 **開発環境用の設定:**
 ```env
+# 環境設定
+NODE_ENV=development
+
 # API設定
 NEXT_PUBLIC_API_URL=http://localhost:8787
 
@@ -146,6 +149,9 @@ GOOGLE_CLIENT_SECRET=your-dev-google-client-secret
 
 **本番環境用の設定:**
 ```env
+# 環境設定
+NODE_ENV=production
+
 # API設定
 NEXT_PUBLIC_API_URL=https://your-worker-domain.workers.dev
 
@@ -209,6 +215,7 @@ YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token-for-dev"
 
 | 変数名 | 説明 | 開発環境 | 本番環境 |
 |--------|------|----------|----------|
+| `NODE_ENV` | 環境設定（クッキーのsecure設定に影響） | `development` | `production` |
 | `NEXT_PUBLIC_API_URL` | バックエンドAPIのURL | `http://localhost:8787` | `https://your-worker-domain.workers.dev` |
 | `AUTH_SECRET` | Auth.jsの暗号化キー | 開発用32文字以上の文字列 | 本番用32文字以上の文字列 |
 | `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | 開発環境用のクライアントID | 本番環境用のクライアントID |
@@ -218,6 +225,7 @@ YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token-for-dev"
 
 | 変数名 | 説明 | 開発環境 | 本番環境 |
 |--------|------|----------|----------|
+| `NODE_ENV` | 環境設定（クッキーのsecure設定に影響） | `development` | `production` |
 | `AUTH_SECRET` | Auth.jsの暗号化キー | 開発用32文字以上の文字列 | 本番用32文字以上の文字列 |
 | `CORS_ORIGIN` | CORS許可オリジン | `http://localhost:3000` | `https://your-frontend-domain.com` |
 | `FRONTEND_URL` | フロントエンドのURL | `http://localhost:3000` | `https://your-frontend-domain.com` |
@@ -227,9 +235,10 @@ YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token-for-dev"
 
 **注意事項:**
 - `AUTH_SECRET`は最低32文字以上のランダムな文字列である必要があります
+- `NODE_ENV`の設定により、クッキーの`secure`属性が自動的に制御されます（開発環境: `false`、本番環境: `true`）
 - 開発環境と本番環境では**必ず異なる**クライアントIDとシークレットを使用してください
 - 本番環境では`https`プロトコルを使用し、適切なドメインを設定してください
-- Auth.jsの標準APIを使用することで、CSRF対策とエラーハンドリングが自動で適用されます
+- 認証はワーカー側のみで実行され、フロントエンドはワーカー側の認証エンドポイントにリダイレクトします
 
 ### 5. 開発サーバーの起動
 
@@ -353,17 +362,28 @@ npm run db:seed:prod
 
 ## 認証システム
 
-### Auth.js APIをフル活用した認証ワークフロー
+### 統一されたNextAuth認証ワークフロー
 
-1. ユーザーがNext.js上の「Googleでログイン」ボタンを押す
-2. フロントエンドが`signIn('google')`APIを呼び出し（CSRF対策自動適用）
-3. Auth.jsがOAuth認可URLを生成し、Googleの認可エンドポイントへリダイレクト
-4. Googleが認可後に`/api/auth/callback/google`にコードで戻す
-5. Auth.jsがコードを交換し、ID token/access token/ユーザープロファイルを取得
-6. **ホワイトリスト判定**：取得したemailをD1の`users`テーブルと照合
-7. 許可される場合はAuth.jsがusers/google_accounts/sessionsレコードを作成
-8. Auth.jsが発行したセッション（sessionToken）をブラウザにSet-Cookieで返す
-9. フロントエンドにリダイレクトし、`useSession()`でセッション状態を管理
+認証システムは**ワーカー側のみ**でNextAuthを実行し、フロントエンドはワーカー側の認証エンドポイントにリダイレクトする方式を採用しています。これにより、設定の重複を避け、ホワイトリスト判定とJWTの整合性を保証しています。
+
+#### 認証フローの特徴
+
+1. **統一された認証処理**: NextAuthの設定はワーカー側のみに存在
+2. **ホワイトリスト制御**: `users`テーブルに事前登録されたメールアドレスのみログイン可能
+3. **環境対応セキュリティ**: 開発環境では`secure: false`、本番環境では`secure: true`
+4. **クロスオリジン対応**: `__Host-`プレフィックスを削除してクロスオリジン間でのセッション共有を実現
+
+#### 認証フロー詳細
+
+1. ユーザーがフロントエンドの「Googleでログイン」ボタンをクリック
+2. フロントエンドがワーカー側の`/auth/signin/google`にリダイレクト
+3. ワーカー側のNextAuthがOAuth認可URLを生成し、Googleの認可エンドポイントへリダイレクト
+4. Googleが認可後に`/auth/callback/google`にコードで戻す
+5. ワーカー側のNextAuthがコードを交換し、ID token/access token/ユーザープロファイルを取得
+6. **ホワイトリスト判定**: 取得したemailをD1の`users`テーブルと照合
+7. 許可される場合はワーカー側のNextAuthがJWTトークン生成（usersテーブルの実際のIDをsubに設定）
+8. セッションクッキー（`next-auth.session-token`）をブラウザにSet-Cookieで返す
+9. フロントエンドにリダイレクトし、ワーカー側の`/auth/session`エンドポイントでセッション状態を管理
 
 ### 認証フロー図
 
@@ -371,32 +391,29 @@ npm run db:seed:prod
 sequenceDiagram
     participant U as ユーザー
     participant F as Next.jsフロントエンド<br/>(localhost:3000)
-    participant A as Auth.js API<br/>(/auth/*)
     participant W as Cloudflare Workers<br/>(localhost:8787)
     participant G as Google OAuth
     participant D as D1 Database
 
     U->>F: 「Googleでログイン」クリック
-    F->>A: signIn('google') API呼び出し
-    Note over A: CSRF対策・エラーハンドリング自動適用
-    A->>W: /auth/signin/google リダイレクト
-    W->>G: OAuth認可URL生成（state + PKCE）
+    F->>W: /auth/signin/google リダイレクト
+    Note over W: NextAuthがOAuth認可URL生成（state + PKCE）
+    W->>G: OAuth認可URL生成
     G->>U: Google認証ページ表示
     U->>G: 認証情報入力
-    G->>A: /auth/callback/google にコード返却
-    A->>G: トークン交換（next-auth/providers/google使用）
-    G->>A: ID token/access token/プロファイル取得
-    A->>W: ユーザー情報をWorkersに送信
+    G->>W: /auth/callback/google にコード返却
+    W->>G: トークン交換（next-auth/providers/google使用）
+    G->>W: ID token/access token/プロファイル取得
     W->>D: ホワイトリスト判定（usersテーブル事前登録チェック）
     alt 事前登録済みメール
         W->>D: ユーザー情報更新（名前変更時のみ）
-        W->>A: JWTトークン生成（usersテーブルの実際のIDをsubに設定）
-        A->>F: Set-Cookie: __Host-next-auth.session-token
-        F->>F: useSession()でセッション状態更新
+        W->>W: JWTトークン生成（usersテーブルの実際のIDをsubに設定）
+        W->>F: Set-Cookie: next-auth.session-token<br/>（環境に応じてsecure設定）
+        F->>F: /auth/sessionでセッション状態確認
         F->>U: ログイン完了
     else 未登録メール
-        W->>A: JWTトークン生成拒否（null返却）
-        A->>F: 認証エラー表示
+        W->>W: JWTトークン生成拒否（null返却）
+        W->>F: 認証エラー表示
     end
 ```
 
@@ -448,7 +465,8 @@ INSERT INTO users (
 
 ### セキュリティ設定
 
-- **クロスサブドメイン対応**: `SameSite=None; Secure`クッキー設定
+- **環境対応セキュリティ**: 開発環境では`secure: false`、本番環境では`secure: true`でクッキーのセキュリティを制御
+- **クロスオリジン対応**: `__Host-`プレフィックスを削除してクロスオリジン間でのセッション共有を実現
 - **ホワイトリスト制御**: `users`テーブルに登録されたメールアドレスのみログイン可能
 - **セッション管理**: JWT戦略でセッション管理（署名検証付き）
 - **PKCE対応**: OAuth 2.0のセキュリティ強化
@@ -523,8 +541,14 @@ INSERT INTO users (
 - マイグレーションが正しく実行されていることを確認
 - `users`テーブルに事前にユーザーを登録する必要があります
 
+### セッションクッキーの問題
+
+- **開発環境でセッションが保持されない**: `NODE_ENV=development`が設定されていることを確認
+- **本番環境でセッションが保持されない**: `NODE_ENV=production`が設定され、HTTPS環境であることを確認
+- **クロスオリジンでセッションが送信されない**: `__Host-`プレフィックスが削除されていることを確認
+
 ### 認証フローのテスト
-1. ブラウザで `http://localhost:8787/auth/signin` にアクセス
+1. ブラウザで `http://localhost:8787/auth/signin/google` にアクセス
 2. Googleアカウントでログイン
 3. 認証が成功すると、フロントエンドにリダイレクトされます
 
