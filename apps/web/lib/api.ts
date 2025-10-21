@@ -1,23 +1,5 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
-interface RequestInit {
-  method?: string
-  headers?: Record<string, string>
-  body?: string
-  credentials?: 'omit' | 'same-origin' | 'include'
-}
-
-export interface User {
-  id: string
-  email: string
-  name: string
-}
-
-export interface Session {
-  user: User
-  accessToken?: string
-}
-
 export interface ApiResponse<T = unknown> {
   success: boolean
   data?: T
@@ -32,28 +14,14 @@ class ApiClient {
     this.baseUrl = baseUrl
   }
 
-  private async getAuthHeaders(): Promise<Record<string, string>> {
-    return {}
-  }
-
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`
     
-    const authHeaders = await this.getAuthHeaders()
-    
-    const defaultOptions: RequestInit = {
+    const response = await fetch(url, {
       credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders,
-        ...options.headers,
-      },
-    }
-
-    const response = await fetch(url, { ...defaultOptions, ...options })
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      ...options,
+    })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
@@ -61,38 +29,6 @@ class ApiClient {
     }
 
     return response.json()
-  }
-
-  // 認証関連
-  async getSession(): Promise<Session | null> {
-    try {
-      const response = await fetch(`${this.baseUrl}/auth/session`, {
-        credentials: 'include',
-      })
-      
-      if (response.ok) {
-        const session = await response.json()
-        return session.user ? session : null
-      }
-      return null
-    } catch {
-      return null
-    }
-  }
-
-  async signOut(): Promise<void> {
-    try {
-      await fetch(`${this.baseUrl}/auth/signout`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-    } catch (error) {
-      console.error('Sign out error:', error)
-    } finally {
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login'
-      }
-    }
   }
 
   // ユーザー関連

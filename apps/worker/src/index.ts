@@ -42,7 +42,13 @@ app.use('*', cors({
 
 app.use('/auth/*', async (c, next) => {
   const authConfig = getAuthConfig(c);
-  return authHandler()(c, next);
+  if (!authConfig.secret) {
+    console.error('AUTH_SECRET not configured');
+    return c.json({ error: 'Auth configuration error' }, 500);
+  }
+  
+  // 呼び出しシグネチャの型差異を吸収
+  return (authHandler as any)(authConfig)(c, next);
 });
 
 app.route('/auth', authRoutes);

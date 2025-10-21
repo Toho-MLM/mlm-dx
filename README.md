@@ -23,15 +23,49 @@ npm install
 
 ### 2. Cloudflare D1データベースのセットアップ
 
+#### ローカル開発環境
 ```bash
-# D1データベースを作成
-npm run db:create
+# ローカルD1データベースを作成
+npm run db:create:local
 
 # マイグレーションを実行
-npm run db:migrate
+npm run db:migrate:local
 
 # サンプルデータを投入（オプション）
-npm run db:seed
+npm run db:seed:local
+
+# または一括でセットアップ
+npm run db:setup:local
+```
+
+#### 開発環境（クラウド）
+```bash
+# 開発環境D1データベースを作成
+npm run db:create:dev
+
+# マイグレーションを実行
+npm run db:migrate:dev
+
+# サンプルデータを投入（オプション）
+npm run db:seed:dev
+
+# または一括でセットアップ
+npm run db:setup:dev
+```
+
+#### 本番環境（クラウド）
+```bash
+# 本番環境D1データベースを作成
+npm run db:create:prod
+
+# マイグレーションを実行
+npm run db:migrate:prod
+
+# サンプルデータを投入（オプション）
+npm run db:seed:prod
+
+# または一括でセットアップ
+npm run db:setup:prod
 ```
 
 ### 3. Google OAuth設定
@@ -104,11 +138,8 @@ openssl rand -base64 32
 # API設定
 NEXT_PUBLIC_API_URL=http://localhost:8787
 
-# NextAuth設定
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=dev-nextauth-secret-here-min-32-chars-long
-
-# Google OAuth設定（開発環境用）
+# Auth.js設定
+AUTH_SECRET=dev-nextauth-secret-here-min-32-chars-long
 GOOGLE_CLIENT_ID=your-dev-google-client-id
 GOOGLE_CLIENT_SECRET=your-dev-google-client-secret
 ```
@@ -118,11 +149,8 @@ GOOGLE_CLIENT_SECRET=your-dev-google-client-secret
 # API設定
 NEXT_PUBLIC_API_URL=https://your-worker-domain.workers.dev
 
-# NextAuth設定
-NEXTAUTH_URL=https://your-frontend-domain.com
-NEXTAUTH_SECRET=prod-nextauth-secret-here-min-32-chars-long
-
-# Google OAuth設定（本番環境用）
+# Auth.js設定
+AUTH_SECRET=prod-nextauth-secret-here-min-32-chars-long
 GOOGLE_CLIENT_ID=your-prod-google-client-id
 GOOGLE_CLIENT_SECRET=your-prod-google-client-secret
 ```
@@ -182,8 +210,7 @@ YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token-for-dev"
 | 変数名 | 説明 | 開発環境 | 本番環境 |
 |--------|------|----------|----------|
 | `NEXT_PUBLIC_API_URL` | バックエンドAPIのURL | `http://localhost:8787` | `https://your-worker-domain.workers.dev` |
-| `NEXTAUTH_URL` | NextAuthのベースURL | `http://localhost:3000` | `https://your-frontend-domain.com` |
-| `NEXTAUTH_SECRET` | NextAuthの暗号化キー | 開発用32文字以上の文字列 | 本番用32文字以上の文字列 |
+| `AUTH_SECRET` | Auth.jsの暗号化キー | 開発用32文字以上の文字列 | 本番用32文字以上の文字列 |
 | `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | 開発環境用のクライアントID | 本番環境用のクライアントID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | 開発環境用のシークレット | 本番環境用のシークレット |
 
@@ -199,47 +226,121 @@ YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token-for-dev"
 | `YOUTUBE_REFRESH_TOKEN` | YouTube API用リフレッシュトークン | 開発環境用のトークン | 本番環境用のトークン |
 
 **注意事項:**
-- `AUTH_SECRET`と`NEXTAUTH_SECRET`は最低32文字以上のランダムな文字列である必要があります
+- `AUTH_SECRET`は最低32文字以上のランダムな文字列である必要があります
 - 開発環境と本番環境では**必ず異なる**クライアントIDとシークレットを使用してください
 - 本番環境では`https`プロトコルを使用し、適切なドメインを設定してください
+- Auth.jsの標準APIを使用することで、CSRF対策とエラーハンドリングが自動で適用されます
 
 ### 5. 開発サーバーの起動
 
 #### ローカル開発（推奨）
 ```bash
-# フロントエンドとバックエンドを並行実行（ローカル）
-npm run dev:all:local
+# フルスタック開発環境を起動（全てローカル）
+npm run dev
 
-# または個別に実行
-npm run dev              # フロントエンド
-npm run dev:worker:local  # バックエンド（ローカル）
+# または明示的にローカル環境を指定
+npm run dev:local
+
+# 個別に実行
+npm run dev:web           # フロントエンド（Next.js）
+npm run dev:worker:local  # バックエンド（Wrangler ローカル）
 ```
 
-#### リモート開発
+#### クラウド開発（本番環境テスト用）
 ```bash
-# フロントエンドとバックエンドを並行実行（リモート）
-npm run dev:all
+# バックエンドのみクラウド環境で実行
+npm run dev:worker:cloud
 
-# または個別に実行
-npm run dev        # フロントエンド
-npm run dev:worker  # バックエンド（リモート）
+# フロントエンドはローカル、バックエンドはクラウド
+npm run dev:web
+npm run dev:worker:cloud
 ```
 
 ## デプロイ
 
-### Cloudflare Workers
+### 本番環境へのデプロイ
 
+#### フルスタックデプロイ
 ```bash
-npm run deploy:worker
+# 本番環境にフルスタックデプロイ
+npm run deploy:all:prod
+
+# 開発環境にフルスタックデプロイ
+npm run deploy:all:dev
 ```
 
-### Next.js（Cloudflare Pages）
+#### 個別デプロイ
 
-apps/web:
+**Cloudflare Workers:**
 ```bash
-npm run build:cf        # .vercel/output を生成
-npm run preview         # ローカルプレビュー（wrangler pages dev）
-npm run deploy          # Cloudflare Pages へデプロイ
+# 本番環境
+npm run deploy:worker:prod
+
+# 開発環境
+npm run deploy:worker:dev
+```
+
+**Next.js（Cloudflare Pages）:**
+```bash
+# 本番環境
+npm run deploy:web:prod
+
+# 開発環境
+npm run deploy:web:dev
+```
+
+### ビルド
+
+#### ローカルビルド（開発用）
+```bash
+# ローカル用ビルド
+npm run build:local
+
+# 個別ビルド
+npm run build:web
+npm run build:worker:local
+```
+
+#### クラウドビルド（デプロイ用）
+```bash
+# クラウド用ビルド
+npm run build:all:cloud
+
+# 個別ビルド
+npm run build:web
+npm run build:worker:cloud
+```
+
+### データベース管理
+
+#### ローカル環境
+```bash
+# ローカルDB設定（マイグレーション + シード）
+npm run db:setup:local
+
+# 個別実行
+npm run db:migrate:local
+npm run db:seed:local
+```
+
+#### 開発環境（クラウド）
+```bash
+# 開発環境DB設定
+npm run db:setup:dev
+
+# 個別実行
+npm run db:migrate:dev
+npm run db:seed:dev
+```
+
+#### 本番環境（クラウド）
+```bash
+# 本番環境DB設定
+npm run db:setup:prod
+
+# 個別実行
+npm run db:migrate:prod
+npm run db:seed:prod
 ```
 
 ## 機能
@@ -252,85 +353,114 @@ npm run deploy          # Cloudflare Pages へデプロイ
 
 ## 認証システム
 
-### 新しい認証ワークフロー
+### Auth.js APIをフル活用した認証ワークフロー
 
-1. ユーザーがNext.js上の「Sign in with Google」ボタンを押す
-2. フロントエンドがWorkers側の`/auth/signin/google`にリダイレクト
-3. Auth.js（Workers側）がOAuth認可URLを生成し、Googleの認可エンドポイントへリダイレクト
-4. Googleが認可後に`/auth/callback/google`にコードで戻す
+1. ユーザーがNext.js上の「Googleでログイン」ボタンを押す
+2. フロントエンドが`signIn('google')`APIを呼び出し（CSRF対策自動適用）
+3. Auth.jsがOAuth認可URLを生成し、Googleの認可エンドポイントへリダイレクト
+4. Googleが認可後に`/api/auth/callback/google`にコードで戻す
 5. Auth.jsがコードを交換し、ID token/access token/ユーザープロファイルを取得
 6. **ホワイトリスト判定**：取得したemailをD1の`users`テーブルと照合
 7. 許可される場合はAuth.jsがusers/google_accounts/sessionsレコードを作成
 8. Auth.jsが発行したセッション（sessionToken）をブラウザにSet-Cookieで返す
-9. フロントエンド（app.example.com）にリダイレクトして戻る
+9. フロントエンドにリダイレクトし、`useSession()`でセッション状態を管理
 
 ### 認証フロー図
 
 ```mermaid
 sequenceDiagram
     participant U as ユーザー
-    participant F as フロントエンド<br/>(app.example.com)
-    participant W as Cloudflare Workers<br/>(auth.example.com)
+    participant F as Next.jsフロントエンド<br/>(localhost:3000)
+    participant A as Auth.js API<br/>(/auth/*)
+    participant W as Cloudflare Workers<br/>(localhost:8787)
     participant G as Google OAuth
     participant D as D1 Database
 
     U->>F: 「Googleでログイン」クリック
-    F->>W: /auth/signin/google リダイレクト
+    F->>A: signIn('google') API呼び出し
+    Note over A: CSRF対策・エラーハンドリング自動適用
+    A->>W: /auth/signin/google リダイレクト
     W->>G: OAuth認可URL生成（state + PKCE）
     G->>U: Google認証ページ表示
     U->>G: 認証情報入力
-    G->>W: /auth/callback/google にコード返却
-    W->>G: トークン交換
-    G->>W: ID token/access token/プロファイル取得
-    W->>D: ホワイトリスト判定（usersテーブル）
-    alt 許可されたメール
-        W->>D: users/google_accounts/sessionsレコード作成
-        W->>F: Set-Cookie: next-auth.session-token
+    G->>A: /auth/callback/google にコード返却
+    A->>G: トークン交換（next-auth/providers/google使用）
+    G->>A: ID token/access token/プロファイル取得
+    A->>W: ユーザー情報をWorkersに送信
+    W->>D: ホワイトリスト判定（usersテーブル事前登録チェック）
+    alt 事前登録済みメール
+        W->>D: ユーザー情報更新（名前変更時のみ）
+        W->>A: JWTトークン生成（usersテーブルの実際のIDをsubに設定）
+        A->>F: Set-Cookie: __Host-next-auth.session-token
+        F->>F: useSession()でセッション状態更新
         F->>U: ログイン完了
-    else 拒否されたメール
-        W->>F: エラーページ表示
+    else 未登録メール
+        W->>A: JWTトークン生成拒否（null返却）
+        A->>F: 認証エラー表示
     end
 ```
 
-### データベース構造
+### ホワイトリスト運用
+
+**重要**: `users`テーブルは事前登録専用です。新しいユーザーを追加するには、管理者が手動でデータベースにレコードを挿入する必要があります。
+
+#### 新しいユーザーの追加方法
 
 ```sql
--- アプリケーションのユーザー情報（ホワイトリスト兼用）
-users (
-  id, student_number, name, nickname, email, 
-  instruments, grade, role, image, 
+-- 新しいユーザーを追加
+INSERT INTO users (
+  id, student_number, name, email, instruments, grade, role, 
   created_at, updated_at
-)
-
--- Google OAuth連携情報
-google_accounts (
-  id, user_id, google_id, refresh_token, 
-  access_token, expires_at, token_type, 
-  scope, id_token, session_state,
-  created_at, updated_at
-)
-
--- セッション管理
-sessions (
-  id, session_token, user_id, expires,
-  created_at, updated_at
-)
+) VALUES (
+  'user-uuid-here',           -- 一意のUUID
+  'student123',               -- 学籍番号
+  '田中太郎',                  -- 表示名
+  'tanaka@example.com',       -- Googleアカウントのメールアドレス
+  '["VO", "GT"]',             -- 楽器（JSON配列）
+  3,                          -- 学年
+  'MBR',                      -- ロール（MBR: メンバー）
+  datetime('now'),            -- 作成日時
+  datetime('now')             -- 更新日時
+);
 ```
+
+#### ロール一覧
+
+| ロール | 説明 |
+|--------|------|
+| `ADM` | 管理者 |
+| `MGR` | マネージャー |
+| `CHF` | チーフ |
+| `MACT` | メインアクト |
+| `MBR` | メンバー |
+| `NHD` | 新入生 |
+| `NACT` | 新入生アクト |
+
+#### 楽器一覧
+
+| 楽器 | 説明 |
+|------|------|
+| `VO` | ボーカル |
+| `GT` | ギター |
+| `KEY` | キーボード |
+| `DR` | ドラム |
+| `BA` | ベース |
 
 ### セキュリティ設定
 
 - **クロスサブドメイン対応**: `SameSite=None; Secure`クッキー設定
 - **ホワイトリスト制御**: `users`テーブルに登録されたメールアドレスのみログイン可能
-- **セッション管理**: データベース戦略でセッション管理
+- **セッション管理**: JWT戦略でセッション管理（署名検証付き）
 - **PKCE対応**: OAuth 2.0のセキュリティ強化
+- **JWT署名検証**: HMAC-SHA256による署名検証でトークン偽造を防止
 
 ## 主なAPIエンドポイント
 
 ### 認証
-- `GET /auth/signin/google` - Googleログイン開始
-- `GET /auth/callback/google` - Google認証コールバック
-- `GET /auth/session` - セッション情報取得
-- `POST /auth/signout` - ログアウト
+- `POST /auth/signin/google` - Googleログイン開始（Auth.js API）
+- `GET /auth/callback/google` - Google認証コールバック（Auth.js API）
+- `GET /auth/session` - セッション情報取得（Auth.js API）
+- `POST /auth/signout` - ログアウト（Auth.js API）
 
 ### ユーザー管理
 - `GET /users/fetch/:email` - ユーザー情報取得
@@ -402,3 +532,43 @@ sessions (
 ```bash
 curl http://localhost:8787/auth/session
 ```
+
+## npmスクリプト一覧
+
+### 開発環境（ローカル）
+
+| スクリプト | 説明 |
+|-----------|------|
+| `npm run dev` | フルスタック開発環境を起動（ローカル） |
+| `npm run dev:local` | フルスタック開発環境を起動（ローカル） |
+| `npm run dev:web` | フロントエンドのみ起動 |
+| `npm run dev:worker:local` | バックエンドのみ起動（ローカル） |
+| `npm run build:local` | ローカル用ビルド |
+| `npm run db:setup:local` | ローカルDB設定 |
+
+### 本番環境（クラウド）
+
+| スクリプト | 説明 |
+|-----------|------|
+| `npm run dev:worker:cloud` | バックエンドのみ起動（クラウド） |
+| `npm run build:all:cloud` | クラウド用ビルド |
+| `npm run deploy:all:prod` | 本番環境にフルスタックデプロイ |
+| `npm run deploy:all:dev` | 開発環境にフルスタックデプロイ |
+| `npm run deploy:worker:prod` | 本番環境にWorkerデプロイ |
+| `npm run deploy:worker:dev` | 開発環境にWorkerデプロイ |
+| `npm run deploy:web:prod` | 本番環境にWebデプロイ |
+| `npm run deploy:web:dev` | 開発環境にWebデプロイ |
+| `npm run db:setup:prod` | 本番DB設定 |
+| `npm run db:setup:dev` | 開発DB設定 |
+
+### ユーティリティ
+
+| スクリプト | 説明 |
+|-----------|------|
+| `npm run lint` | 全プロジェクトのリント |
+| `npm run lint:web` | フロントエンドのリント |
+| `npm run lint:worker` | バックエンドのリント |
+| `npm run type-check` | 型チェック |
+| `npm run clean` | 全ビルド成果物を削除 |
+| `npm run clean:local` | ローカルビルド成果物を削除 |
+| `npm run install:all` | 全依存関係をインストール |
