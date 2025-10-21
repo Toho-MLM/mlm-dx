@@ -1,25 +1,50 @@
 'use client'
 
-import { createContext, useContext } from 'react'
-import { useSession, signOut } from 'next-auth/react'
+import { createContext, useContext, useEffect, useState } from 'react'
+import { signOut } from '@/lib/auth'
 import type { User } from '@/app/types'
 
 interface AuthContextType {
   user: User | null
   loading: boolean
-  signOut: () => Promise<void>
+  signOut: () => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const { data: session, status } = useSession()
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/auth/session`, {
+          credentials: 'include',
+        })
+        
+        if (response.ok) {
+          const session = await response.json()
+          setUser(session?.user || null)
+        } else {
+          setUser(null)
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error)
+        setUser(null)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    checkAuth()
+  }, [])
 
   return (
     <AuthContext.Provider value={{ 
-      user: session?.user as User | null, 
-      loading: status === 'loading', 
-      signOut: () => signOut({ callbackUrl: '/login' })
+      user, 
+      loading, 
+      signOut: () => signOut()
     }}>
       {children}
     </AuthContext.Provider>
