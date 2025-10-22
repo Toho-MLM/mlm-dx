@@ -20,7 +20,7 @@ export function LoginPage() {
 
   const handleGoogleSignIn = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/api/auth/signin/google`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/auth/signin/google`, {
         method: 'POST',
         credentials: 'include',
       })
