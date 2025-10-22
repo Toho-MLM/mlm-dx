@@ -25,9 +25,7 @@ npm install
 
 #### ローカル開発環境
 ```bash
-# ローカルD1データベースを作成
-npm run db:create:local
-
+# ローカルD1データベースは自動的に作成されます（wrangler dev実行時）
 # マイグレーションを実行
 npm run db:migrate:local
 
@@ -36,21 +34,6 @@ npm run db:seed:local
 
 # または一括でセットアップ
 npm run db:setup:local
-```
-
-#### 開発環境（クラウド）
-```bash
-# 開発環境D1データベースを作成
-npm run db:create:dev
-
-# マイグレーションを実行
-npm run db:migrate:dev
-
-# サンプルデータを投入（オプション）
-npm run db:seed:dev
-
-# または一括でセットアップ
-npm run db:setup:dev
 ```
 
 #### 本番環境（クラウド）
@@ -190,23 +173,15 @@ AUTH_SECRET = "your-auth-secret-here-min-32-chars-long"
 CORS_ORIGIN = "https://your-frontend-domain.com"
 FRONTEND_URL = "https://your-frontend-domain.com"
 
-# 本番環境設定
+# 本番環境設定（機密情報はwrangler secret putで管理）
 [env.production.vars]
-AUTH_SECRET = "prod-auth-secret-here-min-32-chars-long"
 CORS_ORIGIN = "https://your-frontend-domain.com"
 FRONTEND_URL = "https://your-frontend-domain.com"
-GOOGLE_CLIENT_ID = "your-production-google-client-id"
-GOOGLE_CLIENT_SECRET = "your-production-google-client-secret"
-YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token"
 
-# 開発環境設定
+# 開発環境設定（機密情報は.dev.varsファイルで管理）
 [env.development.vars]
-AUTH_SECRET = "dev-auth-secret-here-min-32-chars-long-for-development"
 CORS_ORIGIN = "http://localhost:3000"
 FRONTEND_URL = "http://localhost:3000"
-GOOGLE_CLIENT_ID = "your-dev-google-client-id"
-GOOGLE_CLIENT_SECRET = "your-dev-google-client-secret"
-YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token-for-dev"
 ```
 
 #### 4.4 環境変数の詳細説明
@@ -225,13 +200,35 @@ YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token-for-dev"
 
 | 変数名 | 説明 | 開発環境 | 本番環境 |
 |--------|------|----------|----------|
-| `NODE_ENV` | 環境設定（クッキーのsecure設定に影響） | `development` | `production` |
-| `AUTH_SECRET` | Auth.jsの暗号化キー | 開発用32文字以上の文字列 | 本番用32文字以上の文字列 |
 | `CORS_ORIGIN` | CORS許可オリジン | `http://localhost:3000` | `https://your-frontend-domain.com` |
 | `FRONTEND_URL` | フロントエンドのURL | `http://localhost:3000` | `https://your-frontend-domain.com` |
-| `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | 開発環境用のクライアントID | 本番環境用のクライアントID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | 開発環境用のシークレット | 本番環境用のシークレット |
-| `YOUTUBE_REFRESH_TOKEN` | YouTube API用リフレッシュトークン | 開発環境用のトークン | 本番環境用のトークン |
+| `AUTH_SECRET` | Auth.jsの暗号化キー | `.dev.vars`ファイル | `wrangler secret put` |
+| `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | `.dev.vars`ファイル | `wrangler secret put` |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | `.dev.vars`ファイル | `wrangler secret put` |
+| `YOUTUBE_REFRESH_TOKEN` | YouTube API用リフレッシュトークン | `.dev.vars`ファイル | `wrangler secret put` |
+
+#### 4.5 機密情報の管理方法
+
+**本番環境（wrangler secret put）:**
+本番環境の機密情報は`wrangler secret put`コマンドで安全に管理します：
+
+```bash
+# 本番環境の機密情報を設定
+wrangler secret put AUTH_SECRET --env production
+wrangler secret put GOOGLE_CLIENT_ID --env production
+wrangler secret put GOOGLE_CLIENT_SECRET --env production
+wrangler secret put YOUTUBE_REFRESH_TOKEN --env production
+```
+
+**開発環境（.dev.varsファイル）:**
+開発環境の機密情報は`apps/worker/.dev.vars`ファイルで管理します：
+
+```env
+AUTH_SECRET=your-dev-auth-secret-here-min-32-chars-long
+GOOGLE_CLIENT_ID=your-dev-google-client-id
+GOOGLE_CLIENT_SECRET=your-dev-google-client-secret
+YOUTUBE_REFRESH_TOKEN=your-youtube-oauth-refresh-token-for-dev
+```
 
 **注意事項:**
 - `AUTH_SECRET`は最低32文字以上のランダムな文字列である必要があります
@@ -239,6 +236,7 @@ YOUTUBE_REFRESH_TOKEN = "your-youtube-oauth-refresh-token-for-dev"
 - 開発環境と本番環境では**必ず異なる**クライアントIDとシークレットを使用してください
 - 本番環境では`https`プロトコルを使用し、適切なドメインを設定してください
 - 認証はワーカー側のみで実行され、フロントエンドはワーカー側の認証エンドポイントにリダイレクトします
+- `.dev.vars`ファイルは`.gitignore`に追加して、バージョン管理から除外してください
 
 ### 5. 開発サーバーの起動
 
@@ -255,16 +253,6 @@ npm run dev:web           # フロントエンド（Next.js）
 npm run dev:worker:local  # バックエンド（Wrangler ローカル）
 ```
 
-#### クラウド開発（本番環境テスト用）
-```bash
-# バックエンドのみクラウド環境で実行
-npm run dev:worker:cloud
-
-# フロントエンドはローカル、バックエンドはクラウド
-npm run dev:web
-npm run dev:worker:cloud
-```
-
 ## デプロイ
 
 ### 本番環境へのデプロイ
@@ -273,29 +261,19 @@ npm run dev:worker:cloud
 ```bash
 # 本番環境にフルスタックデプロイ
 npm run deploy:all:prod
-
-# 開発環境にフルスタックデプロイ
-npm run deploy:all:dev
 ```
-
 #### 個別デプロイ
 
 **Cloudflare Workers:**
 ```bash
 # 本番環境
 npm run deploy:worker:prod
-
-# 開発環境
-npm run deploy:worker:dev
 ```
 
 **Next.js（Cloudflare Pages）:**
 ```bash
 # 本番環境
 npm run deploy:web:prod
-
-# 開発環境
-npm run deploy:web:dev
 ```
 
 ### ビルド
@@ -310,16 +288,6 @@ npm run build:web
 npm run build:worker:local
 ```
 
-#### クラウドビルド（デプロイ用）
-```bash
-# クラウド用ビルド
-npm run build:all:cloud
-
-# 個別ビルド
-npm run build:web
-npm run build:worker:cloud
-```
-
 ### データベース管理
 
 #### ローカル環境
@@ -330,16 +298,6 @@ npm run db:setup:local
 # 個別実行
 npm run db:migrate:local
 npm run db:seed:local
-```
-
-#### 開発環境（クラウド）
-```bash
-# 開発環境DB設定
-npm run db:setup:dev
-
-# 個別実行
-npm run db:migrate:dev
-npm run db:seed:dev
 ```
 
 #### 本番環境（クラウド）
@@ -390,30 +348,76 @@ npm run db:seed:prod
 ```mermaid
 sequenceDiagram
     participant U as ユーザー
-    participant F as Next.jsフロントエンド<br/>(localhost:3000)
-    participant W as Cloudflare Workers<br/>(localhost:8787)
+    participant F as Next.jsフロントエンド<br/>(kumatoratiger.com)
+    participant W as Cloudflare Workers<br/>(Honoアプリ)
     participant G as Google OAuth
-    participant D as D1 Database
+    participant D as D1 usersテーブル<br/>(ホワイトリスト)
 
-    U->>F: 「Googleでログイン」クリック
-    F->>W: /auth/signin/google リダイレクト
-    Note over W: NextAuthがOAuth認可URL生成（state + PKCE）
-    W->>G: OAuth認可URL生成
-    G->>U: Google認証ページ表示
-    U->>G: 認証情報入力
-    G->>W: /auth/callback/google にコード返却
-    W->>G: トークン交換（next-auth/providers/google使用）
-    G->>W: ID token/access token/プロファイル取得
-    W->>D: ホワイトリスト判定（usersテーブル事前登録チェック）
-    alt 事前登録済みメール
-        W->>D: ユーザー情報更新（名前変更時のみ）
-        W->>W: JWTトークン生成（usersテーブルの実際のIDをsubに設定）
-        W->>F: Set-Cookie: next-auth.session-token<br/>（環境に応じてsecure設定）
-        F->>F: /auth/sessionでセッション状態確認
-        F->>U: ログイン完了
-    else 未登録メール
-        W->>W: JWTトークン生成拒否（null返却）
-        W->>F: 認証エラー表示
+    Note over U,D: 1. ユーザのGoogleログイン要求
+    U->>F: 「Googleでログイン」ボタンクリック
+    F->>W: POST /api/auth/signin/google
+    W->>W: CSRF防止用stateパラメータ生成<br/>(Cookieに保存)
+    W-->>G: 302 リダイレクト /authorize<br/>(OAuthクライアントID + state)
+
+    Note over U,D: 2. Googleによる認可 & コールバック
+    U->>G: Googleログイン画面で認証/同意
+    G-->>W: GET /api/auth/callback/google?code&state
+    W->>W: stateパラメータ検証
+    W->>G: POST /token (認可コード交換)
+    G-->>W: アクセストークン + IDトークン
+
+    Note over U,D: 3. ユーザ情報の取得とJWT発行
+    W->>G: GET /userinfo (アクセストークン使用)
+    G-->>W: ユーザプロフィール(email, name等)
+    W->>D: ホワイトリスト照合(email)
+    alt 許可されたユーザ
+        W->>W: JWT生成<br/>(email, exp, 署名)
+        W-->>F: HttpOnly + Secure Cookie<br/>(JWT設定)
+        F-->>U: ログイン完了
+    else 非許可ユーザ
+        W-->>F: 403 Forbidden
+        F-->>U: アクセス拒否エラー
+    end
+
+    Note over U,D: 4. APIリクエスト時のJWT検証
+    U->>F: 認証付きAPI呼び出し
+    F->>W: APIリクエスト<br/>(Cookie: JWT)
+    W->>W: JWT署名・有効期限検証
+    alt JWT有効
+        W->>D: ユーザ許可チェック
+        alt 許可
+            W-->>F: 200 データ返却
+            F-->>U: レスポンス表示
+        else 非許可
+            W-->>F: 403 Forbidden
+        end
+    else JWT無効
+        W-->>F: 401 Unauthorized
+    end
+
+    Note over U,D: 5. ログアウト
+    U->>F: ログアウトボタンクリック
+    F->>F: Cookie削除 (JWT破棄)
+    F-->>U: ログアウト完了
+```
+
+### APIアクセス制御フロー図
+
+```mermaid
+sequenceDiagram
+    participant F as フロントエンド
+    participant A as Hono APIルート
+    participant M as 認証ミドルウェア
+    participant D as Allowlist/RBAC
+
+    F->>A: fetch /users/holder (Cookie または Bearer)
+    A->>M: セッション/JWT検証
+    M->>D: ユーザー識別子で権限チェック
+    alt 許可
+        M-->>A: user(id,email,roles) を添付
+        A-->>F: 200 データ返却
+    else 拒否
+        M-->>F: 401/403
     end
 ```
 
@@ -574,16 +578,10 @@ curl http://localhost:8787/auth/session
 
 | スクリプト | 説明 |
 |-----------|------|
-| `npm run dev:worker:cloud` | バックエンドのみ起動（クラウド） |
-| `npm run build:all:cloud` | クラウド用ビルド |
 | `npm run deploy:all:prod` | 本番環境にフルスタックデプロイ |
-| `npm run deploy:all:dev` | 開発環境にフルスタックデプロイ |
 | `npm run deploy:worker:prod` | 本番環境にWorkerデプロイ |
-| `npm run deploy:worker:dev` | 開発環境にWorkerデプロイ |
 | `npm run deploy:web:prod` | 本番環境にWebデプロイ |
-| `npm run deploy:web:dev` | 開発環境にWebデプロイ |
 | `npm run db:setup:prod` | 本番DB設定 |
-| `npm run db:setup:dev` | 開発DB設定 |
 
 ### ユーティリティ
 

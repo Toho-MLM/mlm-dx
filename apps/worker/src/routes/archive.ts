@@ -8,9 +8,6 @@ const archiveRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 archiveRoutes.use('*', requireAuth);
 
-
-archiveRoutes.use('*', requireAuth);
-
 archiveRoutes.get('/', async (c: Context<{ Bindings: Bindings; Variables: Variables }>) => {
   try {
     const { results } = await c.env.DB.prepare(`

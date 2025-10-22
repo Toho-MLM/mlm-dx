@@ -13,9 +13,6 @@ export function MainContent({ children }: { children: React.ReactNode }) {
 
   const shouldHideSidebar = pathname === "/" || pathname === "/login";
 
-  useEffect(() => {
-    // Supabaseデバッグスクリプトは削除
-  }, []);
 
   return (
     <SidebarProvider>

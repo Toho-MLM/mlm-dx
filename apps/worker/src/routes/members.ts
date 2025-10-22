@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
-import { Bindings } from '../index';
+import type { Bindings, Variables } from '../index';
 
 // 安全なJSON解析関数
 function safeJsonParse<T>(json: string, fallback: T): T {
@@ -11,7 +11,7 @@ function safeJsonParse<T>(json: string, fallback: T): T {
   }
 }
 
-const memberRoutes = new Hono<{ Bindings: Bindings }>();
+const memberRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // Apply authentication middleware to all routes
 memberRoutes.use('*', requireAuth);
@@ -58,7 +58,7 @@ memberRoutes.get('/list', async (c) => {
     `).all();
 
     // Process the results to format groups and roles
-    const processedMembers = members.results.map((member: unknown) => ({
+    const processedMembers = members.results.map((member: any) => ({
       ...member,
       groups: member.groups ? member.groups.split(',') : [],
       instruments: safeJsonParse(member.instruments, [])
@@ -106,7 +106,7 @@ memberRoutes.get('/group/:groupId', async (c) => {
     `).bind(groupId).all();
 
     // Parse instruments JSON
-    const processedMembers = members.results.map((member: unknown) => ({
+    const processedMembers = members.results.map((member: any) => ({
       ...member,
       instruments: safeJsonParse(member.instruments, [])
     }));

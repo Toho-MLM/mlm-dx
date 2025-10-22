@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
-import { Bindings } from '../index';
+import type { Bindings, Variables } from '../index';
 
-const reservationRoutes = new Hono<{ Bindings: Bindings }>();
+const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // Apply authentication middleware to all routes
 reservationRoutes.use('*', requireAuth);
