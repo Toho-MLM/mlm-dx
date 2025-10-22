@@ -1,7 +1,6 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
-import { signOut } from '@/lib/auth'
 import type { User } from '@/app/types'
 
 interface AuthContextType {
@@ -19,7 +18,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/auth/session`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/api/auth/session`, {
           credentials: 'include',
         })
         
@@ -40,11 +39,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     checkAuth()
   }, [])
 
+  const signOut = async () => {
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/api/auth/signout`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      setUser(null)
+    } catch (error) {
+      console.error('Sign out failed:', error)
+    }
+  }
+
   return (
     <AuthContext.Provider value={{ 
       user, 
       loading, 
-      signOut: () => signOut()
+      signOut
     }}>
       {children}
     </AuthContext.Provider>

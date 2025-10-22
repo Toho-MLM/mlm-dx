@@ -26,6 +26,19 @@ export interface UserData {
     instruments: Instrument[];
 }
 
+export interface User {
+    id: string;
+    student_number: string;
+    name: string;
+    nickname?: string;
+    email: string;
+    instruments: ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[];
+    grade: number;
+    role: 'MGR' | 'CHF' | 'MACT' | 'MBR' | 'ADM' | 'NHD' | 'NACT';
+    created_at: string;
+    updated_at: string;
+}
+
 export type MemberListItem = Omit<UserData, 'email'>;
 
 export const instrumentNames: Record<Instrument, string> = {

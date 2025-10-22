@@ -1,5 +1,4 @@
-import type { Context } from 'hono';
-import Google from 'next-auth/providers/google';
+import { sign, verify } from 'hono/jwt';
 
 export interface AuthUser {
   id: string;
@@ -8,101 +7,113 @@ export interface AuthUser {
   image?: string;
 }
 
-export function getAuthConfig(c: Context): any {
-  return {
-    secret: c.env.AUTH_SECRET,
-    trustHost: true,
-    basePath: '/auth',
-    providers: [
-      Google({
-        clientId: c.env.GOOGLE_CLIENT_ID,
-        clientSecret: c.env.GOOGLE_CLIENT_SECRET,
-      }),
-    ],
-    callbacks: {
-      async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
-        const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:3000';
-        if (url.startsWith('/')) return `${frontendUrl}${url}`;
-        if (new URL(url).origin === baseUrl) return `${frontendUrl}/auth/callback`;
-        return frontendUrl;
-      },
-      async signIn({ user }: { user: AuthUser }) {
-        if (!user.email) {
-          console.log('No email provided');
-          return false;
-        }
+export interface CustomJWTPayload {
+  sub: string;
+  email: string;
+  name: string;
+  picture?: string;
+  iat: number;
+  exp: number;
+}
 
-        // ホワイトリスト判定：usersテーブルに事前登録されたメールのみ許可
-        const existingUser = await c.env.DB.prepare(
-          'SELECT id, name FROM users WHERE email = ?'
-        ).bind(user.email).first();
+export function generateState(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+}
 
-        if (!existingUser) {
-          console.log(`Access denied for email: ${user.email} - not in whitelist`);
-          return false;
-        }
-
-        // 既存ユーザーの情報を更新（名前が変更された場合）
-        if (existingUser.name !== user.name) {
-          const now = new Date().toISOString();
-          await c.env.DB.prepare(
-            'UPDATE users SET name = ?, updated_at = ? WHERE email = ?'
-          ).bind(
-            user.name || user.email,
-            now,
-            user.email
-          ).run();
-          console.log(`Updated user info for: ${user.email}`);
-        }
-
-        console.log(`Access granted for email: ${user.email}`);
-        return true;
-      },
-      async jwt({ token, user }: { token: any; user: AuthUser }) {
-        if (user) {
-          // usersテーブルから実際のユーザーIDを取得してsubに設定
-          const dbUser = await c.env.DB.prepare(
-            'SELECT id FROM users WHERE email = ?'
-          ).bind(user.email).first();
-          
-          if (dbUser) {
-            token.sub = dbUser.id; // データベースの実際のID
-            token.email = user.email;
-            token.name = user.name;
-            token.picture = user.image;
-          } else {
-            // ホワイトリストにないユーザーの場合、トークンを無効化
-            console.log(`User not found in whitelist: ${user.email}`);
-            return null;
-          }
-        }
-        return token;
-      },
-      async session({ session, token }: { session: any; token: any }) {
-        if (token.sub) {
-          session.user.id = token.sub;
-        }
-        return session;
-      },
-    },
-    pages: {
-      signIn: '/auth/signin',
-      error: '/auth/error',
-    },
-    session: {
-      strategy: 'jwt',
-      maxAge: 30 * 24 * 60 * 60,
-    },
-    cookies: {
-      sessionToken: {
-        name: "next-auth.session-token",
-        options: {
-          httpOnly: true,
-          sameSite: 'lax',
-          path: '/',
-          secure: c.env.NODE_ENV === 'production',
-        },
-      },
-    },
+export async function generateJWT(user: AuthUser, secret: string): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    name: user.name,
+    picture: user.image,
+    iat: now,
+    exp: now + (7 * 24 * 60 * 60),
   };
+  
+  return await sign(payload, secret);
+}
+
+export async function verifyJWT(token: string, secret: string): Promise<any | null> {
+  try {
+    const payload = await verify(token, secret);
+    return payload;
+  } catch (error) {
+    console.error('JWT verification failed:', error);
+    return null;
+  }
+}
+
+export async function getGoogleUserInfo(accessToken: string): Promise<AuthUser | null> {
+  try {
+    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google API error: ${response.status}`);
+    }
+
+    const userInfo = await response.json() as any;
+    
+    return {
+      id: userInfo.id,
+      email: userInfo.email,
+      name: userInfo.name,
+      image: userInfo.picture,
+    };
+  } catch (error) {
+    console.error('Failed to get Google user info:', error);
+    return null;
+  }
+}
+
+export async function exchangeCodeForToken(code: string, clientId: string, clientSecret: string, redirectUri: string): Promise<{ accessToken: string; idToken?: string } | null> {
+  try {
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Token exchange failed: ${response.status}`);
+    }
+
+    const tokenData = await response.json() as any;
+    
+    return {
+      accessToken: tokenData.access_token,
+      idToken: tokenData.id_token,
+    };
+  } catch (error) {
+    console.error('Token exchange failed:', error);
+    return null;
+  }
+}
+
+export function createGoogleAuthUrl(clientId: string, redirectUri: string, state: string): string {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    state,
+    access_type: 'offline',
+    prompt: 'consent',
+  });
+
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }

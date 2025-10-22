@@ -1,17 +1,22 @@
 'use client'
 
-import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
+import { useAuth } from '@/app/context/AuthContext'
 
 export default function CallbackPage() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { user, loading } = useAuth()
 
   useEffect(() => {
-    if (status === 'authenticated') router.replace('/')
-    if (status === 'unauthenticated') router.replace('/login')
-  }, [status, router])
+    if (!loading) {
+      if (user) {
+        router.replace('/')
+      } else {
+        router.replace('/login')
+      }
+    }
+  }, [user, loading, router])
 
   return <div className="min-h-screen flex items-center justify-center">認証中...</div>
 }
