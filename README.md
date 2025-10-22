@@ -312,7 +312,7 @@ npm run db:seed:prod
 
 ## 機能
 
-- ユーザー認証（Google OAuth + Auth.js）
+- ユーザー認証（Google OAuth 2.0 + JWT）
 - バンド管理
 - メンバー管理
 - 予約管理
@@ -320,28 +320,20 @@ npm run db:seed:prod
 
 ## 認証システム
 
-### 統一されたNextAuth認証ワークフロー
+### Workers側のみで実行するJWT認証ワークフロー
 
-認証システムは**ワーカー側のみ**でNextAuthを実行し、フロントエンドはワーカー側の認証エンドポイントにリダイレクトする方式を採用しています。これにより、設定の重複を避け、ホワイトリスト判定とJWTの整合性を保証しています。
-
-#### 認証フローの特徴
-
-1. **統一された認証処理**: NextAuthの設定はワーカー側のみに存在
-2. **ホワイトリスト制御**: `users`テーブルに事前登録されたメールアドレスのみログイン可能
-3. **環境対応セキュリティ**: 開発環境では`secure: false`、本番環境では`secure: true`
-4. **クロスオリジン対応**: `__Host-`プレフィックスを削除してクロスオリジン間でのセッション共有を実現
+認証は**Cloudflare Workers(Hono)** 側で完結します。OAuth認可コードは**PKCE**で保護し、トークン交換後の**IDトークンはGoogleのJWKS**で署名と`iss/aud/exp/nonce`を検証します。プロフィールの`email_verified`も確認し、D1の`users`ホワイトリストに合致したユーザーのみ許可します。許可時はWorkersが**JWT**を生成し、HttpOnly+Secure Cookieで返却します。
 
 #### 認証フロー詳細
 
 1. ユーザーがフロントエンドの「Googleでログイン」ボタンをクリック
-2. フロントエンドがワーカー側の`/auth/signin/google`にリダイレクト
-3. ワーカー側のNextAuthがOAuth認可URLを生成し、Googleの認可エンドポイントへリダイレクト
-4. Googleが認可後に`/auth/callback/google`にコードで戻す
-5. ワーカー側のNextAuthがコードを交換し、ID token/access token/ユーザープロファイルを取得
-6. **ホワイトリスト判定**: 取得したemailをD1の`users`テーブルと照合
-7. 許可される場合はワーカー側のNextAuthがJWTトークン生成（usersテーブルの実際のIDをsubに設定）
-8. セッションクッキー（`next-auth.session-token`）をブラウザにSet-Cookieで返す
-9. フロントエンドにリダイレクトし、ワーカー側の`/auth/session`エンドポイントでセッション状態を管理
+2. フロントエンドがWorkersの`POST /auth/signin/google`を呼び出し
+3. Workersが`state/nonce/code_verifier`を生成してCookie保存し、`code_challenge(S256)`付きのGoogle認可URLを返却
+4. Googleが認可後にWorkersの`GET /auth/callback/google`へ`code/state`で戻す
+5. Workersが`state`・`code_verifier`・`redirect_uri`でトークン交換し、IDトークンをJWKSで検証（`iss/aud/exp/nonce`）
+6. アクセストークンで`userinfo`を取得し、`email_verified`とD1のホワイトリストを検証
+7. 許可時にWorkersがJWTを生成（`sub`にDBユーザーID）し、HttpOnly+Secure Cookie（1週間）で返却
+8. フロントエンドにリダイレクト後、`GET /auth/session`でセッション取得
 
 ### 認証フロー図
 
@@ -355,16 +347,17 @@ sequenceDiagram
 
     Note over U,D: 1. ユーザのGoogleログイン要求
     U->>F: 「Googleでログイン」ボタンクリック
-    F->>W: POST /api/auth/signin/google
-    W->>W: CSRF防止用stateパラメータ生成<br/>(Cookieに保存)
-    W-->>G: 302 リダイレクト /authorize<br/>(OAuthクライアントID + state)
+    F->>W: POST /auth/signin/google
+    W->>W: state/nonce/code_verifier 生成<br/>(Cookie保存)
+    W-->>G: 302 リダイレクト /authorize<br/>(client_id + state + code_challenge + nonce)
 
     Note over U,D: 2. Googleによる認可 & コールバック
     U->>G: Googleログイン画面で認証/同意
-    G-->>W: GET /api/auth/callback/google?code&state
-    W->>W: stateパラメータ検証
-    W->>G: POST /token (認可コード交換)
-    G-->>W: アクセストークン + IDトークン
+    G-->>W: GET /auth/callback/google?code&state
+    W->>W: state/nonce 検証
+    W->>G: POST /token(code + code_verifier + redirect_uri)
+    G-->>W: access_token + id_token
+    W->>W: JWKSでid_token検証(iss/aud/exp/nonce)
 
     Note over U,D: 3. ユーザ情報の取得とJWT発行
     W->>G: GET /userinfo (アクセストークン使用)
@@ -469,20 +462,20 @@ INSERT INTO users (
 
 ### セキュリティ設定
 
-- **環境対応セキュリティ**: 開発環境では`secure: false`、本番環境では`secure: true`でクッキーのセキュリティを制御
-- **クロスオリジン対応**: `__Host-`プレフィックスを削除してクロスオリジン間でのセッション共有を実現
-- **ホワイトリスト制御**: `users`テーブルに登録されたメールアドレスのみログイン可能
-- **セッション管理**: JWT戦略でセッション管理（署名検証付き）
-- **PKCE対応**: OAuth 2.0のセキュリティ強化
-- **JWT署名検証**: HMAC-SHA256による署名検証でトークン偽造を防止
+- **PKCE**: 認可コード窃取対策（`code_verifier/code_challenge(S256)`）
+- **IDトークン検証**: Google JWKSで署名と`iss/aud/exp/nonce`を検証
+- **メール検証**: `email_verified` が false のユーザーは拒否
+- **ホワイトリスト**: `users`テーブルに登録されたメールのみ許可
+- **JWT**: HMAC-SHA256署名・有効期限1週間
+- **Cookie**: HttpOnly + SameSite=Lax + 環境に応じてSecure
 
 ## 主なAPIエンドポイント
 
 ### 認証
-- `POST /auth/signin/google` - Googleログイン開始（Auth.js API）
-- `GET /auth/callback/google` - Google認証コールバック（Auth.js API）
-- `GET /auth/session` - セッション情報取得（Auth.js API）
-- `POST /auth/signout` - ログアウト（Auth.js API）
+- `POST /auth/signin/google` - Googleログイン開始（PKCE/nonce生成）
+- `GET /auth/callback/google` - Googleコールバック（state/code_verifier検証 + JWKS検証）
+- `GET /auth/session` - セッション情報取得（JWT検証）
+- `POST /auth/signout` - ログアウト（Cookie削除）
 
 ### ユーザー管理
 - `GET /users/fetch/:email` - ユーザー情報取得

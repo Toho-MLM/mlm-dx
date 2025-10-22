@@ -4,7 +4,7 @@ import type { Context } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { generateState, createGoogleAuthUrl, exchangeCodeForToken, getGoogleUserInfo, generateJWT, verifyJWT } from './auth';
+import { generateState, generateNonce, generateCodeVerifier, generateCodeChallenge, createGoogleAuthUrl, exchangeCodeForToken, getGoogleUserInfo, verifyGoogleIdToken, generateJWT, verifyJWT } from './auth';
 import { userRoutes } from './routes/users';
 import { groupRoutes } from './routes/groups';
 import { memberRoutes } from './routes/members';
@@ -41,10 +41,13 @@ app.use('*', cors({
   credentials: true,
 }));
 
-app.post('/api/auth/signin/google', async (c) => {
+app.post('/auth/signin/google', async (c) => {
   try {
     const state = generateState();
     const redirectUri = `${c.env.AUTH_URL}/auth/callback/google`;
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = await generateCodeChallenge(codeVerifier);
+    const nonce = generateNonce();
 
     setCookie(c, 'oauth_state', state, {
       httpOnly: true,
@@ -54,10 +57,28 @@ app.post('/api/auth/signin/google', async (c) => {
       path: '/',
     });
 
+    setCookie(c, 'pkce_verifier', codeVerifier, {
+      httpOnly: true,
+      secure: c.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 600,
+      path: '/',
+    });
+
+    setCookie(c, 'oauth_nonce', nonce, {
+      httpOnly: true,
+      secure: c.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 600,
+      path: '/',
+    });
+
     const authUrl = createGoogleAuthUrl(
       c.env.GOOGLE_CLIENT_ID,
       redirectUri,
-      state
+      state,
+      codeChallenge,
+      nonce
     );
 
     return c.json({ authUrl });
@@ -73,6 +94,8 @@ app.get('/auth/callback/google', async (c) => {
     const code = c.req.query('code');
     const state = c.req.query('state');
     const storedState = getCookie(c, 'oauth_state');
+    const storedVerifier = getCookie(c, 'pkce_verifier');
+    const storedNonce = getCookie(c, 'oauth_nonce');
 
     if (!code || !state || !storedState || state !== storedState) {
       return c.json({ error: 'Invalid state parameter' }, 400);
@@ -80,6 +103,8 @@ app.get('/auth/callback/google', async (c) => {
 
     // state Cookieを削除
     deleteCookie(c, 'oauth_state');
+    deleteCookie(c, 'pkce_verifier');
+    deleteCookie(c, 'oauth_nonce');
 
     // 認可コードをトークンに交換
     const redirectUri = `${c.env.AUTH_URL}/auth/callback/google`;
@@ -87,15 +112,30 @@ app.get('/auth/callback/google', async (c) => {
       code,
       c.env.GOOGLE_CLIENT_ID,
       c.env.GOOGLE_CLIENT_SECRET,
-      redirectUri
+      redirectUri,
+      storedVerifier || ''
     );
 
     if (!tokenData) {
       return c.json({ error: 'Token exchange failed' }, 400);
     }
 
-    // Googleユーザー情報を取得
+    // IDトークン検証（署名/iss/aud/exp/nonce）
+    if (tokenData.idToken) {
+      const idPayload = await verifyGoogleIdToken(tokenData.idToken, c.env.GOOGLE_CLIENT_ID, storedNonce || undefined);
+      if (!idPayload) {
+        return c.json({ error: 'Invalid id_token' }, 401);
+      }
+    }
+
+    // Googleユーザー情報を取得（アクセストークン）
     const googleUser = await getGoogleUserInfo(tokenData.accessToken);
+    if (!googleUser) {
+      return c.json({ error: 'Failed to get user info' }, 400);
+    }
+    if (googleUser.emailVerified === false) {
+      return c.json({ error: 'Email not verified' }, 403);
+    }
     if (!googleUser) {
       return c.json({ error: 'Failed to get user info' }, 400);
     }
@@ -147,7 +187,7 @@ app.get('/auth/callback/google', async (c) => {
 });
 
 // セッション情報取得
-app.get('/api/auth/session', async (c) => {
+app.get('/auth/session', async (c) => {
   try {
     const token = getCookie(c, 'auth_token');
     
@@ -184,11 +224,21 @@ app.get('/api/auth/session', async (c) => {
 });
 
 // ログアウト
-app.post('/api/auth/signout', async (c) => {
-  // Cookieを削除
-  deleteCookie(c, 'auth_token');
+app.post('/auth/signout', async (c) => {
+  try {
+    // Cookieを削除（適切な属性で）
+    deleteCookie(c, 'auth_token', {
+      path: '/',
+      httpOnly: true,
+      secure: c.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
 
-  return c.json({ success: true });
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Signout error:', error);
+    return c.json({ success: false, error: 'Signout failed' }, 500);
+  }
 });
 
 app.route('/users', userRoutes);

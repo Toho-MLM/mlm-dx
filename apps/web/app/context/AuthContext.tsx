@@ -18,7 +18,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/api/auth/session`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/auth/session`, {
           credentials: 'include',
         })
         
@@ -41,13 +41,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/api/auth/signout`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/auth/signout`, {
         method: 'POST',
         credentials: 'include',
       })
-      setUser(null)
+      
+      if (response.ok) {
+        setUser(null)
+      } else {
+        console.error('Sign out failed:', response.status)
+        setUser(null)
+      }
     } catch (error) {
       console.error('Sign out failed:', error)
+      setUser(null)
     }
   }
 
