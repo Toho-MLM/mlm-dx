@@ -75,7 +75,14 @@ export default function Page() {
   }
 
   if (userData) {
-    return <SetupWizard {...userData} />
+    const needsSetup = !userData.nickname || userData.instruments.length === 0
+    
+    if (needsSetup) {
+      return <SetupWizard {...userData} />
+    } else {
+      router.push('/profile')
+      return null
+    }
   }
 
   return null

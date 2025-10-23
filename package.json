@@ -27,6 +27,7 @@
     "db:seed:prod": "npm run db:seed --workspace=apps/worker",
     "db:setup:local": "npm run db:setup:local --workspace=apps/worker",
     "db:setup:prod": "npm run db:setup --workspace=apps/worker",
+    "seed": "node scripts/seed.js",
     "lint": "npm run lint:all",
     "lint:web": "npm run lint --workspace=apps/web",
     "lint:worker": "npm run lint --workspace=apps/worker",

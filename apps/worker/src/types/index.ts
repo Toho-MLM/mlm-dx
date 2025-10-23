@@ -1,12 +1,11 @@
 export interface User {
   id: string;
-  student_number: string;
   name: string;
   nickname?: string;
   email: string;
   instruments: ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[];
   grade: number;
-  role: 'MGR' | 'CHF' | 'MACT' | 'MBR' | 'ADM' | 'NHD' | 'NACT';
+  role: 'MGR' | 'CHF' | 'MAC' | 'MBR' | 'ADM' | 'NHD' | 'NAC';
   created_at: string;
   updated_at: string;
 }

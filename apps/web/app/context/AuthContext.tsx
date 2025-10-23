@@ -18,7 +18,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/auth/session`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL }/auth/session`, {
           credentials: 'include',
         })
         
@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/auth/signout`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL }/auth/signout`, {
         method: 'POST',
         credentials: 'include',
       })

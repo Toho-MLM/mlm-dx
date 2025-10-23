@@ -4,6 +4,8 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  given_name?: string;
+  family_name?: string;
   image?: string;
   emailVerified?: boolean;
 }
@@ -86,6 +88,8 @@ export async function getGoogleUserInfo(accessToken: string): Promise<AuthUser |
       id: userInfo.id,
       email: userInfo.email,
       name: userInfo.name,
+      given_name: userInfo.given_name,
+      family_name: userInfo.family_name,
       image: userInfo.picture,
       emailVerified: (userInfo.verified_email ?? userInfo.email_verified) === true,
     };
