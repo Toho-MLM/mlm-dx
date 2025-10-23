@@ -3,9 +3,11 @@ import { z } from 'zod';
 export const UserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
-  name: z.string(),
+  name: z.string().nullable(),
   nickname: z.string().nullable(),
-  instruments: z.string().nullable(),
+  instruments: z.array(z.string()),
+  grade: z.number(),
+  role: z.string(),
   created_at: z.string(),
   updated_at: z.string().nullable(),
 });
@@ -51,7 +53,7 @@ export const GroupWithMemberRoleSchema = GroupSchema.extend({
 export const MemberSchema = z.object({
   id: z.string(),
   email: z.string().email(),
-  name: z.string(),
+  name: z.string().nullable(),
   nickname: z.string().nullable(),
   instruments: z.array(z.string()),
   student_number: z.string(),

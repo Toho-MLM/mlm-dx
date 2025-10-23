@@ -18,9 +18,9 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
     }
     return memberData.sort((a, b) => {
       if (a.grade !== b.grade) {
-        return b.grade.localeCompare(a.grade) // 学年で降順
+        return b.grade - a.grade
       }
-      return a.student_number.localeCompare(b.student_number) // 学籍番号で昇順
+      return a.student_number.localeCompare(b.student_number)
     })
   }, [memberData])
 

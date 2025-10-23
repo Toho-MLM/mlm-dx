@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useMemo } from 'react'
+import React, { useState, useRef, useMemo, useEffect } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
 import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, startOfDay, subDays } from 'date-fns'
@@ -32,10 +32,6 @@ import { useAuth } from '../context/AuthContext'
 
 const locales = {
   'ja': jaLocale,
-}
-
-function isMobile() {
-  return /Mobi|Android/i.test(navigator.userAgent);
 }
 
 const localizer = dateFnsLocalizer({
@@ -115,7 +111,8 @@ ThreeDayView.title = (date: Date) => {
   return `3日間表示: ${start} - ${end}`
 }
 
-export function ReservationPage({ reservationData, userHolder }: { reservationData: ReservationData[], userHolder: ReservationHolder[] }) {
+export function ReservationPage({ initialReservationData, initialUserHolder }: { initialReservationData: ReservationData[], initialUserHolder: ReservationHolder[] }) {
+  const [isMobile, setIsMobile] = useState(false)
   const [reservationDraft, setReservationDraft] = useState({
     date: startOfDay(new Date()),
     group: null as string | null,
@@ -133,12 +130,25 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [isFormDatePickerOpen, setIsFormDatePickerOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [currentView, setCurrentView] = useState<View>(
-    isMobile() ? 'myRange' as View : Views.WEEK
-  )
+  const [currentView, setCurrentView] = useState<View>(Views.WEEK)
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
   const [popoverPosition, setPopoverPosition] = useState<{ y: number; x: number } | null>(null)
+  const [reservationData, setReservationData] = useState<ReservationData[]>(initialReservationData)
+  const [userHolder, setUserHolder] = useState<ReservationHolder[]>(initialUserHolder)
   const { user } = useAuth();
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(/Mobi|Android/i.test(navigator.userAgent))
+    }
+    checkMobile()
+  }, [])
+
+  useEffect(() => {
+    if (isMobile) {
+      setCurrentView('myRange' as View)
+    }
+  }, [isMobile])
 
   const calendarRef = useRef<HTMLDivElement>(null)
 
@@ -191,8 +201,12 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
     try {
       setIsSending(true)
       
+      const selectedHolder = userHolder.find(holder => holder.id === reservationDraft.group);
+      const isPersonalReservation = !selectedHolder || selectedHolder.id === null;
+      
       const response = await apiClient.createReservation({
-        holder_group_id: reservationDraft.group || undefined,
+        holder_user_id: isPersonalReservation ? user?.id : undefined,
+        holder_group_id: !isPersonalReservation && reservationDraft.group ? reservationDraft.group : undefined,
         start_time: start.toISOString(),
         end_time: end.toISOString(),
       });
@@ -209,6 +223,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
         })
         setErrorMessage(null)
         setIsReservationFormOpen(false)
+        await refetchReservationData()
       } else {
         setErrorMessage('データの送信中にエラーが発生しました。' + response.error);
       }
@@ -219,15 +234,16 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
     }
   }
 
-  const handleCancel = async (id: string) => {
+  const handleCancel = async (id: number) => {
     setIsSending(true)
     try {
-      const response = await apiClient.cancelReservation(parseInt(id));
+      const response = await apiClient.cancelReservation(id);
       
       if (response.success) {
         console.log('Reservation cancelled successfully')
         setSelectedReservation(null)
         setIsCancelFormOpen(false)
+        await refetchReservationData()
       } else {
         setErrorMessage('データの送信中にエラーが発生しました。' + response.error)
       }
@@ -327,6 +343,43 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
     setPopoverPosition(null)
   }
 
+  const refetchReservationData = async () => {
+    try {
+      const [reservationsResponse, userHolderResponse] = await Promise.all([
+        apiClient.getReservations(),
+        apiClient.getUserHolder()
+      ]);
+
+      if (reservationsResponse.success && reservationsResponse.data) {
+        const formattedData: ReservationData[] = (reservationsResponse.data as any[]).map((item: any) => ({
+          ...item,
+          start: new Date(item.start_time),
+          end: new Date(item.end_time),
+        }));
+        setReservationData(formattedData);
+      }
+
+      if (userHolderResponse.success && userHolderResponse.data) {
+        const userHolderData = userHolderResponse.data as any;
+        const result: ReservationHolder[] = [];
+        result.push({
+          name: userHolderData.user.nickname,
+          id: null
+        });
+        
+        userHolderData.bands.forEach((band: { name: string; id: string }) => {
+          result.push({
+            name: band.name,
+            id: band.id
+          });
+        });
+        setUserHolder(result);
+      }
+    } catch (err) {
+      console.error('Failed to refetch reservation data:', err);
+    }
+  }
+
 
   const { customViews } = useMemo(
     () => ({
@@ -340,11 +393,11 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
   )
 
   return (
-    <div className="h-screen" ref={calendarRef} style={{ position: 'relative' }}>
-      <div className="mx-auto px-5 min-w-fit">
-        <Card className="bg-white shadow-lg rounded-lg overflow-hidden h-full">
-          <CardDescription>
-            <div className={"p-2 flex flex-wrap gap-2 " + (isMobile() ? "justify-center" : "justify-end")}>
+    <div className="h-[calc(100vh-4rem)] flex flex-col" ref={calendarRef} style={{ position: 'relative' }}>
+      <div className="flex-1 mx-auto px-5 w-full max-w-none">
+        <Card className="bg-white shadow-lg rounded-lg overflow-hidden h-full flex flex-col">
+          <CardDescription className="flex-shrink-0">
+            <div className={"p-2 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
               <Button variant="outline" onClick={() => handleNavigate(subDays(currentDate, getRangeSkip()), currentView)}>
                 <ChevronLeftIcon className=" h-4 w-4" />
               </Button>
@@ -373,7 +426,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
                 <DropdownMenuContent>
                   <DropdownMenuCheckboxItem checked={currentView === Views.DAY} onCheckedChange={() => handleViewChange(Views.DAY)}>１日</DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem checked={currentView === 'myRange' as View} onCheckedChange={() => handleViewChange('myRange' as View)}>３日</DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem checked={currentView === Views.WEEK} onCheckedChange={() => handleViewChange(Views.WEEK)} disabled={isMobile()}>週</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={currentView === Views.WEEK} onCheckedChange={() => handleViewChange(Views.WEEK)} disabled={isMobile}>週</DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               <Button variant="outline" onClick={() => handleNavigate(addDays(currentDate, getRangeSkip()), currentView)}>
@@ -381,7 +434,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
               </Button> 
             </div>
           </CardDescription>
-          <CardContent>
+          <CardContent className="flex-1">
             <BigCalendar
               localizer={localizer}
               events={reservationData}
@@ -680,8 +733,7 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
               <DialogTitle className="text-xl font-semibold">予約のキャンセル</DialogTitle>
             </DialogHeader>
             {selectedReservation ? (
-              (selectedReservation.state === ReservationState.PENDING || selectedReservation.state === ReservationState.CONFIRMED) ? (
-                 selectedReservation.booked_by === user!.id ? (
+              selectedReservation.cancellable === 1 ? (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
                     <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
@@ -697,11 +749,8 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
                     </Button>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-600 dark:text-gray-300">他の人の予約はキャンセルできません。</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">この予約はキャンセルできません。</p>
                 )
-              ) : (
-                <p className="text-sm text-gray-600 dark:text-gray-300">キャンセル可能な予約を選択してください。</p>
-              )
             ) : (
               <p className="text-sm text-gray-600 dark:text-gray-300">キャンセルしたい予約を選択してください。</p>
             )}

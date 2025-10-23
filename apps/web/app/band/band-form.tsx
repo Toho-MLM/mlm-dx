@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { apiClient } from '@/lib/api'
+import { createGroupAction } from '@/lib/server-actions'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { useAuth } from '../context/AuthContext'
 interface BandFormProps {
@@ -19,13 +19,14 @@ interface BandFormProps {
   members: Member[]
   isOpen: boolean
   onClose: () => void
+  onSuccess?: () => void
 }
 
-export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
+export function BandForm({ band, members, isOpen, onClose, onSuccess }: BandFormProps) {
   const [name, setName] = useState(band?.name || '')
   const [bandMembers, setBandMembers] = useState<GroupMember[]>(band?.assignments || [])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [isSending, setIsSending] = useState(false)
+  const [isPending, startTransition] = useTransition()
   const { user } = useAuth()
 
   useEffect(() => {
@@ -62,33 +63,31 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
       return
     }
 
-    try {
-      setIsSending(true)
-      
-      const assignments = bandMembers.reduce((acc, bm) => {
-        bm.instruments.forEach(instrument => {
-          acc[instrument] = bm.id;
+    startTransition(async () => {
+      try {
+        const assignments = bandMembers.reduce((acc, bm) => {
+          bm.instruments.forEach(instrument => {
+            acc[instrument] = bm.id;
+          });
+          return acc;
+        }, {} as Record<string, string>);
+
+        const response = await createGroupAction({
+          name,
+          assignments: JSON.stringify(assignments),
+          is_main: false
         });
-        return acc;
-      }, {} as Record<string, string>);
 
-      const response = await apiClient.createGroup({
-        name,
-        assignments: JSON.stringify(assignments),
-        is_main: false
-      });
-
-      if (response.success) {
-        onClose()
-        window.location.reload()
-      } else {
-        setErrorMessage('データの送信中にエラーが発生しました。' + response.error);
+        if (response.success) {
+          onClose()
+          onSuccess?.()
+        } else {
+          setErrorMessage('データの送信中にエラーが発生しました。' + response.error);
+        }
+      } catch (error) {
+        setErrorMessage((error as Error).message)
       }
-    } catch (error) {
-      setErrorMessage((error as Error).message)
-    } finally {
-      setIsSending(false)
-    }
+    })
   }
 
   const addMember = (memberId: string) => {
@@ -209,8 +208,8 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
                   ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button onClick={handleSubmit} disabled={isSending}>
-              {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Button onClick={handleSubmit} disabled={isPending}>
+              {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               保存
             </Button>
           </div>

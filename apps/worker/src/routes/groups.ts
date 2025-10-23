@@ -6,6 +6,31 @@ import { z } from 'zod';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+// Helper function to check if a user belongs to a specific group
+export async function isUserInGroup(env: Bindings, userId: string, groupId: string): Promise<boolean> {
+  const result = await env.DB.prepare(`
+    SELECT 1
+    FROM groups g
+    JOIN group_member_instruments gmi ON g.id = gmi.group_id
+    WHERE gmi.user_id = ? AND g.id = ? AND g.is_active = TRUE
+    LIMIT 1
+  `).bind(userId, groupId).first();
+  
+  return !!result;
+}
+
+// Helper function to get user's group IDs
+export async function getUserGroupIds(env: Bindings, userId: string): Promise<string[]> {
+  const userGroups = await env.DB.prepare(`
+    SELECT DISTINCT g.id
+    FROM groups g
+    JOIN group_member_instruments gmi ON g.id = gmi.group_id
+    WHERE gmi.user_id = ? AND g.is_active = TRUE
+  `).bind(userId).all();
+  
+  return userGroups.results.map((group: any) => group.id);
+}
+
 // Apply authentication middleware to all routes
 groupRoutes.use('*', requireAuth);
 

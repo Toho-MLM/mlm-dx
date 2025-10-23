@@ -55,16 +55,27 @@ function executeSQL(sql, isLocal = false) {
 
 function showHelp() {
   console.log(`
-MLM-DX User Management CLI
+MLM-DX Database Management CLI
 
 Usage:
-  node scripts/seed.js user <action> [options]
+  node scripts/seed.js <table> <action> [options]
 
-Actions:
+Tables:
+  user                    User management
+  reservation             Reservation management
+  groups                  Groups management
+
+User Actions:
   add                     Add a new user
   remove                  Remove a user
   list                    List all users
   reset                   Reset database (recreate schema)
+
+Reservation Actions:
+  reset                   Reset reservations table
+
+Groups Actions:
+  reset                   Reset groups table
 
 Add Options:
   --email <email>         User's email address (required)
@@ -79,23 +90,26 @@ Global Options:
   --help                  Show this help message
 
 Examples:
-  # Add a user
+  # User management
   node scripts/seed.js user add --email "tanaka@example.com" --grade 3
-
-  # Remove a user
   node scripts/seed.js user remove --email "tanaka@example.com"
-
-  # List users
   node scripts/seed.js user list
-
-  # Reset database
   node scripts/seed.js user reset
+
+  # Reset reservations table
+  node scripts/seed.js reservation reset
+
+  # Reset groups table
+  node scripts/seed.js groups reset
 
   # Use local database
   node scripts/seed.js user add --email "test@example.com" --grade 2 --local
+  node scripts/seed.js reservation reset --local
+  node scripts/seed.js groups reset --local
 `);
 }
 
+// Database utility functions
 function resetDatabase(isLocal = false) {
   console.log('Resetting database...');
   
@@ -137,37 +151,20 @@ function removeUser(email, isLocal = false) {
   console.log('User removed successfully');
 }
 
-function resetDatabase(isLocal = false) {
-  console.log('Resetting database...');
+function resetReservations(isLocal = false) {
+  console.log('Resetting reservations table...');
   
-  const schemaPath = './schema.sql';
-  const command = isLocal 
-    ? `wrangler d1 execute mlm-dx-db --file=${schemaPath} --local`
-    : `wrangler d1 execute mlm-dx-db --file=${schemaPath}`;
-  
-  try {
-    execSync(command, { stdio: 'inherit', cwd: './apps/worker' });
-    console.log('Database reset successfully');
-  } catch (error) {
-    console.error('ERROR: Failed to reset database:', error.message);
-    process.exit(1);
-  }
+  const sql = 'DELETE FROM reservations';
+  executeSQL(sql, isLocal);
+  console.log('Reservations table reset successfully');
 }
 
-function listUsers(isLocal = false) {
-  console.log('Listing users...');
+function resetGroups(isLocal = false) {
+  console.log('Resetting groups table...');
   
-  const query = 'SELECT id, name, email, grade, role, created_at FROM users ORDER BY created_at DESC';
-  const command = isLocal 
-    ? `wrangler d1 execute mlm-dx-db --command="${query}" --local`
-    : `wrangler d1 execute mlm-dx-db --command="${query}"`;
-  
-  try {
-    execSync(command, { stdio: 'inherit', cwd: './apps/worker' });
-  } catch (error) {
-    console.error('ERROR: Failed to list users:', error.message);
-    process.exit(1);
-  }
+  const sql = 'DELETE FROM groups';
+  executeSQL(sql, isLocal);
+  console.log('Groups table reset successfully');
 }
 
 function main() {
@@ -178,8 +175,11 @@ function main() {
     return;
   }
   
-  if (args[0] !== 'user') {
-    console.error('ERROR: Only "user" command is supported. Use --help for usage information.');
+  const validTables = ['user', 'reservation', 'groups'];
+  const table = args[0];
+  
+  if (!validTables.includes(table)) {
+    console.error(`ERROR: Invalid table "${table}". Valid tables: ${validTables.join(', ')}. Use --help for usage information.`);
     process.exit(1);
   }
   
@@ -204,76 +204,102 @@ function main() {
     
     const isLocal = values.local === true;
     
-    switch (action) {
-      case 'add': {
-        const email = values.email;
-        const grade = values.grade;
-        const role = values.role || 'MBR';
-        
-        if (!email || !grade) {
-          console.error('ERROR: Missing required fields. Use --help for usage information.');
-          process.exit(1);
+    if (table === 'user') {
+      switch (action) {
+        case 'add': {
+          const email = values.email;
+          const grade = values.grade;
+          const role = values.role || 'MBR';
+          
+          if (!email || !grade) {
+            console.error('ERROR: Missing required fields. Use --help for usage information.');
+            process.exit(1);
+          }
+          
+          if (!validateEmail(email)) {
+            console.error('ERROR: Invalid email format');
+            process.exit(1);
+          }
+          
+          if (!VALID_ROLES.includes(role)) {
+            console.error('ERROR: Invalid role. Valid roles: MGR,CHF,MAC,MBR,ADM,NHD,NAC');
+            process.exit(1);
+          }
+          
+          const gradeNum = parseInt(grade);
+          if (isNaN(gradeNum) || gradeNum < 1 || gradeNum > 6) {
+            console.error('ERROR: Grade must be a number between 1 and 6');
+            process.exit(1);
+          }
+          
+          const user = {
+            email,
+            grade: gradeNum,
+            role
+          };
+          
+          const sql = createUserSQL(user);
+          executeSQL(sql, isLocal);
+          console.log('User added successfully');
+          break;
         }
         
-        if (!validateEmail(email)) {
-          console.error('ERROR: Invalid email format');
-          process.exit(1);
+        case 'remove': {
+          const email = values.email;
+          
+          if (!email) {
+            console.error('ERROR: Email is required for remove action. Use --help for usage information.');
+            process.exit(1);
+          }
+          
+          if (!validateEmail(email)) {
+            console.error('ERROR: Invalid email format');
+            process.exit(1);
+          }
+          
+          removeUser(email, isLocal);
+          break;
         }
         
-        if (!VALID_ROLES.includes(role)) {
-          console.error('ERROR: Invalid role. Valid roles: MGR,CHF,MAC,MBR,ADM,NHD,NAC');
-          process.exit(1);
+        case 'list': {
+          listUsers(isLocal);
+          break;
         }
         
-        const gradeNum = parseInt(grade);
-        if (isNaN(gradeNum) || gradeNum < 1 || gradeNum > 6) {
-          console.error('ERROR: Grade must be a number between 1 and 6');
-          process.exit(1);
+        case 'reset': {
+          resetDatabase(isLocal);
+          break;
         }
         
-        const user = {
-          email,
-          grade: gradeNum,
-          role
-        };
-        
-        const sql = createUserSQL(user);
-        executeSQL(sql, isLocal);
-        console.log('User added successfully');
-        break;
+        default:
+          console.error(`ERROR: Unknown action for user table: ${action}`);
+          showHelp();
+          process.exit(1);
       }
-      
-      case 'remove': {
-        const email = values.email;
-        
-        if (!email) {
-          console.error('ERROR: Email is required for remove action. Use --help for usage information.');
-          process.exit(1);
+    } else if (table === 'reservation') {
+      switch (action) {
+        case 'reset': {
+          resetReservations(isLocal);
+          break;
         }
         
-        if (!validateEmail(email)) {
-          console.error('ERROR: Invalid email format');
+        default:
+          console.error(`ERROR: Unknown action for reservation table: ${action}`);
+          showHelp();
           process.exit(1);
+      }
+    } else if (table === 'groups') {
+      switch (action) {
+        case 'reset': {
+          resetGroups(isLocal);
+          break;
         }
         
-        removeUser(email, isLocal);
-        break;
+        default:
+          console.error(`ERROR: Unknown action for groups table: ${action}`);
+          showHelp();
+          process.exit(1);
       }
-      
-      case 'list': {
-        listUsers(isLocal);
-        break;
-      }
-      
-      case 'reset': {
-        resetDatabase(isLocal);
-        break;
-      }
-      
-      default:
-        console.error(`ERROR: Unknown action: ${action}`);
-        showHelp();
-        process.exit(1);
     }
   } catch (error) {
     console.error('ERROR:', error.message);
