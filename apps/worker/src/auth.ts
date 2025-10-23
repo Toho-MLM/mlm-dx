@@ -1,4 +1,60 @@
 import { sign, verify } from 'hono/jwt';
+import { z } from 'zod';
+
+const GoogleUserSchema = z.object({
+  id: z.string(),
+  email: z.string().email(),
+  name: z.string(),
+  given_name: z.string().optional(),
+  family_name: z.string().optional(),
+  picture: z.string().url().optional(),
+  verified_email: z.boolean().optional(),
+  email_verified: z.boolean().optional(),
+});
+
+const GoogleTokenResponseSchema = z.object({
+  access_token: z.string(),
+  id_token: z.string().optional(),
+  token_type: z.string(),
+  expires_in: z.number(),
+});
+
+const GoogleJWKSchema = z.object({
+  keys: z.array(z.object({
+    kid: z.string(),
+    alg: z.string(),
+    kty: z.string(),
+    use: z.string(),
+    n: z.string(),
+    e: z.string(),
+  })),
+});
+
+const GoogleIdTokenPayloadSchema = z.object({
+  iss: z.string(),
+  aud: z.string(),
+  sub: z.string(),
+  email: z.string().email(),
+  name: z.string(),
+  picture: z.string().url().optional(),
+  exp: z.number(),
+  iat: z.number(),
+  nonce: z.string().optional(),
+});
+
+const CustomJWTPayloadSchema = z.object({
+  sub: z.string(),
+  email: z.string().email(),
+  name: z.string(),
+  picture: z.string().url().optional(),
+  iat: z.number(),
+  exp: z.number(),
+});
+
+type GoogleUser = z.infer<typeof GoogleUserSchema>;
+type GoogleTokenResponse = z.infer<typeof GoogleTokenResponseSchema>;
+type GoogleJWKS = z.infer<typeof GoogleJWKSchema>;
+type GoogleIdTokenPayload = z.infer<typeof GoogleIdTokenPayloadSchema>;
 
 export interface AuthUser {
   id: string;
@@ -60,10 +116,10 @@ export async function generateJWT(user: AuthUser, secret: string): Promise<strin
   return await sign(payload, secret);
 }
 
-export async function verifyJWT(token: string, secret: string): Promise<any | null> {
+export async function verifyJWT(token: string, secret: string): Promise<CustomJWTPayload | null> {
   try {
     const payload = await verify(token, secret);
-    return payload;
+    return CustomJWTPayloadSchema.parse(payload);
   } catch (error) {
     console.error('JWT verification failed:', error);
     return null;
@@ -82,7 +138,7 @@ export async function getGoogleUserInfo(accessToken: string): Promise<AuthUser |
       throw new Error(`Google API error: ${response.status}`);
     }
 
-    const userInfo = await response.json() as any;
+    const userInfo = GoogleUserSchema.parse(await response.json());
     
     return {
       id: userInfo.id,
@@ -120,7 +176,7 @@ export async function exchangeCodeForToken(code: string, clientId: string, clien
       throw new Error(`Token exchange failed: ${response.status}`);
     }
 
-    const tokenData = await response.json() as any;
+    const tokenData = GoogleTokenResponseSchema.parse(await response.json());
     
     return {
       accessToken: tokenData.access_token,
@@ -159,28 +215,28 @@ function base64urlToUint8Array(input: string): Uint8Array {
   return bytes;
 }
 
-let cachedJwks: any | null = null;
+let cachedJwks: GoogleJWKS | null = null;
 let cachedJwksAt = 0;
 
-async function getGoogleJwks(): Promise<any> {
+async function getGoogleJwks(): Promise<GoogleJWKS> {
   const now = Date.now();
   if (cachedJwks && now - cachedJwksAt < 60_000) return cachedJwks;
   const res = await fetch('https://www.googleapis.com/oauth2/v3/certs');
   if (!res.ok) throw new Error('Failed to fetch JWKS');
-  cachedJwks = await res.json();
+  cachedJwks = GoogleJWKSchema.parse(await res.json());
   cachedJwksAt = now;
   return cachedJwks;
 }
 
-export async function verifyGoogleIdToken(idToken: string, clientId: string, expectedNonce?: string): Promise<any | null> {
+export async function verifyGoogleIdToken(idToken: string, clientId: string, expectedNonce?: string): Promise<GoogleIdTokenPayload | null> {
   try {
     const [h, p, s] = idToken.split('.');
     if (!h || !p || !s) return null;
     const header = JSON.parse(new TextDecoder().decode(base64urlToUint8Array(h)));
-    const payload = JSON.parse(new TextDecoder().decode(base64urlToUint8Array(p)));
+    const payload = GoogleIdTokenPayloadSchema.parse(JSON.parse(new TextDecoder().decode(base64urlToUint8Array(p))));
     if (header.alg !== 'RS256') return null;
     const jwks = await getGoogleJwks();
-    const jwk = jwks.keys.find((k: any) => k.kid === header.kid && k.alg === 'RS256');
+    const jwk = jwks.keys.find((k) => k.kid === header.kid && k.alg === 'RS256');
     if (!jwk) return null;
     const key = await crypto.subtle.importKey(
       'jwk',

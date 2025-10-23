@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
+import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema } from '../schemas';
+import { z } from 'zod';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -10,24 +12,24 @@ groupRoutes.use('*', requireAuth);
 // upsert_group - Create or update a group
 groupRoutes.post('/upsert', async (c) => {
   try {
-    const { id, name, is_main = false } = await c.req.json();
+    const requestData = CreateGroupRequestSchema.extend({
+      id: z.string().optional()
+    }).parse(await c.req.json());
 
     const now = new Date().toISOString();
 
-    if (id) {
-      // Update existing group
+    if (requestData.id) {
       await c.env.DB.prepare(`
         UPDATE groups 
         SET name = ?, is_main = ?, updated_at = ?
         WHERE id = ?
-      `).bind(name, is_main, now, id).run();
+      `).bind(requestData.name, requestData.is_main, now, requestData.id).run();
     } else {
-      // Create new group
       const newId = crypto.randomUUID();
       await c.env.DB.prepare(`
         INSERT INTO groups (id, name, is_main, is_active, created_at, updated_at)
         VALUES (?, ?, ?, TRUE, ?, ?)
-      `).bind(newId, name, is_main, now, now).run();
+      `).bind(newId, requestData.name, requestData.is_main, now, now).run();
       
       return c.json({ 
         success: true, 
@@ -67,9 +69,9 @@ groupRoutes.get('/:id', async (c) => {
   try {
     const groupId = c.req.param('id');
 
-    const group = await c.env.DB.prepare(
+    const group = GroupSchema.parse(await c.env.DB.prepare(
       'SELECT * FROM groups WHERE id = ? AND is_active = TRUE'
-    ).bind(groupId).first();
+    ).bind(groupId).first());
 
     if (!group) {
       return c.json({ success: false, error: 'Group not found' }, 404);
@@ -86,7 +88,7 @@ groupRoutes.get('/:id', async (c) => {
 groupRoutes.put('/:id', async (c) => {
   try {
     const groupId = c.req.param('id');
-    const { name, is_main, is_active } = await c.req.json();
+    const requestData = UpdateGroupRequestSchema.parse(await c.req.json());
 
     const now = new Date().toISOString();
 
@@ -94,7 +96,7 @@ groupRoutes.put('/:id', async (c) => {
       UPDATE groups 
       SET name = ?, is_main = ?, is_active = ?, updated_at = ?
       WHERE id = ?
-    `).bind(name, is_main, is_active, now, groupId).run();
+    `).bind(requestData.name, requestData.is_main, requestData.is_active, now, groupId).run();
 
     return c.json({ success: true, message: 'Group updated successfully' });
   } catch (error) {
@@ -113,9 +115,15 @@ groupRoutes.get('/:id/member-instruments', async (c) => {
     ).bind(groupId).all();
 
     const mapping: Record<string, ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[]> = {};
-    for (const row of rows.results as { user_id: string; instrument: string }[]) {
-      const uid = row.user_id;
-      const inst = row.instrument as 'VO' | 'GT' | 'KEY' | 'DR' | 'BA';
+    const MemberInstrumentSchema = z.object({
+      user_id: z.string(),
+      instrument: z.enum(['VO', 'GT', 'KEY', 'DR', 'BA'])
+    });
+    
+    for (const row of rows.results) {
+      const validatedRow = MemberInstrumentSchema.parse(row);
+      const uid = validatedRow.user_id;
+      const inst = validatedRow.instrument;
       if (!mapping[uid]) mapping[uid] = [];
       if (!mapping[uid].includes(inst)) mapping[uid].push(inst);
     }
@@ -131,24 +139,21 @@ groupRoutes.get('/:id/member-instruments', async (c) => {
 groupRoutes.post('/:id/member-instruments', async (c) => {
   try {
     const groupId = c.req.param('id');
-    const { user_id, instrument } = await c.req.json<{ user_id: string; instrument: string }>();
-
-    const valid = ['VO','GT','KEY','DR','BA'] as const;
-    if (!user_id || !instrument || !valid.includes(instrument as typeof valid[number])) {
-      return c.json({ success: false, error: 'Invalid parameters' }, 400);
-    }
+    const requestData = z.object({
+      user_id: z.string(),
+      instrument: z.enum(['VO', 'GT', 'KEY', 'DR', 'BA'])
+    }).parse(await c.req.json());
 
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
     await c.env.DB.prepare(
       'INSERT OR IGNORE INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(id, groupId, user_id, instrument, now, now).run();
+    ).bind(id, groupId, requestData.user_id, requestData.instrument, now, now).run();
 
-    // If it existed, bump updated_at
     await c.env.DB.prepare(
       'UPDATE group_member_instruments SET updated_at = ? WHERE group_id = ? AND user_id = ? AND instrument = ?'
-    ).bind(now, groupId, user_id, instrument).run();
+    ).bind(now, groupId, requestData.user_id, requestData.instrument).run();
 
     return c.json({ success: true });
   } catch (error) {
@@ -161,16 +166,14 @@ groupRoutes.post('/:id/member-instruments', async (c) => {
 groupRoutes.delete('/:id/member-instruments', async (c) => {
   try {
     const groupId = c.req.param('id');
-    const { user_id, instrument } = await c.req.json<{ user_id: string; instrument: string }>();
-
-    const valid = ['VO','GT','KEY','DR','BA'] as const;
-    if (!user_id || !instrument || !valid.includes(instrument as typeof valid[number])) {
-      return c.json({ success: false, error: 'Invalid parameters' }, 400);
-    }
+    const requestData = z.object({
+      user_id: z.string(),
+      instrument: z.enum(['VO', 'GT', 'KEY', 'DR', 'BA'])
+    }).parse(await c.req.json());
 
     await c.env.DB.prepare(
       'DELETE FROM group_member_instruments WHERE group_id = ? AND user_id = ? AND instrument = ?'
-    ).bind(groupId, user_id, instrument).run();
+    ).bind(groupId, requestData.user_id, requestData.instrument).run();
 
     return c.json({ success: true });
   } catch (error) {

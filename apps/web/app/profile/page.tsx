@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ProfilePage } from './profile-page'
 import { SetupWizard } from './setup-wizard'
-import { UserData } from '@/app/types'
+import { UserData, Role, Instrument } from '@/app/types'
 import { apiClient } from '@/lib/api'
 import { useAuth } from '@/app/context/AuthContext';
 import LoadingScreen from '@/components/loading';
@@ -49,7 +49,16 @@ export default function Page() {
         const response = await apiClient.getUserData(user.email);
         
         if (response.success && response.data) {
-          setUserData(response.data as UserData);
+          const userData: UserData = {
+            grade: '1', // デフォルト値
+            name: response.data.name,
+            role: 'MBR' as Role, // デフォルト値
+            email: response.data.email,
+            nickname: response.data.nickname,
+            instruments: response.data.instruments as Instrument[],
+            student_number: response.data.student_number
+          };
+          setUserData(userData);
         } else {
           setError('ユーザーデータの取得に失敗しました。' + (response.error || ''));
         }

@@ -28,8 +28,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
-.env*.local
+# env files
+apps/web/.env
+apps/worker/.dev.vars
 
 # vercel
 .vercel
@@ -37,5 +38,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# wrangler
 apps/worker/wrangler.toml
 /apps/worker/.wrangler
