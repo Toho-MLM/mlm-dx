@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardTitle, CardHeader } from '@/components/ui/card'
 import { Loader2, LogOut, Pencil } from 'lucide-react'
@@ -8,9 +8,11 @@ import { motion } from 'framer-motion'
 import { UserData, instrumentNames, roleNames } from '@/app/types'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/app/context/AuthContext'
+import { SetupWizard } from './setup-wizard'
 
-export function ProfilePage({ userData }: { userData: UserData }) {
+export function ProfilePage({ userData, onDataRefresh }: { userData: UserData, onDataRefresh?: (updatedData: UserData) => void }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
   const router = useRouter()
   const { signOut } = useAuth()
   
@@ -25,8 +27,19 @@ export function ProfilePage({ userData }: { userData: UserData }) {
     }
   };
 
-  const handleResetProfile = () => {
-    router.push('/profile/setup')
+  const handleResetProfile = useCallback(() => {
+    setIsEditing(true)
+  }, [])
+
+  const handleEditComplete = useCallback((updatedData: UserData) => {
+    setIsEditing(false)
+    if (onDataRefresh) {
+      onDataRefresh(updatedData)
+    }
+  }, [onDataRefresh])
+
+  if (isEditing) {
+    return <SetupWizard initialUserData={userData} onComplete={handleEditComplete} />
   }
 
   return (
@@ -92,20 +105,6 @@ export function ProfilePage({ userData }: { userData: UserData }) {
               </div>
             </Button>
           </CardFooter>
-        </Card>
-        <Card className="min-w-fit max-w-2xl mx-auto">
-          <CardHeader>
-            <CardTitle>パスワード設定</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button
-              onClick={() => router.push('/support/reset-password')}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-              size="sm"
-            >
-              パスワードを変更
-            </Button>
-          </CardContent>
         </Card>
       </motion.div>
     </div>

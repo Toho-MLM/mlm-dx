@@ -1,3 +1,5 @@
+import { MemberListItem } from '@/app/types'
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL as string
 
 export interface ApiResponse<T = unknown> {
@@ -85,8 +87,8 @@ class ApiClient {
     return this.request<ApiResponse<unknown[]>>('/members/fetch')
   }
 
-  async getMemberList(): Promise<ApiResponse<unknown[]>> {
-    return this.request<ApiResponse<unknown[]>>('/members/list')
+  async getMemberList(): Promise<ApiResponse<MemberListItem[]>> {
+    return this.request<ApiResponse<MemberListItem[]>>('/members/list')
   }
 
   async getNickname(userId: string): Promise<ApiResponse<unknown>> {

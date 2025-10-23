@@ -1,10 +1,10 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, Suspense } from 'react'
 import { useAuth } from '@/app/context/AuthContext'
 
-export default function CallbackPage() {
+function CallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, loading } = useAuth()
@@ -23,4 +23,12 @@ export default function CallbackPage() {
   }, [user, loading, router, searchParams])
 
   return <div className="min-h-screen flex items-center justify-center">認証中...</div>
+}
+
+export default function CallbackPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">認証中...</div>}>
+      <CallbackContent />
+    </Suspense>
+  )
 }

@@ -192,10 +192,9 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
       setIsSending(true)
       
       const response = await apiClient.createReservation({
-        group_id: reservationDraft.group || undefined,
+        holder_group_id: reservationDraft.group || undefined,
         start_time: start.toISOString(),
         end_time: end.toISOString(),
-        notes: undefined,
       });
 
       if (response.success) {
@@ -386,9 +385,9 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
             <BigCalendar
               localizer={localizer}
               events={reservationData}
-              titleAccessor={(event) => event.creator_name}
-              startAccessor={(event) => event.start_time}
-              endAccessor={(event) => event.end_time}
+               titleAccessor={(event) => event.creator_name || '予約'}
+               startAccessor={(event) => event.start}
+               endAccessor={(event) => event.end}
               onSelectEvent={handleSelectEvent}
               views={customViews}
               messages={messages}
@@ -452,9 +451,9 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
         >
           <div>
             <p><strong>ID</strong> # {selectedReservation.id}</p>
-            <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
+            <p><strong>時間</strong> {format(selectedReservation.start, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'H:mm', { locale: jaLocale })}</p>
             <p><strong>作成者</strong> {selectedReservation.creator_name}</p>
-            {selectedReservation.group && <p><strong>グループ</strong> {selectedReservation.group}</p>}
+            {selectedReservation.holder_group_name && <p><strong>グループ</strong> {selectedReservation.holder_group_name}</p>}
             <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
             <Button onClick={closePopover} variant="outline" className="mt-2 w-full">
               閉じる
@@ -682,14 +681,14 @@ export function ReservationPage({ reservationData, userHolder }: { reservationDa
             </DialogHeader>
             {selectedReservation ? (
               (selectedReservation.state === ReservationState.PENDING || selectedReservation.state === ReservationState.CONFIRMED) ? (
-                selectedReservation.creator === user!.id ? (
+                 selectedReservation.booked_by === user!.id ? (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
                     <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
                       <p><strong>ID</strong> # {selectedReservation.id}</p>
-                      <p><strong>時間</strong> {format(selectedReservation.start_time, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end_time, 'H:mm', { locale: jaLocale })}</p>
+                      <p><strong>時間</strong> {format(selectedReservation.start, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'H:mm', { locale: jaLocale })}</p>
                       <p><strong>作成者</strong> {selectedReservation.creator_name}</p>
-                      {selectedReservation.group && <p><strong>グループ</strong> {selectedReservation.group}</p>}
+                      {selectedReservation.holder_group_name && <p><strong>グループ</strong> {selectedReservation.holder_group_name}</p>}
                       <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
                     </div>
                     <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full" disabled={isSending}>

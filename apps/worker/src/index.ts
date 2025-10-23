@@ -221,7 +221,7 @@ app.get('/auth/session', async (c) => {
         id: dbUser.id,
         email: dbUser.email,
         name: dbUser.name,
-        image: payload.picture,
+        picture: payload.picture,
       }
     });
   } catch (error) {

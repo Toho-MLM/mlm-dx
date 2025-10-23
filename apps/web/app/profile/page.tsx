@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ProfilePage } from './profile-page'
+import { SetupWizard } from './setup-wizard'
 import { UserData } from '@/app/types'
 import { apiClient } from '@/lib/api'
 import { useAuth } from '@/app/context/AuthContext';
@@ -16,7 +17,7 @@ export default function Page() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth();
 
-  const hasFetched = useRef(false)
+  const hasFetched = useRef<string | null>(null)
 
   useEffect(() => {
     if (authLoading) {
@@ -28,11 +29,11 @@ export default function Page() {
       return;
     }
 
-    if (hasFetched.current) {
+    if (hasFetched.current === user.email) {
       return;
     }
 
-    hasFetched.current = true
+    hasFetched.current = user.email
 
     const fetchUserData = async () => {
       if (!user?.email) {
@@ -48,13 +49,7 @@ export default function Page() {
         const response = await apiClient.getUserData(user.email);
         
         if (response.success && response.data) {
-          const userData = response.data;
-          const hasNullValue = Object.values(userData).some(value => value === null);
-          if (hasNullValue) {
-            router.push('/profile/setup');
-          } else {
-            setUserData(userData as UserData);
-          }
+          setUserData(response.data as UserData);
         } else {
           setError('ユーザーデータの取得に失敗しました。' + (response.error || ''));
         }
@@ -68,6 +63,10 @@ export default function Page() {
     fetchUserData();
   }, [user, authLoading, router])
 
+  const handleSetupComplete = (updatedData: UserData) => {
+    setUserData(updatedData);
+  }
+
   if (loading) {
     return <LoadingScreen />
   }
@@ -77,7 +76,13 @@ export default function Page() {
   }
 
   if (userData) {
-    return <ProfilePage userData={userData} />
+    const needsSetup = !userData.nickname || userData.instruments.length === 0
+    
+    if (needsSetup) {
+      return <SetupWizard initialUserData={userData} onComplete={handleSetupComplete} />
+    } else {
+      return <ProfilePage userData={userData} onDataRefresh={handleSetupComplete} />
+    }
   }
 
   return null

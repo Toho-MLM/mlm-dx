@@ -50,7 +50,7 @@ export default function Page() {
         ]);
 
         if (groupResponse.success && memberResponse.success) {
-          const formattedGroupData: Group[] = (groupResponse.data as unknown[]).map((group) => {
+          const formattedGroupData: Group[] = (groupResponse.data as any[]).map((group: any) => {
             return {
               id: group.id,
               name: group.name,

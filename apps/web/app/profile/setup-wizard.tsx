@@ -18,7 +18,7 @@ const stepVariants = {
   visible: { opacity: 1, x: 0 },
 }
 
-export function SetupWizard(initialUserData: UserData) {
+export function SetupWizard({ initialUserData, onComplete }: { initialUserData: UserData; onComplete?: (updatedData: UserData) => void }) {
   const [step, setStep] = useState(0)
   const [userData, setUserData] = useState<UserData>(initialUserData)
   const [canProceed, setCanProceed] = useState(true)
@@ -234,7 +234,11 @@ export function SetupWizard(initialUserData: UserData) {
         nickname: userData.nickname || '',
         instruments: userData.instruments
       });
-      router.push('/profile');
+      if (onComplete) {
+        onComplete(userData);
+      } else {
+        router.push('/profile');
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
