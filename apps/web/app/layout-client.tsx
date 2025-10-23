@@ -15,21 +15,21 @@ export function MainContent({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <SidebarProvider>
-      {!shouldHideSidebar && <AppSidebar />}
-      <div className="w-full">
-        {!shouldHideSidebar && 
-          <div className="w-full sticky top-0 bg-gray-100 p-3 z-10 flex items-center gap-2">
-            <div className="flex items-center gap-2 whitespace-nowrap">
-              <SidebarTrigger />
-              <h1 className="text-xl font-bold">{title}</h1>
+    <AuthProvider>
+      <SidebarProvider>
+        {!shouldHideSidebar && <AppSidebar />}
+        <div className="w-full">
+          {!shouldHideSidebar && 
+            <div className="w-full sticky top-0 bg-gray-100 p-3 z-10 flex items-center gap-2">
+              <div className="flex items-center gap-2 whitespace-nowrap">
+                <SidebarTrigger />
+                <h1 className="text-xl font-bold">{title}</h1>
+              </div>
             </div>
-          </div>
-        }
-        <AuthProvider>
+          }
           {children}
-        </AuthProvider>
-      </div>
-    </SidebarProvider>
+        </div>
+      </SidebarProvider>
+    </AuthProvider>
   )
 }

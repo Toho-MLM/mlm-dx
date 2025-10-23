@@ -5,7 +5,6 @@ const { randomUUID } = require('crypto');
 const { parseArgs } = require('node:util');
 
 const VALID_ROLES = ['MGR', 'CHF', 'MAC', 'MBR', 'ADM', 'NHD', 'NAC'];
-const VALID_INSTRUMENTS = ['VO', 'GT', 'KEY', 'DR', 'BA'];
 
 function generateTimestamp() {
   return new Date().toISOString().replace('T', ' ').replace('Z', '');

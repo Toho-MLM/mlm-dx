@@ -1,68 +1,92 @@
 import Link from 'next/link';
-import { useTitle } from "@/app/context/TitleContext";
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, useSidebar } from "@/components/ui/sidebar"
-import { CalendarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, UserIcon, HelpCircleIcon } from "lucide-react"
+import { useRouter } from 'next/navigation';
+import { useAuth } from "@/app/context/AuthContext";
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarFooter, useSidebar } from "@/components/ui/sidebar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { LogOutIcon, CalendarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, HelpCircleIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { navigationConfig } from "@/lib/navigation";
 
-export const sidebarData = [
-  {
-    label: "ホール予約",
-    items: [
-      { icon: <CalendarIcon />, href: "/reservation", text: "予約表" },
-      { icon: <HelpCircleIcon />, href: "/support/reservation", text: "使い方" }
-    ]
-  },
-  {
-    label: "バンド",
-    items: [
-      { icon: <UsersIcon />, href: "/band", text: "バンド管理" }
-    ]
-  },
-  {
-    label: "資料",
-    items: [
-      { icon: <SquarePlayIcon />, href: "/archive", text: "ライブアーカイブ" },
-      { icon: <FileUserIcon />, href: "/member", text: "部員名簿" }
-    ]
-  },
-  {
-    label: "アカウント",
-    items: [
-      { icon: <UserIcon />, href: "/profile", text: "プロフィール" }
-    ]
-  }
-];
+const iconMap = {
+  CalendarIcon,
+  UsersIcon,
+  SquarePlayIcon,
+  FileUserIcon,
+  HelpCircleIcon,
+} as const;
 
 export function AppSidebar() {
-  const { setTitle } = useTitle();
   const { setOpenMobile } = useSidebar();
+  const { user, signOut } = useAuth();
+  const router = useRouter();
+
+  const handleProfileClick = () => {
+    setOpenMobile(false);
+    router.push("/profile");
+  };
 
   return (
-    <Sidebar>
+    <Sidebar aria-label="メインナビゲーション">
       <SidebarHeader>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <img src="/assets/logo.png" alt="MLM DX logo" style={{ height: '32px', width: 'auto', marginRight: '8px', display: 'block' }} />
-          <span>MLM DX</span>
+          <h2 className="text-lg font-semibold">MLM DX</h2>
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {sidebarData.map((group, index) => (
+        {navigationConfig.map((group, index) => (
           <SidebarGroup key={index}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item, idx) => (
-                  <Link key={idx} href={item.href}>
-                    <SidebarMenuButton onClick={() => { setTitle(item.text); setOpenMobile(false); }}>
-                      {item.icon}
-                      <span>{item.text}</span>
-                    </SidebarMenuButton>
-                  </Link>
-                ))}
+                {group.items.map((item, idx) => {
+                  const IconComponent = iconMap[item.iconName as keyof typeof iconMap];
+                  return (
+                    <Link key={idx} href={item.href}>
+                      <SidebarMenuButton onClick={() => setOpenMobile(false)}>
+                        <IconComponent />
+                        <span>{item.title}</span>
+                      </SidebarMenuButton>
+                    </Link>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
       </SidebarContent>
+      <SidebarFooter>
+        {user && (
+          <div className="flex items-center gap-3 p-3">
+            <div 
+              className="flex items-center gap-3 flex-1 cursor-pointer hover:bg-gray-100 rounded-md transition-colors p-2 -m-2" 
+              onClick={handleProfileClick}
+            >
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={user.picture} alt={user.name} />
+                <AvatarFallback>
+                  {user.name?.charAt(0)?.toUpperCase() || 'U'}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                signOut();
+              }}
+              className="h-8 w-8 p-0 hover:bg-gray-200"
+            >
+              <LogOutIcon className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </SidebarFooter>
     </Sidebar>
   )
 }

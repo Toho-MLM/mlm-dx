@@ -1,7 +1,8 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { sidebarData } from '@/components/app-sidebar';
+import { usePathname } from 'next/navigation';
+import { getPageTitle } from '@/lib/navigation';
 
 interface TitleContextType {
   title: string;
@@ -12,14 +13,12 @@ const TitleContext = createContext<TitleContextType | undefined>(undefined);
 
 export const TitleProvider = ({ children }: { children: ReactNode }) => {
   const [title, setTitle] = useState('');
+  const pathname = usePathname();
 
   useEffect(() => {
-    const { pathname } = window.location;
-    const initialTitle = sidebarData.find(group => 
-      group.items.some(item => item.href === pathname)
-    )?.items.find(item => item.href === pathname)?.text || '';
-    setTitle(initialTitle);
-  }, []);
+    const pageTitle = getPageTitle(pathname);
+    setTitle(pageTitle);
+  }, [pathname]);
 
   return (
     <TitleContext.Provider value={{ title, setTitle }}>

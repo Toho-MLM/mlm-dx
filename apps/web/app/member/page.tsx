@@ -53,7 +53,7 @@ export default function Page() {
         const response = await apiClient.getMemberList();
         
         if (response.success && response.data) {
-          setMemberData(response.data as MemberListItem[]);
+          setMemberData(response.data);
         } else {
           setError('メンバーリストの取得に失敗しました。' + (response.error || ''));
         }

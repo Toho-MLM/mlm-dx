@@ -48,7 +48,6 @@ memberRoutes.get('/list', async (c) => {
         u.grade,
         u.instruments,
         u.role,
-        u.image,
         GROUP_CONCAT(DISTINCT g.name) as groups
       FROM users u
       LEFT JOIN group_member_instruments gmi ON u.id = gmi.user_id

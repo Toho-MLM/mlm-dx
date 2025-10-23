@@ -50,14 +50,14 @@ export default function Page() {
         ]);
         
         if (reservationsResponse.success && userHolderResponse.success) {
-          const formattedData: ReservationData[] = (reservationsResponse.data as unknown[]).map(item => ({
+          const formattedData: ReservationData[] = (reservationsResponse.data as any[]).map((item: any) => ({
             ...item,
-            start_time: new Date(item.start_time),
-            end_time: new Date(item.end_time),
+            start: new Date(item.start_time),
+            end: new Date(item.end_time),
           }));
           setReservationData(formattedData);
           
-          const userHolderData = userHolderResponse.data;
+          const userHolderData = userHolderResponse.data as any;
           const userName = userHolderData.user.nickname;
           if (userName === null) {
             router.push('/profile')

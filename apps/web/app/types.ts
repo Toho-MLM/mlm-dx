@@ -23,6 +23,7 @@ export interface UserData {
     email: string;
     nickname: string | null;
     instruments: Instrument[];
+    student_number?: string;
 }
 
 export interface User {
@@ -30,6 +31,7 @@ export interface User {
     name: string;
     nickname?: string;
     email: string;
+    picture?: string;
     instruments: ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[];
     grade: number;
     role: 'MGR' | 'CHF' | 'MAC' | 'MBR' | 'ADM' | 'NHD' | 'NAC';
@@ -37,7 +39,17 @@ export interface User {
     updated_at: string;
 }
 
-export type MemberListItem = Omit<UserData, 'email'>;
+export interface MemberListItem {
+    id: string;
+    name: string;
+    nickname: string | null;
+    email: string;
+    grade: string;
+    instruments: Instrument[];
+    role: Role;
+    groups: string[];
+    student_number: string;
+}
 
 export const instrumentNames: Record<Instrument, string> = {
     [Instrument.vocal]: 'ボーカル',
@@ -61,6 +73,7 @@ export interface ReservationData {
     id: string;
     booked_by: string;
     booked_by_name?: string;
+    creator_name?: string;
     holder_group_name?: string;
     holder_user_id: string | null;
     holder_group_id: string | null;
