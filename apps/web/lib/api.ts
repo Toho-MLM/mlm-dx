@@ -1,5 +1,6 @@
 import { MemberListItem } from '@/app/types'
 import { z } from 'zod'
+import { MemberListItemSchema } from './schemas'
 
 const UserSchema = z.object({
   id: z.string(),
@@ -24,12 +25,16 @@ const GroupSchema = z.object({
 
 const ReservationSchema = z.object({
   id: z.number(),
-  start_time: z.string(),
-  end_time: z.string(),
+  booked_by: z.string(),
+  booked_by_name: z.string().nullable(),
+  creator_name: z.string().nullable(),
+  holder_group_name: z.string().nullable(),
   holder_user_id: z.string().nullable(),
   holder_group_id: z.string().nullable(),
-  created_at: z.string(),
-  updated_at: z.string().nullable(),
+  start_time: z.string(),
+  end_time: z.string(),
+  state: z.string(),
+  cancellable: z.number(),
 })
 
 const ArchiveSchema = z.object({
@@ -213,7 +218,7 @@ class ApiClient {
   }
 
   async getMemberList(): Promise<ApiResponse<MemberListItem[]>> {
-    const schema = ApiResponseSchema(z.array(z.any()))
+    const schema = ApiResponseSchema(z.array(MemberListItemSchema))
     return this.request<ApiResponse<MemberListItem[]>>('/members/list', {}, schema)
   }
 

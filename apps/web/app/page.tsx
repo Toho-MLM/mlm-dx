@@ -1,24 +1,12 @@
-'use client';
+import { getServerUser } from '@/lib/server-api'
+import { redirect } from 'next/navigation'
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from './context/AuthContext';
-import LoadingScreen from '@/components/loading';
-
-export default function Page() {
-  const router = useRouter();
-  const { user, loading } = useAuth();
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-    }
-    if (user) {
-      router.push('/profile');
-    }
-  }, [user, loading, router]);
-
-  return (
-    <LoadingScreen />
-  );
+export default async function Page() {
+  const user = await getServerUser()
+  
+  if (!user) {
+    redirect('/login')
+  }
+  
+  redirect('/profile')
 }

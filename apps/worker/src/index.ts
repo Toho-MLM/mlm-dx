@@ -132,16 +132,30 @@ app.get('/auth/callback/google', async (c) => {
       return c.redirect(`${c.env.FRONTEND_URL}/login?error=email_not_verified`);
     }
 
-    const dbUser = UserSchema.parse(await c.env.DB.prepare(
+    const dbUserRaw = await c.env.DB.prepare(
       'SELECT * FROM users WHERE email = ?'
-    ).bind(googleUser.email).first());
+    ).bind(googleUser.email).first();
 
-    if (!dbUser) {
+    if (!dbUserRaw) {
       return c.redirect(`${c.env.FRONTEND_URL}/login?error=access_denied`);
     }
 
+    let parsedInstruments: string[] = [];
+    try {
+      parsedInstruments = JSON.parse(String(dbUserRaw.instruments || '[]')) as string[];
+    } catch (error) {
+      console.error('Error parsing instruments:', error);
+      parsedInstruments = [];
+    }
+
+    const dbUser = UserSchema.parse({
+      ...dbUserRaw,
+      instruments: parsedInstruments,
+      grade: Number(dbUserRaw.grade),
+    });
+
     // Format name with space between family and given name
-    const formatName = (user: { family_name?: string; given_name?: string; name: string }): string => {
+    const formatName = (user: { family_name?: string; given_name?: string; name: string | null }): string => {
       if (user.family_name && user.given_name) {
         return `${user.family_name} ${user.given_name}`;
       } else if (user.name) {
@@ -205,13 +219,27 @@ app.get('/auth/session', async (c) => {
       return c.json({ user: null });
     }
 
-    const dbUser = UserSchema.parse(await c.env.DB.prepare(
+    const dbUserRaw = await c.env.DB.prepare(
       'SELECT * FROM users WHERE id = ?'
-    ).bind(payload.sub).first());
+    ).bind(payload.sub).first();
 
-    if (!dbUser) {
+    if (!dbUserRaw) {
       return c.json({ user: null });
     }
+
+    let parsedInstruments: string[] = [];
+    try {
+      parsedInstruments = JSON.parse(String(dbUserRaw.instruments || '[]')) as string[];
+    } catch (error) {
+      console.error('Error parsing instruments:', error);
+      parsedInstruments = [];
+    }
+
+    const dbUser = UserSchema.parse({
+      ...dbUserRaw,
+      instruments: parsedInstruments,
+      grade: Number(dbUserRaw.grade),
+    });
 
     return c.json({
       user: {

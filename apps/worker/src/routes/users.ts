@@ -14,18 +14,9 @@ userRoutes.use('*', requireAuth);
 userRoutes.get('/me', async (c) => {
   try {
     const user = UserSchema.parse(c.get('user'));
-    
-    let parsedInstruments: string[] = [];
-    try {
-      parsedInstruments = JSON.parse(user.instruments || '[]') as string[];
-    } catch (error) {
-      console.error('Error parsing instruments:', error);
-      parsedInstruments = [];
-    }
 
     const userWithParsedInstruments = UserWithInstrumentsSchema.parse({
       ...user,
-      instruments: parsedInstruments,
       student_number: generateStudentNumber(user.email)
     });
 
@@ -41,25 +32,30 @@ userRoutes.get('/fetch/:email', async (c) => {
   try {
     const email = c.req.param('email');
     
-    const user = UserSchema.parse(await c.env.DB.prepare(
+    const dbUser = await c.env.DB.prepare(
       'SELECT * FROM users WHERE email = ?'
-    ).bind(email).first());
+    ).bind(email).first();
 
-    if (!user) {
+    if (!dbUser) {
       return c.json({ success: false, error: 'User not found' }, 404);
     }
 
     let parsedInstruments: string[] = [];
     try {
-      parsedInstruments = JSON.parse(user.instruments || '[]') as string[];
+      parsedInstruments = JSON.parse(String(dbUser.instruments || '[]')) as string[];
     } catch (error) {
       console.error('Error parsing instruments:', error);
       parsedInstruments = [];
     }
 
+    const user = UserSchema.parse({
+      ...dbUser,
+      instruments: parsedInstruments,
+      grade: Number(dbUser.grade),
+    });
+
     const userWithStudentNumber = UserWithInstrumentsSchema.parse({
       ...user,
-      instruments: parsedInstruments,
       student_number: generateStudentNumber(user.email)
     });
 
@@ -73,7 +69,7 @@ userRoutes.get('/fetch/:email', async (c) => {
 // update_user - Update user data
 userRoutes.put('/update', async (c) => {
   try {
-    const user = UserSchema.parse(c.get('user'));
+    const user = c.get('user');
     const requestData = UpdateUserRequestSchema.parse(await c.req.json());
 
     const now = new Date().toISOString();
@@ -93,13 +89,13 @@ userRoutes.put('/update', async (c) => {
 // fetch_user_groups - Get user's groups
 userRoutes.get('/groups', async (c) => {
   try {
-    const user = UserSchema.parse(c.get('user'));
+    const user = c.get('user');
 
     const groups = await c.env.DB.prepare(`
-      SELECT g.*, gm.role as member_role
+      SELECT DISTINCT g.*
       FROM groups g
-      JOIN group_members gm ON g.id = gm.group_id
-      WHERE gm.user_id = ? AND g.is_active = TRUE
+      JOIN group_member_instruments gmi ON g.id = gmi.group_id
+      WHERE gmi.user_id = ? AND g.is_active = TRUE
     `).bind(user.id).all();
 
     return c.json({ success: true, data: groups.results });
@@ -112,34 +108,39 @@ userRoutes.get('/groups', async (c) => {
 // fetch_user_holder - Get user data with groups for reservation holder
 userRoutes.get('/holder', async (c) => {
   try {
-    const user = UserSchema.parse(c.get('user'));
+    const user = c.get('user');
 
-    const userData = UserSchema.parse(await c.env.DB.prepare(
+    const dbUser = await c.env.DB.prepare(
       'SELECT * FROM users WHERE id = ?'
-    ).bind(user.id).first());
+    ).bind(user.id).first();
 
-    if (!userData) {
+    if (!dbUser) {
       return c.json({ success: false, error: 'User not found' }, 404);
     }
 
     const groups = await c.env.DB.prepare(`
-      SELECT g.*, gm.role as member_role
+      SELECT DISTINCT g.*
       FROM groups g
-      JOIN group_members gm ON g.id = gm.group_id
-      WHERE gm.user_id = ? AND g.is_active = TRUE
+      JOIN group_member_instruments gmi ON g.id = gmi.group_id
+      WHERE gmi.user_id = ? AND g.is_active = TRUE
     `).bind(user.id).all();
 
     let parsedInstruments: string[] = [];
     try {
-      parsedInstruments = JSON.parse(userData.instruments || '[]') as string[];
+      parsedInstruments = JSON.parse(String(dbUser.instruments || '[]')) as string[];
     } catch (error) {
       console.error('Error parsing instruments:', error);
       parsedInstruments = [];
     }
 
+    const userData = UserSchema.parse({
+      ...dbUser,
+      instruments: parsedInstruments,
+      grade: Number(dbUser.grade),
+    });
+
     const userWithStudentNumber = UserWithInstrumentsSchema.parse({
       ...userData,
-      instruments: parsedInstruments,
       student_number: generateStudentNumber(userData.email)
     });
 

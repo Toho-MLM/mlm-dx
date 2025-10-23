@@ -15,7 +15,7 @@ function CallbackContent() {
       if (error) {
         router.replace(`/login?error=${error}`)
       } else if (user) {
-        router.replace('/')
+        router.replace('/profile')
       } else {
         router.replace('/login')
       }

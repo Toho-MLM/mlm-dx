@@ -69,7 +69,7 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
   const steps = [
     // Step 1: 名前と学籍番号の確認
     <motion.div key="step1" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-2">
         <div className="space-y-2">
           <p className="font-medium text-gray-500">設定を確認してください。</p>
           <div className="bg-gray-50 p-3 rounded-lg">
@@ -89,7 +89,7 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
             <p className="text-base font-semibold">{userData.name}</p>
           </div>
         </div>
-        <Alert className="flex items-center">
+        <Alert className="flex items-center p-2">
           <AlertTitle>
             <InfoIcon className="h-4 w-4 mr-2" />
           </AlertTitle>
@@ -102,7 +102,7 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
 
     // Step 2: ニックネームの設定
     <motion.div key="step2" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-2">
         <div className="space-y-2">
           <Label htmlFor="nickname" className="text-sm">ニックネーム</Label>
           <Input
@@ -112,20 +112,22 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
             className="text-sm"
           />
         </div>
-        <Alert variant={canProceed ? "default" : "destructive"} className="flex items-center">
-          <AlertTitle>
-            <InfoIcon className="h-4 w-4 mr-2" />
-          </AlertTitle>
-          <AlertDescription>
-            {canProceed ? "ニックネームを入力してください。" : "ニックネームは必須です。"}
-          </AlertDescription>
-        </Alert>
+        {!canProceed && (
+          <Alert variant="destructive" className="flex items-center p-2">
+            <AlertTitle>
+              <InfoIcon className="h-4 w-4 mr-2" />
+            </AlertTitle>
+            <AlertDescription>
+              ニックネームは必須です。
+            </AlertDescription>
+          </Alert>
+        )}
       </CardContent>
     </motion.div>,
 
     // Step 3: 担当楽器の選択
     <motion.div key="step3" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
-      <CardContent className="space-y-4 py-4">
+      <CardContent className="space-y-2 py-4">
         <div className="space-y-2">
           <Label className="text-sm">担当楽器（複数選択可）</Label>
           <div className="ml-2 grid grid-cols-2 gap-2">
@@ -141,14 +143,16 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
             ))}
           </div>
         </div>
-        <Alert variant={canProceed ? "default" : "destructive"} className="flex items-center">
-          <AlertTitle>
-            <InfoIcon className="h-4 w-4 mr-2" />
-          </AlertTitle>
-          <AlertDescription>
-            {canProceed ? "担当楽器を1つ以上選択してください。" + (userData.instruments.length >= 2 ? "優先順位を設定してください。" : "") : "少なくとも1つの楽器を選択してください。"}
-          </AlertDescription>
-        </Alert>
+        {!canProceed && (
+          <Alert variant="destructive" className="flex items-center p-2">
+            <AlertTitle>
+              <InfoIcon className="h-4 w-4 mr-2" />
+            </AlertTitle>
+            <AlertDescription>
+              少なくとも1つの楽器を選択してください。
+            </AlertDescription>
+          </Alert>
+        )}
         {userData.instruments.length >= 2 && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}

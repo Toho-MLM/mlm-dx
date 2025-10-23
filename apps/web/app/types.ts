@@ -44,7 +44,7 @@ export interface MemberListItem {
     name: string;
     nickname: string | null;
     email: string;
-    grade: string;
+    grade: number;
     instruments: Instrument[];
     role: Role;
     groups: string[];
@@ -70,7 +70,7 @@ export const roleNames: Record<Role, string> = {
 }
 
 export interface ReservationData {
-    id: string;
+    id: number;
     booked_by: string;
     booked_by_name?: string;
     creator_name?: string;
@@ -80,6 +80,7 @@ export interface ReservationData {
     start: Date;
     end: Date;
     state: ReservationState;
+    cancellable: number;
 }
 
 export enum ReservationState {

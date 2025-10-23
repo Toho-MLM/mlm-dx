@@ -320,10 +320,10 @@ npm run db:migrate:prod
 npm run db:seed:prod
 ```
 
-#### ユーザー管理CLI
+#### データベース管理CLI
 
 **CLIツールの使用方法:**
-`scripts/seed.js`はNode.jsで実行できるユーザー管理CLIツールです。UUIDやタイムスタンプは自動生成され、必要最低限の引数でユーザーを管理できます。
+`scripts/seed.js`はNode.jsで実行できるデータベース管理CLIツールです。UUIDやタイムスタンプは自動生成され、必要最低限の引数でデータベースを管理できます。
 
 **基本的な使用方法:**
 ```bash
@@ -332,28 +332,34 @@ npm run seed -- user add --email="tanaka@example.com" --grade=3
 npm run seed -- user remove --email="tanaka@example.com"
 npm run seed -- user list
 npm run seed -- user reset
+npm run seed -- reservation reset
+npm run seed -- groups reset
 
 # 直接実行する場合
 node scripts/seed.js user add --email="tanaka@example.com" --grade=3
 node scripts/seed.js user remove --email="tanaka@example.com"
 node scripts/seed.js user list
 node scripts/seed.js user reset
+node scripts/seed.js reservation reset
+node scripts/seed.js groups reset
 
 # ヘルプを表示
-npm run seed -- user --help
-node scripts/seed.js user --help
+npm run seed -- --help
+node scripts/seed.js --help
 ```
 
 **重要**: npm runを使用する場合は、`--`を使って引数を分離してください。`--`がないと引数がnpm自体のオプションとして解釈されてしまいます。
 
-**利用可能なアクション:**
+**利用可能なテーブルとアクション:**
 
-| アクション | 説明 | 必須引数 |
-|-----------|------|----------|
-| `add` | 新しいユーザーを追加 | `--email`, `--grade` |
-| `remove` | ユーザーを削除 | `--email` |
-| `list` | ユーザー一覧を表示 | なし |
-| `reset` | データベースをリセット | なし |
+| テーブル | アクション | 説明 | 必須引数 |
+|---------|-----------|------|----------|
+| `user` | `add` | 新しいユーザーを追加 | `--email`, `--grade` |
+| `user` | `remove` | ユーザーを削除 | `--email` |
+| `user` | `list` | ユーザー一覧を表示 | なし |
+| `user` | `reset` | データベース全体をリセット | なし |
+| `reservation` | `reset` | 予約テーブルをリセット | なし |
+| `groups` | `reset` | グループテーブルをリセット | なし |
 
 **オプション引数:**
 
@@ -371,34 +377,34 @@ node scripts/seed.js user --help
 
 **使用例:**
 ```bash
-# ユーザーを追加
+# ユーザー管理
 npm run seed -- user add --email="tanaka@example.com" --grade=3
-
-# 管理者ユーザーを追加
 npm run seed -- user add --email="admin@example.com" --grade=4 --role="ADM"
-
-# 新入生ユーザーを追加
 npm run seed -- user add --email="newbie@example.com" --grade=1 --role="NHD"
-
-# ユーザーを削除
 npm run seed -- user remove --email="tanaka@example.com"
-
-# ユーザー一覧を表示
 npm run seed -- user list
-
-# データベースをリセット
 npm run seed -- user reset
+
+# 予約テーブルのリセット
+npm run seed -- reservation reset
+
+# グループテーブルのリセット
+npm run seed -- groups reset
 
 # ローカル環境で実行
 npm run seed -- user add --email="test@example.com" --grade=2 --local
 npm run seed -- user list --local
 npm run seed -- user reset --local
+npm run seed -- reservation reset --local
+npm run seed -- groups reset --local
 
 # 直接実行の例
 node scripts/seed.js user add --email="admin@example.com" --grade=4 --role="ADM"
 node scripts/seed.js user remove --email="test@example.com"
 node scripts/seed.js user list
 node scripts/seed.js user reset
+node scripts/seed.js reservation reset
+node scripts/seed.js groups reset
 ```
 
 **注意事項:**
@@ -410,7 +416,9 @@ node scripts/seed.js user reset
 - ロールは`['MGR','CHF','MAC','MBR','ADM','NHD','NAC']`のいずれかを使用してください
 - メールアドレスは有効な形式である必要があります
 - 学年は1-6の数値である必要があります
-- `reset`コマンドはデータベースを完全にリセットし、既存のデータは削除されます
+- `user reset`コマンドはデータベース全体を完全にリセットし、既存のデータは削除されます
+- `reservation reset`コマンドは予約テーブルのデータのみを削除します
+- `groups reset`コマンドはグループテーブルのデータのみを削除します
 - `list`コマンドはユーザーの基本情報（ID、名前、メール、学年、ロール、作成日時）を表示します
 
 **ローカルデータベースのセットアップ:**
@@ -437,7 +445,8 @@ cd ../..
 - `Couldn't find a D1 DB with the name or binding`エラーが発生した場合、`npm run seed -- user reset --local`を実行してください
 - ローカルデータベースは`.wrangler/state/v3/d1/`ディレクトリに保存されます
 - ローカルデータベースを完全にリセットしたい場合は、`.wrangler`ディレクトリを削除してください
-- `reset`コマンドでデータベースの構造を再作成できます
+- `user reset`コマンドでデータベースの構造を再作成できます
+- `reservation reset`や`groups reset`で特定のテーブルのデータのみを削除できます
 - `list`コマンドでユーザー一覧を確認できます
 
 ## 機能

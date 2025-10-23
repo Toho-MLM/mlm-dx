@@ -5,10 +5,12 @@ import { BandCard } from "./band-card"
 import { BandForm } from "./band-form"
 import { Button } from "@/components/ui/button"
 import { Group, Member } from "@/app/types"
+import { useRouter } from 'next/navigation'
 
 export function BandList({ bands, members }: { bands: Group[], members: Member[] }) {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBand, setEditingBand] = useState<Group | undefined>()
+  const router = useRouter()
 
   const handleEdit = (id: string) => {
     const band = bands.find(b => b.id === id)
@@ -21,6 +23,10 @@ export function BandList({ bands, members }: { bands: Group[], members: Member[]
   const handleAdd = () => {
     setEditingBand(undefined)
     setIsFormOpen(true)
+  }
+
+  const handleSuccess = () => {
+    router.refresh()
   }
 
   return (
@@ -44,6 +50,7 @@ export function BandList({ bands, members }: { bands: Group[], members: Member[]
         members={members}
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
+        onSuccess={handleSuccess}
       />
     </div>
   )

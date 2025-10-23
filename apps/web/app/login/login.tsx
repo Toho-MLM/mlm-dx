@@ -29,13 +29,18 @@ function LoginContent() {
     }
   }, [searchParams])
 
+  useEffect(() => {
+    if (!loading && user) {
+      router.push('/profile')
+    }
+  }, [user, loading, router])
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">読み込み中...</div>
   }
 
   if (user) {
-    router.push('/')
-    return null
+    return <div className="min-h-screen flex items-center justify-center">リダイレクト中...</div>
   }
 
   const handleGoogleSignIn = async () => {
