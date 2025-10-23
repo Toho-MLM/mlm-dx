@@ -1,15 +1,21 @@
 -- MLM-DX Database Schema
 -- Unified schema for Cloudflare D1 (SQLite)
 
+-- Drop existing tables (for reset functionality)
+DROP TABLE IF EXISTS archive;
+DROP TABLE IF EXISTS reservations;
+DROP TABLE IF EXISTS group_member_instruments;
+DROP TABLE IF EXISTS groups;
+DROP TABLE IF EXISTS users;
+
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
-  student_number TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
+  name TEXT,
   nickname TEXT,
   email TEXT UNIQUE NOT NULL,
   instruments TEXT NOT NULL DEFAULT '[]', -- JSON array of instrument codes: ["VO","GT","KEY","DR","BA"]
   grade INTEGER NOT NULL,
-  role TEXT NOT NULL DEFAULT 'MBR' CHECK (role IN ('MGR','CHF','MACT','MBR','ADM','NHD','NACT')),
+  role TEXT NOT NULL DEFAULT 'MBR' CHECK (role IN ('MGR','CHF','MAC','MBR','ADM','NHD','NAC')),
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL
 );
@@ -60,14 +66,3 @@ CREATE TABLE IF NOT EXISTS archive (
   updated_at DATETIME NOT NULL
 );
 
--- Sample data for development/testing
-INSERT OR IGNORE INTO users (id, student_number, name, nickname, email, instruments, grade, role, created_at, updated_at) VALUES 
-('550e8400-e29b-41d4-a716-446655440000', '12345678', 'Admin User', 'Admin', 'admin@example.com', '["GT", "BA"]', 4, 'ADM', '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
-('550e8400-e29b-41d4-a716-446655440001', '87654321', 'Test User', 'Test', 'user@example.com', '["DR", "KEY"]', 2, 'MBR', '2024-01-01 00:00:00', '2024-01-01 00:00:00');
-
-INSERT OR IGNORE INTO groups (id, name, is_main, is_active, created_at, updated_at) VALUES 
-('650e8400-e29b-41d4-a716-446655440000', 'Sample Group', FALSE, TRUE, '2024-01-01 00:00:00', '2024-01-01 00:00:00');
-
-INSERT OR IGNORE INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at) VALUES 
-('850e8400-e29b-41d4-a716-446655440000', '650e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440000', 'GT', '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
-('850e8400-e29b-41d4-a716-446655440001', '650e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440001', 'DR', '2024-01-01 00:00:00', '2024-01-01 00:00:00');

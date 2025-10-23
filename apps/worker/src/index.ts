@@ -88,7 +88,6 @@ app.post('/auth/signin/google', async (c) => {
   }
 });
 
-// Google OAuth認証コールバック
 app.get('/auth/callback/google', async (c) => {
   try {
     const code = c.req.query('code');
@@ -98,15 +97,13 @@ app.get('/auth/callback/google', async (c) => {
     const storedNonce = getCookie(c, 'oauth_nonce');
 
     if (!code || !state || !storedState || state !== storedState) {
-      return c.json({ error: 'Invalid state parameter' }, 400);
+      return c.redirect(`${c.env.FRONTEND_URL}/login?error=invalid_state`);
     }
 
-    // state Cookieを削除
     deleteCookie(c, 'oauth_state');
     deleteCookie(c, 'pkce_verifier');
     deleteCookie(c, 'oauth_nonce');
 
-    // 認可コードをトークンに交換
     const redirectUri = `${c.env.AUTH_URL}/auth/callback/google`;
     const tokenData = await exchangeCodeForToken(
       code,
@@ -117,59 +114,72 @@ app.get('/auth/callback/google', async (c) => {
     );
 
     if (!tokenData) {
-      return c.json({ error: 'Token exchange failed' }, 400);
+      return c.redirect(`${c.env.FRONTEND_URL}/login?error=token_exchange_failed`);
     }
 
-    // IDトークン検証（署名/iss/aud/exp/nonce）
     if (tokenData.idToken) {
       const idPayload = await verifyGoogleIdToken(tokenData.idToken, c.env.GOOGLE_CLIENT_ID, storedNonce || undefined);
       if (!idPayload) {
-        return c.json({ error: 'Invalid id_token' }, 401);
+        return c.redirect(`${c.env.FRONTEND_URL}/login?error=invalid_id_token`);
       }
     }
 
-    // Googleユーザー情報を取得（アクセストークン）
     const googleUser = await getGoogleUserInfo(tokenData.accessToken);
     if (!googleUser) {
-      return c.json({ error: 'Failed to get user info' }, 400);
+      return c.redirect(`${c.env.FRONTEND_URL}/login?error=failed_to_get_user_info`);
     }
     if (googleUser.emailVerified === false) {
-      return c.json({ error: 'Email not verified' }, 403);
-    }
-    if (!googleUser) {
-      return c.json({ error: 'Failed to get user info' }, 400);
+      return c.redirect(`${c.env.FRONTEND_URL}/login?error=email_not_verified`);
     }
 
-    // ホワイトリスト判定
     const dbUser = await c.env.DB.prepare(
       'SELECT * FROM users WHERE email = ?'
     ).bind(googleUser.email).first() as any;
 
     if (!dbUser) {
-      return c.json({ error: 'Access denied - user not in whitelist' }, 403);
+      return c.redirect(`${c.env.FRONTEND_URL}/login?error=access_denied`);
     }
 
-    // ユーザー情報を更新（名前が変更された場合）
-    if (dbUser.name !== googleUser.name) {
+    // Format name with space between family and given name
+    const formatName = (user: any): string => {
+      if (user.family_name && user.given_name) {
+        // Use family_name and given_name if both are available
+        return `${user.family_name} ${user.given_name}`;
+      } else if (user.name) {
+        // Use name field if given_name/family_name not available
+        return user.name;
+      } else {
+        // No name information available
+        throw new Error('No name information available from Google OAuth');
+      }
+    };
+
+    let formattedName: string;
+    try {
+      formattedName = formatName(googleUser);
+    } catch (error) {
+      console.error('Name formatting error:', error);
+      return c.redirect(`${c.env.FRONTEND_URL}/login?error=name_formatting_failed`);
+    }
+    
+    if (dbUser.name !== formattedName) {
       const now = new Date().toISOString();
       await c.env.DB.prepare(
         'UPDATE users SET name = ?, updated_at = ? WHERE email = ?'
       ).bind(
-        googleUser.name || googleUser.email,
+        formattedName,
         now,
         googleUser.email
       ).run();
     }
 
-    // JWTを生成
     const jwt = await generateJWT({
       id: dbUser.id,
       email: googleUser.email,
-      name: googleUser.name,
+      name: formattedName,
       image: googleUser.image,
     }, c.env.AUTH_SECRET);
 
-    // HttpOnly + Secure CookieにJWTを設定
     setCookie(c, 'auth_token', jwt, {
       httpOnly: true,
       secure: c.env.NODE_ENV === 'production',
@@ -178,15 +188,13 @@ app.get('/auth/callback/google', async (c) => {
       path: '/',
     });
 
-    // フロントエンドにリダイレクト
     return c.redirect(`${c.env.FRONTEND_URL}/auth/callback`);
   } catch (error) {
     console.error('Auth callback error:', error);
-    return c.json({ error: 'Authentication callback failed' }, 500);
+    return c.redirect(`${c.env.FRONTEND_URL}/login?error=authentication_failed`);
   }
 });
 
-// セッション情報取得
 app.get('/auth/session', async (c) => {
   try {
     const token = getCookie(c, 'auth_token');
@@ -200,7 +208,6 @@ app.get('/auth/session', async (c) => {
       return c.json({ user: null });
     }
 
-    // データベースからユーザー情報を取得
     const dbUser = await c.env.DB.prepare(
       'SELECT * FROM users WHERE id = ?'
     ).bind(payload.sub).first() as any;
@@ -223,10 +230,8 @@ app.get('/auth/session', async (c) => {
   }
 });
 
-// ログアウト
 app.post('/auth/signout', async (c) => {
   try {
-    // Cookieを削除（適切な属性で）
     deleteCookie(c, 'auth_token', {
       path: '/',
       httpOnly: true,

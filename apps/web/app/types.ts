@@ -10,14 +10,13 @@ export enum Role {
     manager = 'MGR',
     chief = 'CHF',
     nursing_head = 'NHD',
-    medical_accountant = 'MACT',
-    nursing_accountant = 'NACT',
+    medical_accountant = 'MAC',
+    nursing_accountant = 'NAC',
     member = 'MBR',
     admin = 'ADM',
 }
 
 export interface UserData {
-    student_number: string;
     grade: string;
     name: string;
     role: Role;
@@ -28,13 +27,12 @@ export interface UserData {
 
 export interface User {
     id: string;
-    student_number: string;
     name: string;
     nickname?: string;
     email: string;
     instruments: ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[];
     grade: number;
-    role: 'MGR' | 'CHF' | 'MACT' | 'MBR' | 'ADM' | 'NHD' | 'NACT';
+    role: 'MGR' | 'CHF' | 'MAC' | 'MBR' | 'ADM' | 'NHD' | 'NAC';
     created_at: string;
     updated_at: string;
 }

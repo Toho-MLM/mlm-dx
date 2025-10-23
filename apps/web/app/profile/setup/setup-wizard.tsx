@@ -30,7 +30,7 @@ export function SetupWizard(initialUserData: UserData) {
     if (step === 1) {
       setCanProceed(userData.nickname?.trim() !== '')
     } else if (step === 2) {
-      setCanProceed(userData.instruments!.length > 0)
+      setCanProceed(userData.instruments.length > 0)
     } else {
       setCanProceed(true)
     }
@@ -44,16 +44,20 @@ export function SetupWizard(initialUserData: UserData) {
   }
 
   const handleInstrumentToggle = (instrument: Instrument) => {
-    setUserData((prev) => ({
-      ...prev,
-      instruments: prev.instruments.includes(instrument)
-        ? prev.instruments.filter((i) => i !== instrument)
-        : [...prev.instruments, instrument],
-    }))
+    setUserData((prev) => {
+      const currentInstruments = prev.instruments
+      return {
+        ...prev,
+        instruments: currentInstruments.includes(instrument)
+          ? currentInstruments.filter((i) => i !== instrument)
+          : [...currentInstruments, instrument],
+      }
+    })
   }
 
   const moveInstrument = (index: number, direction: 'up' | 'down') => {
-    const newInstruments = [...userData.instruments]
+    const currentInstruments = userData.instruments
+    const newInstruments = [...currentInstruments]
     if (direction === 'up' && index > 0) {
       [newInstruments[index - 1], newInstruments[index]] = [newInstruments[index], newInstruments[index - 1]]
     } else if (direction === 'down' && index < newInstruments.length - 1) {
@@ -74,7 +78,7 @@ export function SetupWizard(initialUserData: UserData) {
           </div>
           <div className="bg-gray-50 p-3 rounded-lg">
             <p className="text-sm font-medium text-gray-500">学籍番号</p>
-            <p className="text-base font-semibold">{userData.student_number}</p>
+            <p className="text-base font-semibold">{(userData as any).student_number}</p>
           </div>
           <div className="bg-gray-50 p-3 rounded-lg">
             <p className="text-sm font-medium text-gray-500">学年</p>
@@ -129,7 +133,7 @@ export function SetupWizard(initialUserData: UserData) {
               <div key={instrument} className="flex items-center space-x-2">
                 <Checkbox
                   id={instrument}
-                  checked={userData.instruments?.includes(instrument)}
+                  checked={userData.instruments.includes(instrument)}
                   onCheckedChange={() => handleInstrumentToggle(instrument)}
                 />
                 <Label htmlFor={instrument} className="text-sm">{instrumentNames[instrument]}</Label>
@@ -200,7 +204,7 @@ export function SetupWizard(initialUserData: UserData) {
         <div className="space-y-2">
           <div className="bg-gray-50 p-2 rounded-lg">
             <p className="text-xs font-medium text-gray-500">学籍番号</p>
-            <p className="text-sm font-semibold">{userData.student_number}</p>
+            <p className="text-sm font-semibold">{(userData as any).student_number}</p>
           </div>
           <div className="bg-gray-50 p-2 rounded-lg">
             <p className="text-xs font-medium text-gray-500">氏名</p>
@@ -228,7 +232,7 @@ export function SetupWizard(initialUserData: UserData) {
     try {
       await apiClient.updateUserData({
         nickname: userData.nickname || '',
-        instruments: userData.instruments || []
+        instruments: userData.instruments
       });
       router.push('/profile');
     } catch (err) {

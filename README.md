@@ -298,6 +298,12 @@ npm run db:setup:local
 # 個別実行
 npm run db:migrate:local
 npm run db:seed:local
+
+# CLIツールを使用したローカルDBセットアップ
+cd apps/worker
+wrangler d1 execute mlm-dx-db --file=./schema.sql --local
+cd ../..
+npm run seed -- sample --local
 ```
 
 #### 本番環境（クラウド）
@@ -309,6 +315,126 @@ npm run db:setup:prod
 npm run db:migrate:prod
 npm run db:seed:prod
 ```
+
+#### ユーザー管理CLI
+
+**CLIツールの使用方法:**
+`scripts/seed.js`はNode.jsで実行できるユーザー管理CLIツールです。UUIDやタイムスタンプは自動生成され、必要最低限の引数でユーザーを管理できます。
+
+**基本的な使用方法:**
+```bash
+# npm runを使用する場合（推奨）
+npm run seed -- user add --email="tanaka@example.com" --grade=3
+npm run seed -- user remove --email="tanaka@example.com"
+npm run seed -- user list
+npm run seed -- user reset
+
+# 直接実行する場合
+node scripts/seed.js user add --email="tanaka@example.com" --grade=3
+node scripts/seed.js user remove --email="tanaka@example.com"
+node scripts/seed.js user list
+node scripts/seed.js user reset
+
+# ヘルプを表示
+npm run seed -- user --help
+node scripts/seed.js user --help
+```
+
+**重要**: npm runを使用する場合は、`--`を使って引数を分離してください。`--`がないと引数がnpm自体のオプションとして解釈されてしまいます。
+
+**利用可能なアクション:**
+
+| アクション | 説明 | 必須引数 |
+|-----------|------|----------|
+| `add` | 新しいユーザーを追加 | `--email`, `--grade` |
+| `remove` | ユーザーを削除 | `--email` |
+| `list` | ユーザー一覧を表示 | なし |
+| `reset` | データベースをリセット | なし |
+
+**オプション引数:**
+
+**ユーザー追加オプション:**
+- `--email <email>` - メールアドレス
+- `--grade <grade>` - 学年（1-6）
+- `--role <role>` - ロール: `MGR,CHF,MAC,MBR,ADM,NHD,NAC`（デフォルト: `MBR`）
+
+**ユーザー削除オプション:**
+- `--email <email>` - メールアドレス
+
+**グローバルオプション:**
+- `--local` - ローカルデータベースを使用（デフォルト: 本番データベース）
+- `--help` - ヘルプを表示
+
+**使用例:**
+```bash
+# ユーザーを追加
+npm run seed -- user add --email="tanaka@example.com" --grade=3
+
+# 管理者ユーザーを追加
+npm run seed -- user add --email="admin@example.com" --grade=4 --role="ADM"
+
+# 新入生ユーザーを追加
+npm run seed -- user add --email="newbie@example.com" --grade=1 --role="NHD"
+
+# ユーザーを削除
+npm run seed -- user remove --email="tanaka@example.com"
+
+# ユーザー一覧を表示
+npm run seed -- user list
+
+# データベースをリセット
+npm run seed -- user reset
+
+# ローカル環境で実行
+npm run seed -- user add --email="test@example.com" --grade=2 --local
+npm run seed -- user list --local
+npm run seed -- user reset --local
+
+# 直接実行の例
+node scripts/seed.js user add --email="admin@example.com" --grade=4 --role="ADM"
+node scripts/seed.js user remove --email="test@example.com"
+node scripts/seed.js user list
+node scripts/seed.js user reset
+```
+
+**注意事項:**
+- UUIDとタイムスタンプは自動生成されます
+- `INSERT OR IGNORE`を使用するため、重複データは作成されません
+- 名前とニックネームはNULLで初期化されます
+- 楽器は空配列`[]`で初期化されます
+- Google OAuth認証時に名前がNULLの場合、Googleから取得した姓名情報が自動設定されます
+- ロールは`['MGR','CHF','MAC','MBR','ADM','NHD','NAC']`のいずれかを使用してください
+- メールアドレスは有効な形式である必要があります
+- 学年は1-6の数値である必要があります
+- `reset`コマンドはデータベースを完全にリセットし、既存のデータは削除されます
+- `list`コマンドはユーザーの基本情報（ID、名前、メール、学年、ロール、作成日時）を表示します
+
+**ローカルデータベースのセットアップ:**
+初回ローカル実行時は、以下の手順でデータベースをセットアップしてください：
+
+1. **データベースのリセット**（推奨）:
+   ```bash
+   npm run seed -- user reset --local
+   ```
+
+2. **テストユーザーの追加**:
+   ```bash
+   npm run seed -- user add --email="test@example.com" --grade=2 --local
+   ```
+
+**手動セットアップ（上記が失敗する場合）:**
+```bash
+cd apps/worker
+wrangler d1 execute mlm-dx-db --file=./schema.sql --local
+cd ../..
+```
+
+**トラブルシューティング:**
+- `Couldn't find a D1 DB with the name or binding`エラーが発生した場合、`npm run seed -- user reset --local`を実行してください
+- ローカルデータベースは`.wrangler/state/v3/d1/`ディレクトリに保存されます
+- ローカルデータベースを完全にリセットしたい場合は、`.wrangler`ディレクトリを削除してください
+- `reset`コマンドでデータベースの構造を再作成できます
+- `list`コマンドでユーザー一覧を確認できます
 
 ## 機能
 
@@ -423,16 +549,16 @@ sequenceDiagram
 ```sql
 -- 新しいユーザーを追加
 INSERT INTO users (
-  id, student_number, name, email, instruments, grade, role, 
+  id, name, nickname, email, instruments, grade, role, 
   created_at, updated_at
 ) VALUES (
   'user-uuid-here',           -- 一意のUUID
-  'student123',               -- 学籍番号
-  '田中太郎',                  -- 表示名
+  NULL,                       -- 名前（Google OAuth認証時に自動設定）
+  NULL,                       -- ニックネーム
   'tanaka@example.com',       -- Googleアカウントのメールアドレス
-  '["VO", "GT"]',             -- 楽器（JSON配列）
+  '[]',                       -- 楽器（空配列）
   3,                          -- 学年
-  'MBR',                      -- ロール（MBR: メンバー）
+  'MBR',                      -- ロール（MBR: 部員）
   datetime('now'),            -- 作成日時
   datetime('now')             -- 更新日時
 );
@@ -443,12 +569,12 @@ INSERT INTO users (
 | ロール | 説明 |
 |--------|------|
 | `ADM` | 管理者 |
-| `MGR` | マネージャー |
-| `CHF` | チーフ |
-| `MACT` | メインアクト |
-| `MBR` | メンバー |
-| `NHD` | 新入生 |
-| `NACT` | 新入生アクト |
+| `MGR` | 部長 |
+| `CHF` | 主務 |
+| `MAC` | 医会計 |
+| `MBR` | 部員 |
+| `NHD` | 看護部長 |
+| `NAC` | 看護会計 |
 
 #### 楽器一覧
 

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
+import { generateStudentNumber } from '../utils/student';
 
 const userRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -11,7 +12,22 @@ userRoutes.use('*', requireAuth);
 userRoutes.get('/me', async (c) => {
   try {
     const user = c.get('user');
-    return c.json({ success: true, data: user });
+    
+    // Parse instruments JSON string
+    let parsedInstruments: string[] = [];
+    try {
+      parsedInstruments = JSON.parse((user as any).instruments || '[]') as string[];
+    } catch (error) {
+      console.error('Error parsing instruments:', error);
+      parsedInstruments = [];
+    }
+
+    const userWithParsedInstruments = {
+      ...user,
+      instruments: parsedInstruments
+    };
+
+    return c.json({ success: true, data: userWithParsedInstruments });
   } catch (error) {
     console.error('Error fetching current user:', error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -25,13 +41,29 @@ userRoutes.get('/fetch/:email', async (c) => {
     
     const user = await c.env.DB.prepare(
       'SELECT * FROM users WHERE email = ?'
-    ).bind(email).first();
+    ).bind(email).first() as any;
 
     if (!user) {
       return c.json({ success: false, error: 'User not found' }, 404);
     }
 
-    return c.json({ success: true, data: user });
+    // Parse instruments JSON string
+    let parsedInstruments: string[] = [];
+    try {
+      parsedInstruments = JSON.parse((user as any).instruments || '[]') as string[];
+    } catch (error) {
+      console.error('Error parsing instruments:', error);
+      parsedInstruments = [];
+    }
+
+    // Add student_number as computed field
+    const userWithStudentNumber = {
+      ...user,
+      instruments: parsedInstruments,
+      student_number: generateStudentNumber(user.email)
+    };
+
+    return c.json({ success: true, data: userWithStudentNumber });
   } catch (error) {
     console.error('Error fetching user:', error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -85,7 +117,11 @@ userRoutes.get('/holder', async (c) => {
     // Get user data
     const userData = await c.env.DB.prepare(
       'SELECT * FROM users WHERE id = ?'
-    ).bind(user.id).first();
+    ).bind(user.id).first() as any;
+
+    if (!userData) {
+      return c.json({ success: false, error: 'User not found' }, 404);
+    }
 
     // Get user's groups
     const groups = await c.env.DB.prepare(`
@@ -95,10 +131,26 @@ userRoutes.get('/holder', async (c) => {
       WHERE gm.user_id = ? AND g.is_active = TRUE
     `).bind(user.id).all();
 
+    // Parse instruments JSON string
+    let parsedInstruments: string[] = [];
+    try {
+      parsedInstruments = JSON.parse((userData as any).instruments || '[]') as string[];
+    } catch (error) {
+      console.error('Error parsing instruments:', error);
+      parsedInstruments = [];
+    }
+
+    // Add student_number as computed field
+    const userWithStudentNumber = {
+      ...userData,
+      instruments: parsedInstruments,
+      student_number: generateStudentNumber(userData.email)
+    };
+
     return c.json({
       success: true,
       data: {
-        user: userData,
+        user: userWithStudentNumber,
         bands: groups.results
       }
     });

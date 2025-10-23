@@ -3,6 +3,7 @@ import type { Bindings, Variables } from '../index';
 import type { User } from '../types';
 import { getCookie } from 'hono/cookie';
 import { verifyJWT } from '../auth';
+import { generateStudentNumber } from '../utils/student';
 
 export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Variables }>, next: () => Promise<void>) => {
   try {
@@ -26,7 +27,6 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
 
     const userData: User = {
       id: fullUser.id,
-      student_number: fullUser.student_number,
       name: fullUser.name,
       nickname: fullUser.nickname,
       email: fullUser.email,
@@ -37,7 +37,13 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
       updated_at: fullUser.updated_at,
     };
 
-    c.set('user', userData);
+    // Add student_number as computed field
+    const userWithStudentNumber = {
+      ...userData,
+      student_number: generateStudentNumber(fullUser.email)
+    };
+
+    c.set('user', userWithStudentNumber);
     await next();
     return c.res;
   } catch (error) {

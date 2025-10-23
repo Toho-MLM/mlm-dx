@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
+import { generateStudentNumber } from '../utils/student';
 
 // 安全なJSON解析関数
 function safeJsonParse<T>(json: string, fallback: T): T {
@@ -44,7 +45,6 @@ memberRoutes.get('/list', async (c) => {
         u.name,
         u.nickname,
         u.email,
-        u.student_number,
         u.grade,
         u.instruments,
         u.role,
@@ -61,7 +61,8 @@ memberRoutes.get('/list', async (c) => {
     const processedMembers = members.results.map((member: any) => ({
       ...member,
       groups: member.groups ? member.groups.split(',') : [],
-      instruments: safeJsonParse(member.instruments, [])
+      instruments: safeJsonParse(member.instruments, []),
+      student_number: generateStudentNumber(member.email)
     }));
 
     return c.json({ success: true, data: processedMembers });

@@ -1,13 +1,33 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useAuth } from '@/app/context/AuthContext'
+import { useEffect, useState } from 'react'
 
 export function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, loading } = useAuth()
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    const error = searchParams.get('error')
+    if (error) {
+      const errorMessages: Record<string, string> = {
+        invalid_state: 'ログインの処理中に問題が発生しました。もう一度お試しください。',
+        token_exchange_failed: 'ログインの処理中に問題が発生しました。もう一度お試しください。',
+        invalid_id_token: 'ログインの処理中に問題が発生しました。もう一度お試しください。',
+        failed_to_get_user_info: 'アカウント情報の取得に失敗しました。もう一度お試しください。',
+        email_not_verified: 'Googleアカウントのメールアドレスが認証されていません。Googleアカウントの設定でメール認証を完了してから再度お試しください。',
+        access_denied: 'このメールアドレスは利用できません。管理者にお問い合わせください。',
+        authentication_failed: 'ログインに失敗しました。もう一度お試しください。'
+      }
+      setErrorMessage(errorMessages[error] || 'ログイン中に問題が発生しました。もう一度お試しください。')
+    }
+  }, [searchParams])
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">読み込み中...</div>
@@ -44,7 +64,12 @@ export function LoginPage() {
         <CardHeader>
           <CardTitle className="text-center">MLM DX ログイン</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {errorMessage && (
+            <Alert variant="destructive">
+              <AlertDescription>{errorMessage}</AlertDescription>
+            </Alert>
+          )}
           <Button
             onClick={handleGoogleSignIn}
             className="w-full bg-white hover:bg-gray-50 text-gray-900 border border-gray-300"
