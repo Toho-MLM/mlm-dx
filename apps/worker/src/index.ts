@@ -11,6 +11,7 @@ import { memberRoutes } from './routes/members';
 import { reservationRoutes } from './routes/reservations';
 import { archiveRoutes } from './routes/archive';
 import type { User } from './types';
+import { UserSchema } from './schemas';
 
 export type Bindings = {
   DB: D1Database;
@@ -19,7 +20,6 @@ export type Bindings = {
   GOOGLE_CLIENT_SECRET: string;
   CORS_ORIGIN: string;
   FRONTEND_URL: string;
-  YOUTUBE_REFRESH_TOKEN: string;
   NODE_ENV: string;
   AUTH_URL: string;
 };
@@ -132,24 +132,21 @@ app.get('/auth/callback/google', async (c) => {
       return c.redirect(`${c.env.FRONTEND_URL}/login?error=email_not_verified`);
     }
 
-    const dbUser = await c.env.DB.prepare(
+    const dbUser = UserSchema.parse(await c.env.DB.prepare(
       'SELECT * FROM users WHERE email = ?'
-    ).bind(googleUser.email).first() as any;
+    ).bind(googleUser.email).first());
 
     if (!dbUser) {
       return c.redirect(`${c.env.FRONTEND_URL}/login?error=access_denied`);
     }
 
     // Format name with space between family and given name
-    const formatName = (user: any): string => {
+    const formatName = (user: { family_name?: string; given_name?: string; name: string }): string => {
       if (user.family_name && user.given_name) {
-        // Use family_name and given_name if both are available
         return `${user.family_name} ${user.given_name}`;
       } else if (user.name) {
-        // Use name field if given_name/family_name not available
         return user.name;
       } else {
-        // No name information available
         throw new Error('No name information available from Google OAuth');
       }
     };
@@ -208,9 +205,9 @@ app.get('/auth/session', async (c) => {
       return c.json({ user: null });
     }
 
-    const dbUser = await c.env.DB.prepare(
+    const dbUser = UserSchema.parse(await c.env.DB.prepare(
       'SELECT * FROM users WHERE id = ?'
-    ).bind(payload.sub).first() as any;
+    ).bind(payload.sub).first());
 
     if (!dbUser) {
       return c.json({ user: null });

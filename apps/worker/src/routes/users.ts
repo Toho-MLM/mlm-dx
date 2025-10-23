@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { generateStudentNumber } from '../utils/student';
+import { UserSchema, UserWithInstrumentsSchema, UpdateUserRequestSchema } from '../schemas';
+import { z } from 'zod';
 
 const userRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -11,21 +13,21 @@ userRoutes.use('*', requireAuth);
 // me - Get current user data
 userRoutes.get('/me', async (c) => {
   try {
-    const user = c.get('user');
+    const user = UserSchema.parse(c.get('user'));
     
-    // Parse instruments JSON string
     let parsedInstruments: string[] = [];
     try {
-      parsedInstruments = JSON.parse((user as any).instruments || '[]') as string[];
+      parsedInstruments = JSON.parse(user.instruments || '[]') as string[];
     } catch (error) {
       console.error('Error parsing instruments:', error);
       parsedInstruments = [];
     }
 
-    const userWithParsedInstruments = {
+    const userWithParsedInstruments = UserWithInstrumentsSchema.parse({
       ...user,
-      instruments: parsedInstruments
-    };
+      instruments: parsedInstruments,
+      student_number: generateStudentNumber(user.email)
+    });
 
     return c.json({ success: true, data: userWithParsedInstruments });
   } catch (error) {
@@ -39,29 +41,27 @@ userRoutes.get('/fetch/:email', async (c) => {
   try {
     const email = c.req.param('email');
     
-    const user = await c.env.DB.prepare(
+    const user = UserSchema.parse(await c.env.DB.prepare(
       'SELECT * FROM users WHERE email = ?'
-    ).bind(email).first() as any;
+    ).bind(email).first());
 
     if (!user) {
       return c.json({ success: false, error: 'User not found' }, 404);
     }
 
-    // Parse instruments JSON string
     let parsedInstruments: string[] = [];
     try {
-      parsedInstruments = JSON.parse((user as any).instruments || '[]') as string[];
+      parsedInstruments = JSON.parse(user.instruments || '[]') as string[];
     } catch (error) {
       console.error('Error parsing instruments:', error);
       parsedInstruments = [];
     }
 
-    // Add student_number as computed field
-    const userWithStudentNumber = {
+    const userWithStudentNumber = UserWithInstrumentsSchema.parse({
       ...user,
       instruments: parsedInstruments,
       student_number: generateStudentNumber(user.email)
-    };
+    });
 
     return c.json({ success: true, data: userWithStudentNumber });
   } catch (error) {
@@ -73,15 +73,15 @@ userRoutes.get('/fetch/:email', async (c) => {
 // update_user - Update user data
 userRoutes.put('/update', async (c) => {
   try {
-    const user = c.get('user');
-    const { nickname, instruments } = await c.req.json();
+    const user = UserSchema.parse(c.get('user'));
+    const requestData = UpdateUserRequestSchema.parse(await c.req.json());
 
     const now = new Date().toISOString();
-    const instrumentsJson = JSON.stringify(instruments);
+    const instrumentsJson = JSON.stringify(requestData.instruments);
 
     await c.env.DB.prepare(
       'UPDATE users SET nickname = ?, instruments = ?, updated_at = ? WHERE email = ?'
-    ).bind(nickname, instrumentsJson, now, user.email).run();
+    ).bind(requestData.nickname, instrumentsJson, now, user.email).run();
 
     return c.json({ success: true, message: 'User updated successfully' });
   } catch (error) {
@@ -93,7 +93,7 @@ userRoutes.put('/update', async (c) => {
 // fetch_user_groups - Get user's groups
 userRoutes.get('/groups', async (c) => {
   try {
-    const user = c.get('user');
+    const user = UserSchema.parse(c.get('user'));
 
     const groups = await c.env.DB.prepare(`
       SELECT g.*, gm.role as member_role
@@ -112,18 +112,16 @@ userRoutes.get('/groups', async (c) => {
 // fetch_user_holder - Get user data with groups for reservation holder
 userRoutes.get('/holder', async (c) => {
   try {
-    const user = c.get('user');
+    const user = UserSchema.parse(c.get('user'));
 
-    // Get user data
-    const userData = await c.env.DB.prepare(
+    const userData = UserSchema.parse(await c.env.DB.prepare(
       'SELECT * FROM users WHERE id = ?'
-    ).bind(user.id).first() as any;
+    ).bind(user.id).first());
 
     if (!userData) {
       return c.json({ success: false, error: 'User not found' }, 404);
     }
 
-    // Get user's groups
     const groups = await c.env.DB.prepare(`
       SELECT g.*, gm.role as member_role
       FROM groups g
@@ -131,21 +129,19 @@ userRoutes.get('/holder', async (c) => {
       WHERE gm.user_id = ? AND g.is_active = TRUE
     `).bind(user.id).all();
 
-    // Parse instruments JSON string
     let parsedInstruments: string[] = [];
     try {
-      parsedInstruments = JSON.parse((userData as any).instruments || '[]') as string[];
+      parsedInstruments = JSON.parse(userData.instruments || '[]') as string[];
     } catch (error) {
       console.error('Error parsing instruments:', error);
       parsedInstruments = [];
     }
 
-    // Add student_number as computed field
-    const userWithStudentNumber = {
+    const userWithStudentNumber = UserWithInstrumentsSchema.parse({
       ...userData,
       instruments: parsedInstruments,
       student_number: generateStudentNumber(userData.email)
-    };
+    });
 
     return c.json({
       success: true,

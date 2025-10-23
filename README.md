@@ -123,11 +123,6 @@ NODE_ENV=development
 
 # API設定
 NEXT_PUBLIC_API_URL=http://localhost:8787
-
-# Auth.js設定
-AUTH_SECRET=dev-nextauth-secret-here-min-32-chars-long
-GOOGLE_CLIENT_ID=your-dev-google-client-id
-GOOGLE_CLIENT_SECRET=your-dev-google-client-secret
 ```
 
 **本番環境用の設定:**
@@ -137,14 +132,27 @@ NODE_ENV=production
 
 # API設定
 NEXT_PUBLIC_API_URL=https://your-worker-domain.workers.dev
-
-# Auth.js設定
-AUTH_SECRET=prod-nextauth-secret-here-min-32-chars-long
-GOOGLE_CLIENT_ID=your-prod-google-client-id
-GOOGLE_CLIENT_SECRET=your-prod-google-client-secret
 ```
 
-#### 4.3 バックエンド（apps/worker/wrangler.toml）
+#### 4.3 バックエンド（apps/worker/.dev.vars）
+
+**開発環境用の設定:**
+```env
+# 環境設定
+NODE_ENV=development
+AUTH_URL=http://localhost:8787
+
+# 認証設定
+AUTH_SECRET=your-auth-secret-min-32-chars-long
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# CORS設定
+CORS_ORIGIN=http://localhost:3000
+FRONTEND_URL=http://localhost:3000
+```
+
+#### 4.4 バックエンド（apps/worker/wrangler.toml）
 
 ```toml
 name = "mlm-dx-worker"
@@ -169,7 +177,6 @@ database_id = "your-dev-database-id"
 
 # 共通設定
 [vars]
-AUTH_SECRET = "your-auth-secret-here-min-32-chars-long"
 CORS_ORIGIN = "https://your-frontend-domain.com"
 FRONTEND_URL = "https://your-frontend-domain.com"
 
@@ -184,30 +191,28 @@ CORS_ORIGIN = "http://localhost:3000"
 FRONTEND_URL = "http://localhost:3000"
 ```
 
-#### 4.4 環境変数の詳細説明
+#### 4.5 環境変数の詳細説明
 
 **フロントエンド環境変数:**
 
 | 変数名 | 説明 | 開発環境 | 本番環境 |
 |--------|------|----------|----------|
-| `NODE_ENV` | 環境設定（クッキーのsecure設定に影響） | `development` | `production` |
+| `NODE_ENV` | 環境設定 | `development` | `production` |
 | `NEXT_PUBLIC_API_URL` | バックエンドAPIのURL | `http://localhost:8787` | `https://your-worker-domain.workers.dev` |
-| `AUTH_SECRET` | Auth.jsの暗号化キー | 開発用32文字以上の文字列 | 本番用32文字以上の文字列 |
-| `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | 開発環境用のクライアントID | 本番環境用のクライアントID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | 開発環境用のシークレット | 本番環境用のシークレット |
 
 **バックエンド環境変数:**
 
 | 変数名 | 説明 | 開発環境 | 本番環境 |
 |--------|------|----------|----------|
-| `CORS_ORIGIN` | CORS許可オリジン | `http://localhost:3000` | `https://your-frontend-domain.com` |
-| `FRONTEND_URL` | フロントエンドのURL | `http://localhost:3000` | `https://your-frontend-domain.com` |
-| `AUTH_SECRET` | Auth.jsの暗号化キー | `.dev.vars`ファイル | `wrangler secret put` |
+| `NODE_ENV` | 環境設定（クッキーのsecure設定に影響） | `development` | `production` |
+| `AUTH_URL` | 認証コールバック用のURL | `http://localhost:8787` | `https://your-worker-domain.workers.dev` |
+| `AUTH_SECRET` | JWTトークンの署名用秘密鍵 | `.dev.vars`ファイル | `wrangler secret put` |
 | `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | `.dev.vars`ファイル | `wrangler secret put` |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | `.dev.vars`ファイル | `wrangler secret put` |
-| `YOUTUBE_REFRESH_TOKEN` | YouTube API用リフレッシュトークン | `.dev.vars`ファイル | `wrangler secret put` |
+| `CORS_ORIGIN` | CORS許可オリジン | `http://localhost:3000` | `https://your-frontend-domain.com` |
+| `FRONTEND_URL` | フロントエンドのURL | `http://localhost:3000` | `https://your-frontend-domain.com` |
 
-#### 4.5 機密情報の管理方法
+#### 4.6 機密情報の管理方法
 
 **本番環境（wrangler secret put）:**
 本番環境の機密情報は`wrangler secret put`コマンドで安全に管理します：
@@ -217,7 +222,6 @@ FRONTEND_URL = "http://localhost:3000"
 wrangler secret put AUTH_SECRET --env production
 wrangler secret put GOOGLE_CLIENT_ID --env production
 wrangler secret put GOOGLE_CLIENT_SECRET --env production
-wrangler secret put YOUTUBE_REFRESH_TOKEN --env production
 ```
 
 **開発環境（.dev.varsファイル）:**
@@ -227,7 +231,6 @@ wrangler secret put YOUTUBE_REFRESH_TOKEN --env production
 AUTH_SECRET=your-dev-auth-secret-here-min-32-chars-long
 GOOGLE_CLIENT_ID=your-dev-google-client-id
 GOOGLE_CLIENT_SECRET=your-dev-google-client-secret
-YOUTUBE_REFRESH_TOKEN=your-youtube-oauth-refresh-token-for-dev
 ```
 
 **注意事項:**
@@ -237,6 +240,7 @@ YOUTUBE_REFRESH_TOKEN=your-youtube-oauth-refresh-token-for-dev
 - 本番環境では`https`プロトコルを使用し、適切なドメインを設定してください
 - 認証はワーカー側のみで実行され、フロントエンドはワーカー側の認証エンドポイントにリダイレクトします
 - `.dev.vars`ファイルは`.gitignore`に追加して、バージョン管理から除外してください
+- フロントエンドでは認証関連の環境変数は不要で、API接続URLのみ設定します
 
 ### 5. 開発サーバーの起動
 

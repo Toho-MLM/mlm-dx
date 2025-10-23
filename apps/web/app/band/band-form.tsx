@@ -74,7 +74,7 @@ export function BandForm({ band, members, isOpen, onClose }: BandFormProps) {
 
       const response = await apiClient.createGroup({
         name,
-        assignments,
+        assignments: JSON.stringify(assignments),
         is_main: false
       });
 
