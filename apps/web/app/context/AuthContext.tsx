@@ -13,13 +13,25 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+export const AuthProvider = ({ 
+  children, 
+  initialUser 
+}: { 
+  children: React.ReactNode;
+  initialUser: User | null;
+}) => {
+  const [user, setUser] = useState<User | null>(initialUser)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    if (initialUser !== null) {
+      setLoading(false)
+      return
+    }
+
     const checkAuth = async () => {
       try {
+        setLoading(true)
         const session = await httpClient.get('/auth/session') as { user?: User }
         setUser(session?.user || null)
       } catch (error) {
@@ -31,7 +43,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     checkAuth()
-  }, [])
+  }, [initialUser])
 
   const refreshAuth = async () => {
     try {

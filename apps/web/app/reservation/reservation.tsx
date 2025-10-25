@@ -8,6 +8,7 @@ import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { Card, CardContent, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { LoadingButton } from "@/components/ui/loading-button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -119,6 +120,7 @@ ThreeDayView.title = (date: Date) => {
 
 export function ReservationPage({ initialReservationData }: { initialReservationData: ReservationData[] }) {
   const [isMobile, setIsMobile] = useState(false)
+  const [isAdminMode, setIsAdminMode] = useState(false)
   const [reservationDraft, setReservationDraft] = useState({
     date: startOfDay(new Date()),
     group: null as string | null,
@@ -425,6 +427,11 @@ export function ReservationPage({ initialReservationData }: { initialReservation
     await refetchReservationData()
   }
 
+  const handleAdminToggle = async (checked: boolean) => {
+    setIsAdminMode(checked)
+    await refetchReservationData()
+  }
+
   const handleCancelReservation = () => {
     setIsCancelFormOpen(true)
   }
@@ -435,6 +442,7 @@ export function ReservationPage({ initialReservationData }: { initialReservation
         onAddReservation={handleAddReservation}
         onRefresh={handleRefresh}
         onCancelReservation={handleCancelReservation}
+        onAdminToggle={handleAdminToggle}
       />
       <div className="h-[calc(100vh-4rem)] flex flex-col" ref={calendarRef} style={{ position: 'relative' }}>
         <div className="flex-1 mx-auto px-5 w-full max-w-none">
@@ -751,17 +759,17 @@ export function ReservationPage({ initialReservationData }: { initialReservation
                   </Select>
                 </div>
               </div>
-              <Button
+              <LoadingButton
                 type="submit"
+                isLoading={isSending}
                 disabled={isReservationButtonDisabled()}
                 className={cn(
                   "w-full",
                   isReservationButtonDisabled() && "opacity-50 cursor-not-allowed"
                 )}
               >
-                {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
                 予約
-              </Button>
+              </LoadingButton>
             </form>
           </DialogContent>
         </Dialog>
@@ -781,10 +789,14 @@ export function ReservationPage({ initialReservationData }: { initialReservation
                       {selectedReservation.group_name && <p><strong>グループ</strong> {selectedReservation.group_name}</p>}
                       <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
                     </div>
-                    <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full" disabled={isSending}>
-                      {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <LoadingButton 
+                      onClick={() => handleCancel(selectedReservation.id)} 
+                      variant="destructive" 
+                      className="w-full" 
+                      isLoading={isSending}
+                    >
                       キャンセル
-                    </Button>
+                    </LoadingButton>
                   </div>
                 ) : (
                   <p className="text-sm text-gray-600 dark:text-gray-300">この予約はキャンセルできません。</p>

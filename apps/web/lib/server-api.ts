@@ -14,7 +14,8 @@ import {
   type GroupWithMemberRole,
   type Member,
   type Reservation,
-  type Archive
+  type Archive,
+  type User
 } from '../../../lib/shared-schemas'
 import { MemberListItemSchema, type MemberListItem } from './schemas'
 
@@ -66,8 +67,9 @@ export async function getServerReservations(): Promise<ApiResponse<Reservation[]
   return serverRequest('/reservations/fetch')
 }
 
-export async function getServerUserGroups(): Promise<ApiResponse<GroupWithMemberRole[]>> {
-return serverRequest('/groups')
+export async function getServerUserGroups(admin: boolean = false): Promise<ApiResponse<GroupWithMemberRole[]>> {
+  const params = admin ? '?admin=true' : '';
+  return serverRequest(`/groups${params}`)
 }
 
 export async function getServerMemberList(): Promise<ApiResponse<MemberListItem[]>> {
@@ -80,4 +82,8 @@ export async function getServerMemberOptions(): Promise<ApiResponse<{ id: string
 
 export async function getServerArchives(): Promise<ApiResponse<Archive[]>> {
   return serverRequest('/archive')
+}
+
+export async function getServerUserData(): Promise<ApiResponse<User>> {
+  return serverRequest('/users/me')
 }

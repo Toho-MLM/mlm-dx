@@ -67,7 +67,7 @@ export async function createGroupAction(data: {
   is_main?: boolean
 }): Promise<ApiResponse<void>> {
   try {
-    const result = await serverActionRequest('/groups/create', {
+    const result = await serverActionRequest('/groups', {
       method: 'POST',
       body: JSON.stringify(data),
     })
