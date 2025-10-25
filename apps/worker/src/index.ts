@@ -251,6 +251,11 @@ app.get('/auth/session', async (c) => {
         name: dbUser.name,
         nickname: payload.nickname,
         picture: payload.picture,
+        role: dbUser.role,
+        grade: dbUser.grade,
+        instruments: dbUser.instruments,
+        created_at: dbUser.created_at,
+        updated_at: dbUser.updated_at,
       }
     });
   } catch (error) {
@@ -280,10 +285,6 @@ app.route('/groups', groupRoutes);
 app.route('/members', memberRoutes);
 app.route('/reservations', reservationRoutes);
 app.route('/archive', archiveRoutes);
-
-app.get('/health', (c) => {
-  return c.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {

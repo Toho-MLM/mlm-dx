@@ -29,8 +29,9 @@ class ApiClient {
     return httpClient.put<ApiResponse<User>>('/users/me', data)
   }
 
-  async getUserGroups(): Promise<ApiResponse<Group[]>> {
-    return httpClient.get<ApiResponse<Group[]>>('/groups')
+  async getUserGroups(admin: boolean = false): Promise<ApiResponse<Group[]>> {
+    const params = admin ? '?admin=true' : '';
+    return httpClient.get<ApiResponse<Group[]>>(`/groups${params}`)
   }
 
   async getGroupOptions(): Promise<ApiResponse<{ id: string; name: string }[]>> {
@@ -63,6 +64,27 @@ class ApiClient {
   // メンバー関連
   async getMemberList(): Promise<ApiResponse<MemberListItem[]>> {
     return httpClient.get<ApiResponse<MemberListItem[]>>('/members')
+  }
+
+  async createMember(data: {
+    name: string;
+    email: string;
+    grade: number;
+  }): Promise<ApiResponse<{ id: string }>> {
+    return httpClient.post<ApiResponse<{ id: string }>>('/members', data)
+  }
+
+  async updateMember(id: string, data: {
+    nickname?: string;
+    grade: number;
+    instruments: string[];
+    role: string;
+  }): Promise<ApiResponse<void>> {
+    return httpClient.put<ApiResponse<void>>(`/members/${id}`, data)
+  }
+
+  async deleteMember(id: string): Promise<ApiResponse<void>> {
+    return httpClient.delete<ApiResponse<void>>(`/members/${id}`)
   }
 
   // 予約関連

@@ -146,6 +146,20 @@ export const CreateReservationRequestSchema = z.object({
   message: "予約時間が無効です。日をまたがず、最短10分から最長4時間、6:00-23:00の範囲で予約してください。"
 });
 
+// 管理者権限判定関数
+export function isAdmin(role: string | undefined): boolean {
+  if (!role) {
+    return false;
+  }
+  return role !== 'MBR';
+}
+
+export function requireAdmin(role: string | undefined): void {
+  if (!isAdmin(role)) {
+    throw new Error('INSUFFICIENT_PERMISSIONS');
+  }
+}
+
 // 予約バリデーション関数
 export const validateReservationTime = (startTime: string, endTime: string): { isValid: boolean; error?: string } => {
   try {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { LoadingButton } from '@/components/ui/loading-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -286,12 +287,14 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
                 次へ
               </Button>
             ) : (
-              <Button onClick={handleSubmit} className="bg-primary text-primary-foreground hover:bg-primary/90" size="sm" disabled={isSending}>
-                <div className="flex items-center justify-center">
-                  {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  完了
-                </div>
-              </Button>
+              <LoadingButton 
+                onClick={handleSubmit} 
+                className="bg-primary text-primary-foreground hover:bg-primary/90" 
+                size="sm" 
+                isLoading={isSending}
+              >
+                完了
+              </LoadingButton>
             )}
           </CardFooter>
         </Card>

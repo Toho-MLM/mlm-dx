@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS reservations (
 CREATE TABLE IF NOT EXISTS archive (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
-  youtube_url TEXT,
+  youtube_url TEXT NOT NULL,
   year INTEGER NOT NULL,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL

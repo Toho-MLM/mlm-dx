@@ -2,6 +2,7 @@ import { useState, useEffect, useTransition, useMemo } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { LoadingButton } from "@/components/ui/loading-button"
 import { Group, GroupMember, Instrument, Member, instrumentColors, instrumentNames } from "@/app/types"
 import { X, Plus, ChevronDown, Loader2, AlertTriangle, UserRoundMinus, CircleCheckBig, XCircle } from 'lucide-react'
 import {
@@ -120,7 +121,19 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
 
   const availableInstruments = (bandMember: GroupMember) => {
     const memberOption = memberOptions.find(m => m.id === bandMember.id);
-    return memberOption?.instruments.filter(i => !bandMember.instruments.includes(i as Instrument)) || [];
+    const memberInstruments = memberOption?.instruments || [];
+    
+    const allInstruments = Object.values(Instrument);
+    const unassignedInstruments = allInstruments.filter(i => !bandMember.instruments.includes(i));
+    
+    return unassignedInstruments.sort((a, b) => {
+      const aIsMemberInstrument = memberInstruments.includes(a);
+      const bIsMemberInstrument = memberInstruments.includes(b);
+      
+      if (aIsMemberInstrument && !bIsMemberInstrument) return -1;
+      if (!aIsMemberInstrument && bIsMemberInstrument) return 1;
+      return 0;
+    });
   }
 
   const availableMembers = useMemo(() => {
@@ -178,7 +191,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-4 w-4 mr-1 p-0"
+                          className="h-4 w-4 mr-1 p-0 hover:bg-transparent"
                           onClick={() => removeInstrument(bandMember.id, instrument as Instrument)}
                         >
                           <X className="h-2 w-2 p-0" />
@@ -280,10 +293,9 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button onClick={handleSubmit} disabled={isPending || !isFormValid}>
-                {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              <LoadingButton onClick={handleSubmit} isLoading={isPending} disabled={!isFormValid}>
                 保存
-              </Button>
+              </LoadingButton>
             </div>
           </div>
         </div>

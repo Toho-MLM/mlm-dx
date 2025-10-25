@@ -1,9 +1,13 @@
 'use client';
 
 import React, { useMemo, useState, useTransition } from 'react';
-import { createArchiveAction, deleteArchiveAction } from '@/lib/server-actions';
+import { deleteArchiveAction } from '@/lib/server-actions';
 import type { Archive } from '@/lib/schemas';
+import { LoadingButton } from '@/components/ui/loading-button'
 import { PageHeader } from '@/components/page-header';
+import { ArchiveAddDialog } from '@/components/archive-add-dialog';
+import { useAuth } from '@/app/context/AuthContext';
+import { isAdmin } from '../../../../lib/shared-schemas';
 
 interface ArchiveClientProps {
   initialArchives: Archive[];
@@ -11,10 +15,8 @@ interface ArchiveClientProps {
 
 export function ArchiveClient({ initialArchives }: ArchiveClientProps) {
   const [archives, setArchives] = useState<Archive[]>(initialArchives);
-  const [title, setTitle] = useState('');
-  const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [year, setYear] = useState<number>(new Date().getFullYear());
   const [isPending, startTransition] = useTransition();
+  const { user } = useAuth();
 
   const grouped = useMemo(() => {
     const byYear: Record<number, Archive[]> = {};
@@ -27,28 +29,8 @@ export function ArchiveClient({ initialArchives }: ArchiveClientProps) {
       .map(([y, list]) => ({ year: Number(y), list }));
   }, [archives]);
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    
-    startTransition(async () => {
-      try {
-        const res = await createArchiveAction({ 
-          title: title.trim(), 
-          youtube_url: youtubeUrl.trim() || undefined, 
-          year 
-        });
-        
-        if (res.success && res.data) {
-          setArchives((prev) => [res.data!, ...prev]);
-          setTitle('');
-          setYoutubeUrl('');
-          setYear(new Date().getFullYear());
-        }
-      } catch (error) {
-        console.error('Failed to create archive:', error);
-      }
-    });
+  const handleArchiveAdded = (newArchive: Archive) => {
+    setArchives((prev) => [newArchive, ...prev]);
   };
 
   const handleDelete = async (id: string) => {
@@ -64,44 +46,12 @@ export function ArchiveClient({ initialArchives }: ArchiveClientProps) {
     });
   };
 
+  const canAddArchive = user && user.role && isAdmin(user.role);
+
   return (
     <>
-      <PageHeader />
+      <PageHeader rightActions={canAddArchive ? <ArchiveAddDialog onArchiveAdded={handleArchiveAdded} /> : undefined} />
       <div className="container mx-auto px-4 py-8">
-
-      <form onSubmit={handleCreate} className="mb-8 grid gap-4 md:grid-cols-4">
-        <input
-          className="border rounded px-3 py-2"
-          placeholder="タイトル"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          disabled={isPending}
-        />
-        <input
-          className="border rounded px-3 py-2"
-          placeholder="YouTube URL (任意)"
-          value={youtubeUrl}
-          onChange={(e) => setYoutubeUrl(e.target.value)}
-          disabled={isPending}
-        />
-        <input
-          className="border rounded px-3 py-2"
-          type="number"
-          placeholder="年"
-          value={year}
-          onChange={(e) => setYear(Number(e.target.value))}
-          disabled={isPending}
-        />
-        <button
-          type="submit"
-          className="bg-blue-600 text-white rounded px-4 py-2 disabled:opacity-50"
-          disabled={isPending}
-        >
-          {isPending ? '追加中...' : '追加'}
-        </button>
-      </form>
-
-      <div className="space-y-8">
         {grouped.map(({ year, list }) => (
           <div key={year}>
             <h2 className="text-2xl font-semibold mb-4">{year}</h2>
@@ -124,13 +74,14 @@ export function ArchiveClient({ initialArchives }: ArchiveClientProps) {
                   <div className="p-4">
                     <h3 className="text-xl font-semibold mb-2 text-gray-800">{a.title}</h3>
                     <div className="flex gap-2">
-                      <button
-                        className="bg-red-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
+                      <LoadingButton
+                        variant="destructive"
+                        size="sm"
                         onClick={() => handleDelete(a.id)}
-                        disabled={isPending}
+                        isLoading={isPending}
                       >
-                        {isPending ? '削除中...' : '削除'}
-                      </button>
+                        削除
+                      </LoadingButton>
                     </div>
                   </div>
                 </li>
@@ -138,7 +89,6 @@ export function ArchiveClient({ initialArchives }: ArchiveClientProps) {
             </ul>
           </div>
         ))}
-      </div>
       </div>
     </>
   );

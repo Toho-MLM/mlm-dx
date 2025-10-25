@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema } from '../schemas';
+import { isAdmin, requireAdmin } from '../utils/admin';
 import { z } from 'zod';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -35,7 +36,7 @@ export async function getUserGroupIds(env: Bindings, userId: string): Promise<st
 groupRoutes.use('*', requireAuth);
 
 // create_group - Create a new group
-groupRoutes.post('/create', async (c) => {
+groupRoutes.post('/', async (c) => {
   try {
     const requestData = z.object({
       name: z.string().min(1),
@@ -83,13 +84,43 @@ groupRoutes.get('/', async (c) => {
     const user = c.get('user');
     const userId = user.id;
     
-    const groups = await c.env.DB.prepare(`
-      SELECT DISTINCT g.*
-      FROM groups g
-      JOIN group_member_instruments gmi ON g.id = gmi.group_id
-      WHERE gmi.user_id = ?
-      ORDER BY g.is_active DESC, g.is_main DESC, g.created_at DESC
-    `).bind(userId).all();
+    // Check for admin parameter
+    const adminParam = c.req.query('admin');
+    const isAdminMode = adminParam === 'true';
+    
+    // If admin mode is requested, verify admin permissions
+    if (isAdminMode) {
+      try {
+        requireAdmin(user.role);
+      } catch (error) {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
+    
+    let query: string;
+    let params: any[];
+    
+    if (isAdminMode) {
+      // Admin mode: get all groups
+      query = `
+        SELECT DISTINCT g.*
+        FROM groups g
+        ORDER BY g.is_active DESC, g.is_main DESC, g.created_at DESC
+      `;
+      params = [];
+    } else {
+      // Normal mode: get only user's groups
+      query = `
+        SELECT DISTINCT g.*
+        FROM groups g
+        JOIN group_member_instruments gmi ON g.id = gmi.group_id
+        WHERE gmi.user_id = ?
+        ORDER BY g.is_active DESC, g.is_main DESC, g.created_at DESC
+      `;
+      params = [userId];
+    }
+    
+    const groups = await c.env.DB.prepare(query).bind(...params).all();
 
     // Get assignments for each group
     const groupsWithAssignments = await Promise.all(

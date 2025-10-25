@@ -9,8 +9,9 @@ import { UserData, instrumentNames, roleNames } from '@/app/types'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/app/context/AuthContext'
 import { SetupWizard } from './setup-wizard'
+import { PageHeader } from '@/components/page-header'
 
-export function ProfilePage({ userData, onDataRefresh }: { userData: UserData, onDataRefresh?: (updatedData: UserData) => void }) {
+export function ProfilePage({ userData }: { userData: UserData }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const router = useRouter()
@@ -33,23 +34,33 @@ export function ProfilePage({ userData, onDataRefresh }: { userData: UserData, o
 
   const handleEditComplete = useCallback((updatedData: UserData) => {
     setIsEditing(false)
-    if (onDataRefresh) {
-      onDataRefresh(updatedData)
-    }
-  }, [onDataRefresh])
+    router.refresh()
+  }, [router])
 
   if (isEditing) {
     return <SetupWizard initialUserData={userData} onComplete={handleEditComplete} />
   }
 
   return (
-    <div className="pt-5 px-5">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className ="space-y-5"
-      >
+    <div>
+      <PageHeader 
+        rightActions={
+          <Button
+            onClick={handleResetProfile}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+            size="sm"
+          >
+            編集
+          </Button>
+        }
+      />
+      <div className="pt-5 px-5">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className ="space-y-5"
+        >
         <Card className="min-w-fit max-w-2xl mx-auto">
           <CardContent className="p-5 space-y-3">
             <div className="space-y-2">
@@ -83,30 +94,9 @@ export function ProfilePage({ userData, onDataRefresh }: { userData: UserData, o
               </div>
             </div>
           </CardContent>
-          <CardFooter className="flex justify-between space-x-5">
-            <Button
-              onClick={handleResetProfile}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-              size="sm"
-            >
-              <Pencil className="h-4 w-4" />
-              編集
-            </Button>
-            <Button
-              onClick={handleLogout}
-              disabled={isLoggingOut}
-              className="bg-red-500 text-white hover:bg-red-600"
-              size="sm"
-            >
-              <div className="flex items-center justify-center">
-                {isLoggingOut && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <LogOut className="mr-2 h-4 w-4" />
-                ログアウト
-              </div>
-            </Button>
-          </CardFooter>
         </Card>
-      </motion.div>
+        </motion.div>
+      </div>
     </div>
   )
 }
