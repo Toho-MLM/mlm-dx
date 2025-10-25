@@ -8,5 +8,5 @@ export default async function Page() {
     redirect('/login')
   }
   
-  redirect('/profile')
+  redirect('/reservation')
 }

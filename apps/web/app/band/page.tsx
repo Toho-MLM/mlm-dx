@@ -1,6 +1,6 @@
 import { BandList } from './band-list'
 import { Group, Member, Instrument } from '@/app/types'
-import { getServerUser, getServerUserGroups, getServerMembers } from '@/lib/server-api'
+import { getServerUser, getServerUserGroups, getServerMemberOptions } from '@/lib/server-api'
 import { redirect } from 'next/navigation'
 import ErrorAlert from '@/components/errorAlert';
 
@@ -11,13 +11,13 @@ export default async function Page() {
     redirect('/login')
   }
   
-  const [groupResponse, memberResponse] = await Promise.all([
+  const [groupResponse, memberOptionsResponse] = await Promise.all([
     getServerUserGroups(),
-    getServerMembers()
+    getServerMemberOptions()
   ]);
 
-  if (!groupResponse.success || !memberResponse.success) {
-    return <ErrorAlert error={'データの取得中にエラーが発生しました。' + (groupResponse.error || memberResponse.error || '')} />
+  if (!groupResponse.success || !memberOptionsResponse.success) {
+    return <ErrorAlert error={'データの取得中にエラーが発生しました。' + (groupResponse.error || memberOptionsResponse.error || '')} />
   }
 
   const formattedGroupData: Group[] = (groupResponse.data as any[]).map((group: any) => {
@@ -25,12 +25,10 @@ export default async function Page() {
       id: group.id,
       name: group.name,
       isMain: group.is_main,
-      assignments: group.assignments ? Object.entries(group.assignments).map(([instrument, userId]) => ({
-        id: userId as string,
-        instruments: [instrument as Instrument]
-      })) : []
+      isActive: group.is_active,
+      assignments: group.assignments || []
     };
   });
 
-  return <BandList bands={formattedGroupData} members={memberResponse.data as Member[]} />
+  return <BandList bands={formattedGroupData} memberOptions={memberOptionsResponse.data || []} />
 }

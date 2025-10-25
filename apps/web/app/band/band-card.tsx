@@ -1,55 +1,109 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Group, instrumentColors, Member } from "@/app/types"
+import { Group, instrumentColors, instrumentNames } from "@/app/types"
 import { Button } from "@/components/ui/button"
+import { MoreVertical } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface BandCardProps {
   band: Group
-  members: Member[]
+  memberOptions?: { id: string; name: string; instruments: string[] }[]
   onEdit: (id: string) => void
+  onToggleActive?: (id: string) => void
 }
 
-export function BandCard({ band, members, onEdit }: BandCardProps) {
+export function BandCard({ band, memberOptions = [], onEdit, onToggleActive }: BandCardProps) {
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
+    <Card className={`w-full max-w-md transition-shadow duration-200 ${band.isActive ? 'hover:shadow-lg' : 'opacity-60 bg-gray-50'}`}>
+      <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-xl">{band.name}</CardTitle>
-          <Badge className="py-2 px-3" variant={band.isMain ? "default" : "secondary"}>
-            {band.isMain ? "本バンド" : "自由バンド"}
-          </Badge>
+          <CardTitle className="text-xl font-bold">{band.name}</CardTitle>
+          <div className="flex items-center gap-2">
+            <Badge 
+              className="py-1 px-2 text-xs font-medium" 
+              variant={band.isMain ? "default" : "secondary"}
+            >
+              {band.isMain ? "本バンド" : "自由バンド"}
+            </Badge>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  disabled={band.isMain}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {band.isActive ? (
+                  <>
+                    <DropdownMenuItem 
+                      onClick={() => onEdit(band.id)}
+                      disabled={band.isMain}
+                      className="flex items-center gap-2"
+                    >
+                      編集
+                    </DropdownMenuItem>
+                    {onToggleActive && (
+                      <DropdownMenuItem 
+                        onClick={() => onToggleActive(band.id)}
+                        disabled={band.isMain}
+                        className="flex items-center gap-2"
+                      >
+                        無効化
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                ) : (
+                  onToggleActive && (
+                    <DropdownMenuItem 
+                      onClick={() => onToggleActive(band.id)}
+                      disabled={band.isMain}
+                      className="flex items-center gap-2"
+                    >
+                      有効化
+                    </DropdownMenuItem>
+                  )
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          <ul className="space-y-2">
-            {band.assignments.map((bandMember) => {
-              const member = members.find(m => m.id === bandMember.id)
-              return (
-                <li key={bandMember.id} className="flex justify-between items-center">
-                  <span className="font-medium">{member?.name}</span>
-                  <div className="flex gap-1">
-                    {bandMember.instruments.map((instrument) => (
-                      <Badge key={instrument} className={instrumentColors[instrument]}>
-                        {instrument}
-                      </Badge>
-                    ))}
+      <CardContent className="pt-0">
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <div className="space-y-2">
+              {band.assignments.map((bandMember, index) => {
+                const memberOption = memberOptions?.find(m => m.id === bandMember.id)
+                return (
+                  <div 
+                    key={`${bandMember.id}-${index}`} 
+                    className="flex items-center space-x-2 p-2 border rounded"
+                  >
+                    <span className="flex-grow font-medium">{memberOption?.name || `不明なメンバー (${bandMember.id})`}</span>
+                    <div className="flex items-center space-x-1">
+                      {bandMember.instruments.map((instrument) => (
+                        <Badge
+                          key={instrument}
+                          variant="secondary"
+                          className={`text-sm ${instrumentColors[instrument]}`}
+                        >
+                          {instrumentNames[instrument]}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                </li>
-              )
-            })}
-          </ul>
-          <div className="flex items-center justify-between">
-            <Button className="bg-red-500 text-white hover:bg-red-600" disabled={band.isMain}>
-              削除
-            </Button>
-            <Button
-              onClick={() => onEdit(band.id)}
-              className="bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-              disabled={band.isMain}
-            >
-              編集
-            </Button>
+                )
+              })}
+            </div>
           </div>
         </div>
       </CardContent>

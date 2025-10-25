@@ -63,7 +63,8 @@ Usage:
 Tables:
   user                    User management
   reservation             Reservation management
-  groups                  Groups management
+  group                   Group management
+  group_member_instrument  Group member instrument management
 
 User Actions:
   add                     Add a new user
@@ -72,10 +73,15 @@ User Actions:
   reset                   Reset database (recreate schema)
 
 Reservation Actions:
+  list                    List all reservations
   reset                   Reset reservations table
 
-Groups Actions:
-  reset                   Reset groups table
+Group Actions:
+  list                    List all groups
+  reset                   Reset group table
+
+Group Member Instrument Actions:
+  list                    List all group member instruments
 
 Add Options:
   --email <email>         User's email address (required)
@@ -86,7 +92,7 @@ Remove Options:
   --email <email>         User's email address (required)
 
 Global Options:
-  --local                 Use local database (default: false)
+  --local                 Use local database (default: true)
   --help                  Show this help message
 
 Examples:
@@ -96,16 +102,28 @@ Examples:
   node scripts/seed.js user list
   node scripts/seed.js user reset
 
+  # List reservations
+  node scripts/seed.js reservation list
+  
   # Reset reservations table
   node scripts/seed.js reservation reset
 
-  # Reset groups table
-  node scripts/seed.js groups reset
+  # List groups
+  node scripts/seed.js group list
+  
+  # List group member instruments
+  node scripts/seed.js group_member_instrument list
+  
+  # Reset group table
+  node scripts/seed.js group reset
 
   # Use local database
   node scripts/seed.js user add --email "test@example.com" --grade 2 --local
+  node scripts/seed.js reservation list --local
   node scripts/seed.js reservation reset --local
-  node scripts/seed.js groups reset --local
+  node scripts/seed.js group list --local
+  node scripts/seed.js group reset --local
+  node scripts/seed.js group_member_instrument list --local
 `);
 }
 
@@ -151,6 +169,38 @@ function removeUser(email, isLocal = false) {
   console.log('User removed successfully');
 }
 
+function listReservations(isLocal = false) {
+  console.log('Listing reservations...');
+  
+  const query = 'SELECT id, user_id, group_id, start_time, end_time, state, created_at FROM reservations ORDER BY created_at DESC';
+  const command = isLocal 
+    ? `wrangler d1 execute mlm-dx-db --command="${query}" --local`
+    : `wrangler d1 execute mlm-dx-db --command="${query}"`;
+  
+  try {
+    execSync(command, { stdio: 'inherit', cwd: './apps/worker' });
+  } catch (error) {
+    console.error('ERROR: Failed to list reservations:', error.message);
+    process.exit(1);
+  }
+}
+
+function listGroups(isLocal = false) {
+  console.log('Listing groups...');
+  
+  const query = 'SELECT id, name, is_main, is_active, created_at FROM groups ORDER BY created_at DESC';
+  const command = isLocal 
+    ? `wrangler d1 execute mlm-dx-db --command="${query}" --local`
+    : `wrangler d1 execute mlm-dx-db --command="${query}"`;
+  
+  try {
+    execSync(command, { stdio: 'inherit', cwd: './apps/worker' });
+  } catch (error) {
+    console.error('ERROR: Failed to list groups:', error.message);
+    process.exit(1);
+  }
+}
+
 function resetReservations(isLocal = false) {
   console.log('Resetting reservations table...');
   
@@ -160,11 +210,27 @@ function resetReservations(isLocal = false) {
 }
 
 function resetGroups(isLocal = false) {
-  console.log('Resetting groups table...');
+  console.log('Resetting groups and group_member_instruments tables...');
   
-  const sql = 'DELETE FROM groups';
+  const sql = 'DELETE FROM group_member_instruments; DELETE FROM groups';
   executeSQL(sql, isLocal);
-  console.log('Groups table reset successfully');
+  console.log('Groups and group_member_instruments tables reset successfully');
+}
+
+function listGroupMemberInstruments(isLocal = false) {
+  console.log('Listing group member instruments...');
+  
+  const query = 'SELECT id, group_id, user_id, instrument, created_at FROM group_member_instruments ORDER BY created_at DESC';
+  const command = isLocal 
+    ? `wrangler d1 execute mlm-dx-db --command="${query}" --local`
+    : `wrangler d1 execute mlm-dx-db --command="${query}"`;
+  
+  try {
+    execSync(command, { stdio: 'inherit', cwd: './apps/worker' });
+  } catch (error) {
+    console.error('ERROR: Failed to list group member instruments:', error.message);
+    process.exit(1);
+  }
 }
 
 function main() {
@@ -175,7 +241,7 @@ function main() {
     return;
   }
   
-  const validTables = ['user', 'reservation', 'groups'];
+  const validTables = ['user', 'reservation', 'group', 'group_member_instrument'];
   const table = args[0];
   
   if (!validTables.includes(table)) {
@@ -202,7 +268,7 @@ function main() {
       allowPositionals: true,
     });
     
-    const isLocal = values.local === true;
+    const isLocal = values.local !== false;
     
     if (table === 'user') {
       switch (action) {
@@ -278,6 +344,11 @@ function main() {
       }
     } else if (table === 'reservation') {
       switch (action) {
+        case 'list': {
+          listReservations(isLocal);
+          break;
+        }
+        
         case 'reset': {
           resetReservations(isLocal);
           break;
@@ -288,15 +359,32 @@ function main() {
           showHelp();
           process.exit(1);
       }
-    } else if (table === 'groups') {
+    } else if (table === 'group') {
       switch (action) {
+        case 'list': {
+          listGroups(isLocal);
+          break;
+        }
+        
         case 'reset': {
           resetGroups(isLocal);
           break;
         }
         
         default:
-          console.error(`ERROR: Unknown action for groups table: ${action}`);
+          console.error(`ERROR: Unknown action for group table: ${action}`);
+          showHelp();
+          process.exit(1);
+      }
+    } else if (table === 'group_member_instrument') {
+      switch (action) {
+        case 'list': {
+          listGroupMemberInstruments(isLocal);
+          break;
+        }
+        
+        default:
+          console.error(`ERROR: Unknown action for group_member_instrument table: ${action}`);
           showHelp();
           process.exit(1);
       }

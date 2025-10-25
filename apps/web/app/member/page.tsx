@@ -1,94 +1,20 @@
-'use client';
-
-import { useEffect, useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import { MemberList } from './member-list'
-import { MemberListItem } from '@/app/types'
-import { apiClient } from '@/lib/api'
-import { useAuth } from '@/app/context/AuthContext';
-import LoadingScreen from '@/components/loading';
-import { Card, CardHeader } from '@/components/ui/card';
-import { AlertTriangle } from 'lucide-react';
+import { getServerUser, getServerMemberList } from '@/lib/server-api'
+import { redirect } from 'next/navigation'
+import ErrorAlert from '@/components/errorAlert';
 
-export default function Page() {
-  const [memberData, setMemberData] = useState<MemberListItem[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState<boolean>(true)
-  const router = useRouter()
-  const { user, loading: authLoading } = useAuth();
+export default async function Page() {
+  const user = await getServerUser()
+  
+  if (!user) {
+    redirect('/login')
+  }
+  
+  const memberResponse = await getServerMemberList();
 
-  // フラグを追加して一度だけ実行
-  const hasFetched = useRef(false)
-
-  useEffect(() => {
-    if (authLoading) {
-      // 認証状態がロード中の場合は何もしない
-      return
-    }
-
-    if (!user) {
-      // ユーザーが存在しない場合はログインページにリダイレクト
-      router.push('/login');
-      return;
-    }
-
-    if (hasFetched.current) {
-      // 既にフェッチ済みの場合は何もしない
-      return;
-    }
-
-    hasFetched.current = true
-
-    const fetchUserData = async () => {
-      if (!user?.email) {
-        setError('メンバー情報が取得できません。');
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true)
-      setError(null)
-
-      try {
-        const response = await apiClient.getMemberList();
-        
-        if (response.success && response.data) {
-          setMemberData(response.data);
-        } else {
-          setError('メンバーリストの取得に失敗しました。' + (response.error || ''));
-        }
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    if (user) {
-      fetchUserData();
-    }
-  }, [user, authLoading, router])
-
-  if (loading) {
-    return <LoadingScreen />
+  if (!memberResponse.success || !memberResponse.data) {
+    return <ErrorAlert error={'メンバーリストの取得中にエラーが発生しました。' + (memberResponse.error || '')} />
   }
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Card className="max-w-lg mx-auto flex flex-col items-center">
-          <CardHeader className="flex flex-col items-center">
-            <AlertTriangle className="h-12 w-12 text-red-500" />
-            <span className="mt-2 text-lg text-red-600 text-center">{error}</span>
-          </CardHeader>
-        </Card>
-      </div>
-    )
-  }
-
-  if (memberData) {
-    return <MemberList memberData={memberData} />
-  }
-
-  return null
+  return <MemberList memberData={memberResponse.data} />
 }

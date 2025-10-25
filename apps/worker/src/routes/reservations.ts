@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { isUserInGroup, getUserGroupIds } from './groups';
+import { CreateReservationRequestSchema, validateReservationTime } from '../../../../lib/shared-schemas';
+import { processReservationState } from '../utils/reservation-processor';
 
 const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -9,26 +11,18 @@ const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>
 async function isReservationCancellable(
   env: Bindings, 
   userId: string, 
-  reservation: { booked_by: string; holder_user_id: string | null; holder_group_id: string | null; state: string }
+  reservation: { user_id: string; group_id: string | null; state: string }
 ): Promise<boolean> {
-  // Check if reservation is in cancellable state
   if (!['PENDING', 'CONFIRMED'].includes(reservation.state)) {
     return false;
   }
   
-  // Check if user is the creator
-  if (reservation.booked_by === userId) {
+  if (reservation.user_id === userId) {
     return true;
   }
   
-  // Check if user is the holder
-  if (reservation.holder_user_id === userId) {
-    return true;
-  }
-  
-  // Check if user belongs to the holder group
-  if (reservation.holder_group_id) {
-    const isInGroup = await isUserInGroup(env, userId, reservation.holder_group_id);
+  if (reservation.group_id) {
+    const isInGroup = await isUserInGroup(env, userId, reservation.group_id);
     if (isInGroup) {
       return true;
     }
@@ -46,83 +40,147 @@ reservationRoutes.get('/fetch', async (c) => {
     const user = c.get('user');
     
     const reservations = await c.env.DB.prepare(`
-      SELECT r.id, r.booked_by, r.holder_user_id, r.holder_group_id, r.start_time, r.end_time, r.state,
-             u.name as booked_by_name,
+      SELECT r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
+             u.name as user_name,
+             ug.name as group_name,
              CASE 
-               WHEN r.holder_user_id IS NOT NULL THEN uh.nickname
-               WHEN r.holder_group_id IS NOT NULL THEN ug.name
-               ELSE NULL
-             END as creator_name,
-             ug.name as holder_group_name
+               WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0
+               WHEN r.user_id = ? THEN 1
+               WHEN r.group_id IS NOT NULL AND EXISTS (
+                 SELECT 1 FROM group_member_instruments gm 
+                 WHERE gm.group_id = r.group_id AND gm.user_id = ?
+               ) THEN 1
+               ELSE 0
+             END as cancellable
       FROM reservations r
-      LEFT JOIN users u ON r.booked_by = u.id
-      LEFT JOIN users uh ON r.holder_user_id = uh.id
-      LEFT JOIN groups ug ON r.holder_group_id = ug.id
+      LEFT JOIN users u ON r.user_id = u.id
+      LEFT JOIN groups ug ON r.group_id = ug.id
       ORDER BY r.start_time ASC
-    `).all();
+    `).bind(user.id, user.id).all();
 
-    // Add cancellable field for each reservation
-    const reservationsWithCancellable = await Promise.all(
-      reservations.results.map(async (reservation: any) => {
-        const cancellable = await isReservationCancellable(c.env, user.id, reservation);
-        return {
-          ...reservation,
-          cancellable: cancellable ? 1 : 0
-        };
-      })
-    );
-
-    return c.json({ success: true, data: reservationsWithCancellable });
+    return c.json({ success: true, data: reservations.results });
   } catch (error) {
     console.error('Error fetching reservations:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
+
 
 // create_reservation - Create a new reservation
 reservationRoutes.post('/create', async (c) => {
   try {
     const user = c.get('user');
-    const { start_time, end_time, holder_user_id, holder_group_id } = await c.req.json();
+    const requestData = await c.req.json();
+    
+    // 共通スキーマでバリデーション
+    const validatedData = CreateReservationRequestSchema.parse(requestData);
+    const { start_time, end_time, group_id } = validatedData;
+
+    // 追加のバリデーション
+    const validation = validateReservationTime(start_time, end_time);
+    if (!validation.isValid) {
+      return c.json({
+        success: false,
+        error: validation.error || 'INVALID_RESERVATION_TIME'
+      }, 400);
+    }
+
+    // グループIDのバリデーション（group_idが指定されている場合）
+    if (group_id) {
+      const groupExists = await c.env.DB.prepare(`
+        SELECT 1 FROM groups WHERE id = ? AND is_active = TRUE
+      `).bind(group_id).first();
+      
+      if (!groupExists) {
+        return c.json({
+          success: false,
+          error: 'GROUP_NOT_FOUND'
+        }, 400);
+      }
+
+      // ユーザーがそのグループのメンバーかチェック
+      const isMember = await isUserInGroup(c.env, user.id, group_id);
+      if (!isMember) {
+        return c.json({
+          success: false,
+          error: 'NOT_GROUP_MEMBER'
+        }, 403);
+      }
+    }
 
     const now = new Date().toISOString();
 
-    const result = await c.env.DB.prepare(`
-      INSERT INTO reservations (booked_by, holder_user_id, holder_group_id, start_time, end_time, state, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)
-    `).bind(user.id, holder_user_id ?? null, holder_group_id ?? null, start_time, end_time, now, now).run();
+    // Determine user_id and group_id based on group_id
+    const userId = user.id;
+    const groupId = group_id || null;
 
-    const createdReservation = await c.env.DB.prepare(`
-      SELECT r.id, r.booked_by, r.holder_user_id, r.holder_group_id, r.start_time, r.end_time, r.state,
-             u.name as booked_by_name,
-             CASE 
-               WHEN r.holder_user_id IS NOT NULL THEN uh.nickname
-               WHEN r.holder_group_id IS NOT NULL THEN ug.name
-               ELSE NULL
-             END as creator_name,
-             ug.name as holder_group_name
-      FROM reservations r
-      LEFT JOIN users u ON r.booked_by = u.id
-      LEFT JOIN users uh ON r.holder_user_id = uh.id
-      LEFT JOIN groups ug ON r.holder_group_id = ug.id
-      WHERE r.id = ?
-    `).bind(result.meta.last_row_id).first();
+    // 当日予約かどうかをチェック
+    const isSameDay = new Date(start_time).toDateString() === new Date().toDateString();
 
-    // Add cancellable field
-    const cancellable = await isReservationCancellable(c.env, user.id, createdReservation as any);
-    const reservationWithCancellable = {
-      ...createdReservation,
-      cancellable: cancellable ? 1 : 0
-    };
+    // 当日予約の場合は重複チェックを先に実行してから挿入
+    let finalState = 'PENDING';
+    let adjustedStartTime = start_time;
+    let adjustedEndTime = end_time;
+    let processResult = null;
+
+    if (isSameDay) {
+      // 仮のIDで重複チェックを実行（実際の挿入前）
+      processResult = await processReservationState(c.env, 0, start_time, end_time);
+      finalState = processResult.state;
+      
+      if (processResult.adjustedStartTime && processResult.adjustedEndTime) {
+        adjustedStartTime = processResult.adjustedStartTime;
+        adjustedEndTime = processResult.adjustedEndTime;
+      }
+    }
+
+    // 1回の書き込みで予約を作成（最終的な状態で）
+    await c.env.DB.prepare(`
+      INSERT INTO reservations (user_id, group_id, start_time, end_time, state, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(userId, groupId, adjustedStartTime, adjustedEndTime, finalState, now, now).run();
+
+    // ステータスコードと詳細情報を返す
+    let status = 'PENDING';
+    let details = null;
+    
+    if (isSameDay) {
+      if (finalState === 'CONFIRMED') {
+        if (processResult?.adjustedStartTime && processResult?.adjustedEndTime) {
+          status = 'ADJUSTED';
+          details = {
+            originalStartTime: start_time,
+            originalEndTime: end_time,
+            adjustedStartTime: adjustedStartTime,
+            adjustedEndTime: adjustedEndTime
+          };
+        } else {
+          status = 'CONFIRMED';
+        }
+      } else if (finalState === 'DECLINED') {
+        status = 'DECLINED';
+      }
+    }
 
     return c.json({ 
       success: true, 
-      data: reservationWithCancellable,
-      message: 'Reservation created successfully' 
+      status: status,
+      details: details
     });
   } catch (error) {
     console.error('Error creating reservation:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
+    
+    // より具体的なエラーメッセージ
+    if (error instanceof Error) {
+      if (error.message.includes('UNIQUE constraint failed')) {
+        return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+      }
+      if (error.message.includes('FOREIGN KEY constraint failed')) {
+        return c.json({ success: false, error: 'INVALID_USER_OR_GROUP' }, 400);
+      }
+    }
+    
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
@@ -137,13 +195,13 @@ reservationRoutes.put('/cancel/:id', async (c) => {
     ).bind(reservationId).first();
 
     if (!reservation) {
-      return c.json({ success: false, error: 'Reservation not found' }, 404);
+      return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     }
 
     // Check if reservation is cancellable by this user
     const cancellable = await isReservationCancellable(c.env, user.id, reservation as any);
     if (!cancellable) {
-      return c.json({ success: false, error: 'Reservation cannot be cancelled by this user' }, 403);
+      return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_CANCELLED' }, 403);
     }
 
     const now = new Date().toISOString();
@@ -155,89 +213,10 @@ reservationRoutes.put('/cancel/:id', async (c) => {
     return c.json({ success: true, message: 'Reservation cancelled successfully' });
   } catch (error) {
     console.error('Error cancelling reservation:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
-// Get reservations by group
-reservationRoutes.get('/group/:groupId', async (c) => {
-  try {
-    const groupId = c.req.param('groupId');
-    const user = c.get('user');
-    
-    const reservations = await c.env.DB.prepare(`
-      SELECT r.id, r.booked_by, r.holder_user_id, r.holder_group_id, r.start_time, r.end_time, r.state,
-             u.name as booked_by_name,
-             CASE 
-               WHEN r.holder_user_id IS NOT NULL THEN uh.nickname
-               WHEN r.holder_group_id IS NOT NULL THEN ug.name
-               ELSE NULL
-             END as creator_name,
-             ug.name as holder_group_name
-      FROM reservations r
-      LEFT JOIN users u ON r.booked_by = u.id
-      LEFT JOIN users uh ON r.holder_user_id = uh.id
-      LEFT JOIN groups ug ON r.holder_group_id = ug.id
-      WHERE r.holder_group_id = ?
-      ORDER BY r.start_time ASC
-    `).bind(groupId).all();
 
-    // Add cancellable field for each reservation
-    const reservationsWithCancellable = await Promise.all(
-      reservations.results.map(async (reservation: any) => {
-        const cancellable = await isReservationCancellable(c.env, user.id, reservation);
-        return {
-          ...reservation,
-          cancellable: cancellable ? 1 : 0
-        };
-      })
-    );
-
-    return c.json({ success: true, data: reservationsWithCancellable });
-  } catch (error) {
-    console.error('Error fetching group reservations:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
-  }
-});
-
-// Get reservations by user
-reservationRoutes.get('/user', async (c) => {
-  try {
-    const user = c.get('user');
-    
-    const reservations = await c.env.DB.prepare(`
-      SELECT r.id, r.booked_by, r.holder_user_id, r.holder_group_id, r.start_time, r.end_time, r.state,
-             u.name as booked_by_name,
-             CASE 
-               WHEN r.holder_user_id IS NOT NULL THEN uh.nickname
-               WHEN r.holder_group_id IS NOT NULL THEN ug.name
-               ELSE NULL
-             END as creator_name,
-             ug.name as holder_group_name
-      FROM reservations r
-      LEFT JOIN users u ON r.booked_by = u.id
-      LEFT JOIN users uh ON r.holder_user_id = uh.id
-      LEFT JOIN groups ug ON r.holder_group_id = ug.id
-      WHERE r.holder_user_id = ?
-      ORDER BY r.start_time ASC
-    `).bind(user.id).all();
-
-    // Add cancellable field for each reservation
-    const reservationsWithCancellable = await Promise.all(
-      reservations.results.map(async (reservation: any) => {
-        const cancellable = await isReservationCancellable(c.env, user.id, reservation);
-        return {
-          ...reservation,
-          cancellable: cancellable ? 1 : 0
-        };
-      })
-    );
-
-    return c.json({ success: true, data: reservationsWithCancellable });
-  } catch (error) {
-    console.error('Error fetching user reservations:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
-  }
-});
 
 export { reservationRoutes };

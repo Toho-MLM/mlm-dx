@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, Suspense } from 'react'
 import { useAuth } from '@/app/context/AuthContext'
+import LoadingScreen from '@/components/loading'
 
 function CallbackContent() {
   const router = useRouter()
@@ -15,19 +16,19 @@ function CallbackContent() {
       if (error) {
         router.replace(`/login?error=${error}`)
       } else if (user) {
-        router.replace('/profile')
+        router.replace('/')
       } else {
         router.replace('/login')
       }
     }
   }, [user, loading, router, searchParams])
 
-  return <div className="min-h-screen flex items-center justify-center">認証中...</div>
+  return <LoadingScreen />
 }
 
 export default function CallbackPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">認証中...</div>}>
+    <Suspense fallback={<LoadingScreen />}>
       <CallbackContent />
     </Suspense>
   )

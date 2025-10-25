@@ -43,18 +43,15 @@ CREATE TABLE IF NOT EXISTS group_member_instruments (
 
 CREATE TABLE IF NOT EXISTS reservations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  booked_by TEXT NOT NULL,
-  holder_user_id TEXT,
-  holder_group_id TEXT,
+  user_id TEXT NOT NULL,
+  group_id TEXT,
   start_time DATETIME NOT NULL,
   end_time DATETIME NOT NULL,
   state TEXT NOT NULL DEFAULT 'PENDING' CHECK (state IN ('PENDING','WITHDRAWN','DECLINED','CONFIRMED','CANCELLED','COMPLETED')),
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
-  CHECK ((holder_user_id IS NOT NULL AND holder_group_id IS NULL) OR (holder_user_id IS NULL AND holder_group_id IS NOT NULL)),
-  FOREIGN KEY (booked_by) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (holder_user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (holder_group_id) REFERENCES groups(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS archive (

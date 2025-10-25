@@ -24,7 +24,7 @@ archiveRoutes.get('/', async (c: Context<{ Bindings: Bindings; Variables: Variab
     console.error('Get archives error:', error);
     return c.json<ApiResponse>({
       success: false,
-      error: 'Internal server error'
+      error: 'INTERNAL_SERVER_ERROR'
     }, 500);
   }
 });
@@ -36,7 +36,7 @@ archiveRoutes.post('/', async (c: Context<{ Bindings: Bindings; Variables: Varia
     if (!title) {
       return c.json<ApiResponse>({
         success: false,
-        error: 'Title is required'
+        error: 'TITLE_REQUIRED'
       }, 400);
     }
 
@@ -72,7 +72,7 @@ archiveRoutes.post('/', async (c: Context<{ Bindings: Bindings; Variables: Varia
     console.error('Create archive error:', error);
     return c.json<ApiResponse>({
       success: false,
-      error: 'Internal server error'
+      error: 'INTERNAL_SERVER_ERROR'
     }, 500);
   }
 });
@@ -89,7 +89,7 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings; Variables: Var
     if (!archive) {
       return c.json<ApiResponse>({
         success: false,
-        error: 'Archive not found'
+        error: 'ARCHIVE_NOT_FOUND'
       }, 404);
     }
 
@@ -116,7 +116,7 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings; Variables: Var
     console.error('Update archive error:', error);
     return c.json<ApiResponse>({
       success: false,
-      error: 'Internal server error'
+      error: 'INTERNAL_SERVER_ERROR'
     }, 500);
   }
 });
@@ -132,7 +132,7 @@ archiveRoutes.delete('/:id', async (c: Context<{ Bindings: Bindings; Variables: 
     if (!archive) {
       return c.json<ApiResponse>({
         success: false,
-        error: 'Archive not found'
+        error: 'ARCHIVE_NOT_FOUND'
       }, 404);
     }
 
@@ -147,7 +147,7 @@ archiveRoutes.delete('/:id', async (c: Context<{ Bindings: Bindings; Variables: 
     console.error('Delete archive error:', error);
     return c.json<ApiResponse>({
       success: false,
-      error: 'Internal server error'
+      error: 'INTERNAL_SERVER_ERROR'
     }, 500);
   }
 });

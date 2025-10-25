@@ -3,6 +3,7 @@
 import React, { useMemo, useState, useTransition } from 'react';
 import { createArchiveAction, deleteArchiveAction } from '@/lib/server-actions';
 import type { Archive } from '@/lib/schemas';
+import { PageHeader } from '@/components/page-header';
 
 interface ArchiveClientProps {
   initialArchives: Archive[];
@@ -64,8 +65,9 @@ export function ArchiveClient({ initialArchives }: ArchiveClientProps) {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">アーカイブ</h1>
+    <>
+      <PageHeader />
+      <div className="container mx-auto px-4 py-8">
 
       <form onSubmit={handleCreate} className="mb-8 grid gap-4 md:grid-cols-4">
         <input
@@ -137,6 +139,7 @@ export function ArchiveClient({ initialArchives }: ArchiveClientProps) {
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

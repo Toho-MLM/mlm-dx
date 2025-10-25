@@ -4,20 +4,19 @@ import { z } from 'zod'
 import { 
   ApiResponseSchema, 
   SessionResponseSchema, 
-  UserHolderResponseSchema,
   UserWithInstrumentsSchema,
   GroupWithMemberRoleSchema,
   MemberSchema,
   ReservationSchema,
   ArchiveSchema,
   type SessionResponse,
-  type UserHolderResponse,
   type UserWithInstruments,
   type GroupWithMemberRole,
   type Member,
   type Reservation,
   type Archive
-} from './schemas'
+} from '../../../lib/shared-schemas'
+import { MemberListItemSchema, type MemberListItem } from './schemas'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL as string
 
@@ -28,11 +27,10 @@ export interface ApiResponse<T = unknown> {
   message?: string
 }
 
-async function serverRequest<T extends z.ZodType>(
+async function serverRequest(
   endpoint: string, 
-  schema: T, 
   options: RequestInit = {}
-): Promise<z.infer<T>> {
+): Promise<any> {
   const cookieStore = await cookies()
   const cookieHeader = cookieStore.toString()
   
@@ -52,13 +50,12 @@ async function serverRequest<T extends z.ZodType>(
     throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
   }
 
-  const data = await response.json()
-  return schema.parse(data)
+  return await response.json()
 }
 
 export async function getServerUser(): Promise<SessionResponse['user']> {
   try {
-    const session = await serverRequest('/auth/session', SessionResponseSchema)
+    const session = await serverRequest('/auth/session')
     return session.user
   } catch (error) {
     return null
@@ -66,21 +63,21 @@ export async function getServerUser(): Promise<SessionResponse['user']> {
 }
 
 export async function getServerReservations(): Promise<ApiResponse<Reservation[]>> {
-  return serverRequest('/reservations/fetch', ApiResponseSchema(z.array(ReservationSchema)))
-}
-
-export async function getServerUserHolder(): Promise<ApiResponse<UserHolderResponse>> {
-  return serverRequest('/users/holder', ApiResponseSchema(UserHolderResponseSchema))
+  return serverRequest('/reservations/fetch')
 }
 
 export async function getServerUserGroups(): Promise<ApiResponse<GroupWithMemberRole[]>> {
-  return serverRequest('/users/groups', ApiResponseSchema(z.array(GroupWithMemberRoleSchema)))
+return serverRequest('/groups')
 }
 
-export async function getServerMembers(): Promise<ApiResponse<Member[]>> {
-  return serverRequest('/members/fetch', ApiResponseSchema(z.array(MemberSchema)))
+export async function getServerMemberList(): Promise<ApiResponse<MemberListItem[]>> {
+  return serverRequest('/members')
+}
+
+export async function getServerMemberOptions(): Promise<ApiResponse<{ id: string; name: string; instruments: string[] }[]>> {
+  return serverRequest('/groups/member-options')
 }
 
 export async function getServerArchives(): Promise<ApiResponse<Archive[]>> {
-  return serverRequest('/archive', ApiResponseSchema(z.array(ArchiveSchema)))
+  return serverRequest('/archive')
 }

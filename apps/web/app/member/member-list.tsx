@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AnimatePresence, motion } from 'framer-motion'
 import { MemberListItem, instrumentNames, roleNames, instrumentColors } from '@/app/types'
+import { PageHeader } from '@/components/page-header'
 
 
 export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
@@ -33,7 +34,9 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
   }, [sortedUsers, searchTerm])
 
   return (
-    <div className="p-5">
+    <>
+      <PageHeader />
+      <div className="p-5">
       <Card className="w-full max-w-6xl max-w-screen mx-auto">
         <CardContent className="p-6">
           <div className="mb-6">
@@ -103,6 +106,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   )
 }

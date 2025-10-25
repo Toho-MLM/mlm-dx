@@ -1,9 +1,9 @@
-import { useState, useEffect, useTransition } from 'react'
+import { useState, useEffect, useTransition, useMemo } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Group, GroupMember, Instrument, Member, instrumentColors, instrumentNames } from "@/app/types"
-import { X, Plus, ChevronDown, Loader2, AlertTriangle, UserRoundMinus } from 'lucide-react'
+import { X, Plus, ChevronDown, Loader2, AlertTriangle, UserRoundMinus, CircleCheckBig, XCircle } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,21 +11,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { createGroupAction } from '@/lib/server-actions'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { createGroupAction, updateGroupAction } from '@/lib/server-actions'
 import { useAuth } from '../context/AuthContext'
+import { apiClient } from '@/lib/api'
+import { toast } from 'sonner'
+import { translateError } from '@/lib/error-label'
 interface BandFormProps {
   band?: Group
-  members: Member[]
+  memberOptions: { id: string; name: string; instruments: string[] }[]
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
 }
 
-export function BandForm({ band, members, isOpen, onClose, onSuccess }: BandFormProps) {
+export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: BandFormProps) {
   const [name, setName] = useState(band?.name || '')
   const [bandMembers, setBandMembers] = useState<GroupMember[]>(band?.assignments || [])
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const { user } = useAuth()
 
@@ -37,31 +38,14 @@ export function BandForm({ band, members, isOpen, onClose, onSuccess }: BandForm
       setName('')
       setBandMembers([])
     }
-    setErrorMessage(null)
   }, [band])
 
   const onDialogClose = () => {
-    setErrorMessage(null)
     onClose()
   }
 
   const handleSubmit = async () => {
-    if (name.trim() === '') {
-      setErrorMessage('バンド名を入力してください。')
-      return
-    }
-    if (bandMembers.length === 0) {
-      setErrorMessage('少なくとも1人のメンバーを追加してください。')
-      return
-    }
-    if (bandMembers.some(member => member.instruments.length === 0)) {
-      setErrorMessage('全てのメンバーに少なくとも1つの楽器を割り当ててください。')
-      return
-    }
-    if (!bandMembers.some(member => member.id === user?.id)) {
-      setErrorMessage('自分をメンバーに追加してください。');
-      return
-    }
+    if (!isFormValid) return;
 
     startTransition(async () => {
       try {
@@ -72,33 +56,51 @@ export function BandForm({ band, members, isOpen, onClose, onSuccess }: BandForm
           return acc;
         }, {} as Record<string, string>);
 
-        const response = await createGroupAction({
-          name,
-          assignments: JSON.stringify(assignments),
-          is_main: false
-        });
+        let response;
+        if (band) {
+          // 編集時
+          response = await updateGroupAction(band.id, {
+            name,
+            assignments: JSON.stringify(assignments),
+            is_main: band.isMain,
+            is_active: true
+          });
+        } else {
+          // 新規作成時
+          response = await createGroupAction({
+            name,
+            assignments: JSON.stringify(assignments),
+            is_main: false
+          });
+        }
 
         if (response.success) {
+          setName('')
+          setBandMembers([])
           onClose()
           onSuccess?.()
         } else {
-          setErrorMessage('データの送信中にエラーが発生しました。' + response.error);
+          toast.error('データの送信中にエラーが発生しました', {
+            description: translateError(response.error || 'UNKNOWN_ERROR')
+          });
         }
       } catch (error) {
-        setErrorMessage((error as Error).message)
+        toast.error('バンドの保存中にエラーが発生しました', {
+          description: translateError((error as Error).message)
+        })
       }
     })
   }
 
-  const addMember = (memberId: string) => {
+  const addMember = async (memberId: string) => {
     setBandMembers([...bandMembers, { id: memberId, instruments: [] }])
   }
 
-  const removeMember = (memberId: string) => {
+  const removeMember = async (memberId: string) => {
     setBandMembers(bandMembers.filter(bm => bm.id !== memberId))
   }
 
-  const addInstrument = (memberId: string, instrument: Instrument) => {
+  const addInstrument = async (memberId: string, instrument: Instrument) => {
     setBandMembers(bandMembers.map(bm => {
       if (bm.id === memberId) {
         return { ...bm, instruments: [...bm.instruments, instrument] }
@@ -107,7 +109,7 @@ export function BandForm({ band, members, isOpen, onClose, onSuccess }: BandForm
     }))
   }
 
-  const removeInstrument = (memberId: string, instrument: Instrument) => {
+  const removeInstrument = async (memberId: string, instrument: Instrument) => {
     setBandMembers(bandMembers.map(bm => {
       if (bm.id === memberId) {
         return { ...bm, instruments: bm.instruments.filter(i => i !== instrument) }
@@ -116,7 +118,36 @@ export function BandForm({ band, members, isOpen, onClose, onSuccess }: BandForm
     }))
   }
 
-  const availableInstruments = (bandMember: GroupMember) => members.find(m => m.id === bandMember.id)?.instruments.filter(i => !bandMember.instruments.includes(i))
+  const availableInstruments = (bandMember: GroupMember) => {
+    const memberOption = memberOptions.find(m => m.id === bandMember.id);
+    return memberOption?.instruments.filter(i => !bandMember.instruments.includes(i as Instrument)) || [];
+  }
+
+  const availableMembers = useMemo(() => {
+    return memberOptions
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter(m => !bandMembers.some(bm => bm.id === m.id))
+      .filter(m => m.id != null);
+  }, [memberOptions, bandMembers]);
+
+  const isFormValid = useMemo(() => {
+    if (name.trim() === '') return false;
+    if (bandMembers.length === 0) return false;
+    if (bandMembers.length < 2) return false;
+    if (bandMembers.some(member => member.instruments.length === 0)) return false;
+    if (!bandMembers.some(member => member.id === user?.id)) return false;
+    return true;
+  }, [name, bandMembers, user?.id]);
+
+  const validationChecks = useMemo(() => {
+    return {
+      hasName: name.trim() !== '',
+      hasMembers: bandMembers.length > 0,
+      hasMultipleMembers: bandMembers.length >= 2,
+      allMembersHaveInstruments: bandMembers.length > 0 && !bandMembers.some(member => member.instruments.length === 0),
+      includesSelf: bandMembers.some(member => member.id === user?.id)
+    };
+  }, [name, bandMembers, user?.id]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onDialogClose}>
@@ -132,27 +163,27 @@ export function BandForm({ band, members, isOpen, onClose, onSuccess }: BandForm
           />
           <div className="space-y-2">
             <h3 className="font-medium">メンバー</h3>
-            {bandMembers.map((bandMember) => {
-              const member = members.find(m => m.id === bandMember.id)
+            {bandMembers.map((bandMember, index) => {
+              const memberOption = memberOptions.find(m => m.id === bandMember.id);
               return (
-                <div key={bandMember.id} className="flex items-center space-x-2 p-2 border rounded">
-                  <span className="flex-grow">{member?.name}</span>
+                <div key={`${bandMember.id}-${index}`} className="flex items-center space-x-2 p-2 border rounded">
+                  <span className="flex-grow">{memberOption?.name}</span>
                   <div className="flex items-center space-x-1">
                     {bandMember.instruments.map((instrument) => (
                       <Badge
                         key={instrument}
                         variant="secondary"
-                        className={`text-sm ${instrumentColors[instrument]}`}
+                        className={`text-sm ${instrumentColors[instrument as Instrument]}`}
                       >
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-4 w-4 mr-1 p-0"
-                          onClick={() => removeInstrument(bandMember.id, instrument)}
+                          onClick={() => removeInstrument(bandMember.id, instrument as Instrument)}
                         >
-                          <X className="h-3 w-3 p-0" />
+                          <X className="h-2 w-2 p-0" />
                         </Button>
-                        {instrument}
+                        {instrumentNames[instrument as Instrument]}
                       </Badge>
                     ))}
                   </div>
@@ -166,9 +197,9 @@ export function BandForm({ band, members, isOpen, onClose, onSuccess }: BandForm
                       {availableInstruments(bandMember)?.map((instrument) => (
                         <DropdownMenuItem
                           key={instrument}
-                          onClick={() => addInstrument(bandMember.id, instrument)}
+                          onClick={() => addInstrument(bandMember.id, instrument as Instrument)}
                         >
-                          {instrumentNames[instrument]}
+                          {instrumentNames[instrument as Instrument]}
                         </DropdownMenuItem>
                       ))}
                     </DropdownMenuContent>
@@ -179,41 +210,82 @@ export function BandForm({ band, members, isOpen, onClose, onSuccess }: BandForm
                 </div>
               )
             })}
-          {errorMessage && (
-              <Alert variant="destructive" className="outline">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>エラー</AlertTitle>
-                <AlertDescription>{errorMessage}</AlertDescription>
-              </Alert>
-            )}
-          <div className="flex items-center justify-between">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  メンバーを追加 <ChevronDown className="ml-2 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="max-h-[200px] overflow-y-auto">
-                {members
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .filter(m => !bandMembers.some(bm => bm.id === m.id))
-                  .filter(m => m.id != null)
-                  .map((member) => (
+            <div className="space-y-1 pl-2">
+              <div className="flex items-center space-x-2 text-sm">
+                {validationChecks.hasName ? (
+                  <CircleCheckBig className="h-4 w-4 text-green-600" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-red-600" />
+                )}
+                <span className={validationChecks.hasName ? "text-green-600" : "text-red-600"}>
+                  {validationChecks.hasName ? "バンド名が入力されています" : "バンド名を入力してください"}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2 text-sm">
+                {validationChecks.hasMembers ? (
+                  <CircleCheckBig className="h-4 w-4 text-green-600" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-red-600" />
+                )}
+                <span className={validationChecks.hasMembers ? "text-green-600" : "text-red-600"}>
+                  {validationChecks.hasMembers ? "メンバーが追加されています" : "メンバーを1人以上追加してください"}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2 text-sm">
+                {validationChecks.hasMultipleMembers ? (
+                  <CircleCheckBig className="h-4 w-4 text-green-600" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-red-600" />
+                )}
+                <span className={validationChecks.hasMultipleMembers ? "text-green-600" : "text-red-600"}>
+                  {validationChecks.hasMultipleMembers ? "メンバーが2人以上います" : "メンバーを2人以上追加してください"}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2 text-sm">
+                {validationChecks.allMembersHaveInstruments ? (
+                  <CircleCheckBig className="h-4 w-4 text-green-600" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-red-600" />
+                )}
+                <span className={validationChecks.allMembersHaveInstruments ? "text-green-600" : "text-red-600"}>
+                  {validationChecks.allMembersHaveInstruments ? "全メンバーに楽器が割り当てられています" : "全メンバーに楽器を割り当ててください"}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2 text-sm">
+                {validationChecks.includesSelf ? (
+                  <CircleCheckBig className="h-4 w-4 text-green-600" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-red-600" />
+                )}
+                <span className={validationChecks.includesSelf ? "text-green-600" : "text-red-600"}>
+                  {validationChecks.includesSelf ? "自分がメンバーに含まれています" : "自分をメンバーに追加してください"}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    メンバーを追加 <ChevronDown className="ml-2 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="max-h-[200px] overflow-y-auto">
+                  {availableMembers.map((memberOption) => (
                     <DropdownMenuItem
-                      key={member.id}
-                      onClick={() => addMember(member.id)}
+                      key={memberOption.id}
+                      onClick={() => addMember(memberOption.id)}
                     >
-                      {member.name}
+                      {memberOption.name}
                     </DropdownMenuItem>
                   ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button onClick={handleSubmit} disabled={isPending}>
-              {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              保存
-            </Button>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button onClick={handleSubmit} disabled={isPending || !isFormValid}>
+                {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                保存
+              </Button>
+            </div>
           </div>
-        </div>
         </div>
       </DialogContent>
     </Dialog>
