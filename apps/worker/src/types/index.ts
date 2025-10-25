@@ -3,6 +3,7 @@ export interface User {
   name: string;
   nickname?: string;
   email: string;
+  picture?: string;
   instruments: ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[];
   grade: number;
   role: 'MGR' | 'CHF' | 'MAC' | 'MBR' | 'ADM' | 'NHD' | 'NAC';
@@ -62,9 +63,8 @@ export interface GroupMember {
 
 export interface Reservation {
   id: number;
-  booked_by: string;
-  holder_user_id?: string;
-  holder_group_id?: string;
+  user_id: string;
+  group_id?: string;
   start_time: string;
   end_time: string;
   state: 'PENDING' | 'WITHDRAWN' | 'DECLINED' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';

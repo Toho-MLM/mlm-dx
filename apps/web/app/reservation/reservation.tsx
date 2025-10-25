@@ -11,23 +11,29 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, AlertTriangle, CalendarRangeIcon, CalendarX2, CalendarPlus } from 'lucide-react'
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, AlertTriangle, CalendarRangeIcon } from 'lucide-react'
+import { toast } from 'sonner'
+import { translateError } from '@/lib/error-label'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ReservationData, ReservationHolder, ReservationState, eventStateNames } from '../types'
+import { validateReservationTime, isReservationDateValid, isReservationTimeValid } from '../../../../lib/shared-schemas'
+type GroupOption = {
+  id: string;
+  name: string;
+}
 import { apiClient } from '@/lib/api'
 import TimeGrid from 'react-big-calendar/lib/TimeGrid'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import Fab from '@mui/material/Fab';
 import { useAuth } from '../context/AuthContext'
+import { ReservationPageHeader } from '@/components/reservation-page-header'
 
 
 const locales = {
@@ -111,7 +117,7 @@ ThreeDayView.title = (date: Date) => {
   return `3日間表示: ${start} - ${end}`
 }
 
-export function ReservationPage({ initialReservationData, initialUserHolder }: { initialReservationData: ReservationData[], initialUserHolder: ReservationHolder[] }) {
+export function ReservationPage({ initialReservationData }: { initialReservationData: ReservationData[] }) {
   const [isMobile, setIsMobile] = useState(false)
   const [reservationDraft, setReservationDraft] = useState({
     date: startOfDay(new Date()),
@@ -125,7 +131,6 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
   const [isCancelFormOpen, setIsCancelFormOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<ReservationData | null>(null)
   const [openPicker, setOpenPicker] = useState<string | null>(null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [isFormDatePickerOpen, setIsFormDatePickerOpen] = useState(false)
@@ -134,7 +139,8 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
   const [popoverPosition, setPopoverPosition] = useState<{ y: number; x: number } | null>(null)
   const [reservationData, setReservationData] = useState<ReservationData[]>(initialReservationData)
-  const [userHolder, setUserHolder] = useState<ReservationHolder[]>(initialUserHolder)
+  const [myGroups, setMyGroups] = useState<GroupOption[]>([])
+  const [isGroupsLoading, setIsGroupsLoading] = useState(false)
   const { user } = useAuth();
 
   useEffect(() => {
@@ -192,27 +198,46 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
     const end = new Date(reservationDraft.date)
     end.setHours(reservationDraft.endHour, reservationDraft.endMinute)
 
-    const currentHour = new Date().getHours();
-    if (currentHour >= 0 && currentHour < 1) {
-      setErrorMessage('現在、予約処理中のため予約を作成できません。1時以降に再度お試しください。');
+    // 共通バリデーションを使用
+    const validation = validateReservationTime(start.toISOString(), end.toISOString());
+    if (!validation.isValid) {
+      toast.error('予約時間が無効です', {
+        description: validation.error || '予約時間が無効です。'
+      });
       return;
     }
 
     try {
       setIsSending(true)
       
-      const selectedHolder = userHolder.find(holder => holder.id === reservationDraft.group);
-      const isPersonalReservation = !selectedHolder || selectedHolder.id === null;
+      const isPersonalReservation = !reservationDraft.group || reservationDraft.group === 'none';
       
       const response = await apiClient.createReservation({
-        holder_user_id: isPersonalReservation ? user?.id : undefined,
-        holder_group_id: !isPersonalReservation && reservationDraft.group ? reservationDraft.group : undefined,
+        group_id: !isPersonalReservation && reservationDraft.group ? reservationDraft.group : undefined,
         start_time: start.toISOString(),
         end_time: end.toISOString(),
       });
 
       if (response.success) {
-        console.log('Reservation created successfully')
+        // ステータスに応じてtoastを表示
+        switch (response.status) {
+          case 'CONFIRMED':
+            toast.success('予約が確定されました')
+            break
+          case 'ADJUSTED':
+            toast.success('予約が確定されました（時間を調整しました）', {
+              description: `元の時間: ${format(new Date(response.details.originalStartTime), 'HH:mm')} - ${format(new Date(response.details.originalEndTime), 'HH:mm')}\n調整後: ${format(new Date(response.details.adjustedStartTime), 'HH:mm')} - ${format(new Date(response.details.adjustedEndTime), 'HH:mm')}`
+            })
+            break
+          case 'DECLINED':
+            toast.error('予約は確定できませんでした', {
+              description: '指定された時間帯に他の予約があります'
+            })
+            break
+          default:
+            toast.success('予約を送信しました')
+        }
+        
         setReservationDraft({
           date: new Date(),
           group: null,
@@ -221,14 +246,17 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
           endHour: null,
           endMinute: null,
         })
-        setErrorMessage(null)
         setIsReservationFormOpen(false)
         await refetchReservationData()
       } else {
-        setErrorMessage('データの送信中にエラーが発生しました。' + response.error);
+        toast.error('データの送信中にエラーが発生しました', {
+          description: translateError(response.error || 'UNKNOWN_ERROR')
+        })
       }
     } catch (err) {
-      setErrorMessage((err as Error).message);
+      toast.error('予約の作成中にエラーが発生しました', {
+        description: translateError((err as Error).message)
+      })
     } finally {
       setIsSending(false);
     }
@@ -245,10 +273,14 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
         setIsCancelFormOpen(false)
         await refetchReservationData()
       } else {
-        setErrorMessage('データの送信中にエラーが発生しました。' + response.error)
+        toast.error('データの送信中にエラーが発生しました', {
+          description: translateError(response.error || 'UNKNOWN_ERROR')
+        })
       }
     } catch (err) {
-      setErrorMessage((err as Error).message);
+      toast.error('予約の作成中にエラーが発生しました', {
+        description: translateError((err as Error).message)
+      })
     } finally {
       setIsSending(false)
     }
@@ -277,11 +309,7 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
   const maxDate = addDays(new Date(), 14)
 
   const isStartTimeDisabled = (hour: number, minute: number) => {
-    const now = new Date()
-    const selectedDate = new Date(reservationDraft.date)
-    selectedDate.setHours(hour)
-    selectedDate.setMinutes(minute)
-    return isBefore(selectedDate, now) || hour < 6 || (hour === 23 && minute > 0)
+    return !isReservationTimeValid(reservationDraft.date, hour, minute);
   }
 
   const isEndTimeDisabled = (hour: number, minute: number) => {
@@ -290,7 +318,7 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
     startDate.setHours(reservationDraft.startHour, reservationDraft.startMinute)
     const endDate = new Date(reservationDraft.date)
     endDate.setHours(hour, minute)
-    const minEndTime = addMinutes(startDate, 30)
+    const minEndTime = addMinutes(startDate, 10)
     const maxEndTime = addHours(startDate, 4)
     return isBefore(endDate, minEndTime) || endDate.getTime() > maxEndTime.getTime()
   }
@@ -343,12 +371,26 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
     setPopoverPosition(null)
   }
 
+  const fetchMyGroups = async () => {
+    if (isGroupsLoading) return;
+    
+    try {
+      setIsGroupsLoading(true);
+      const response = await apiClient.getGroupOptions();
+      
+      if (response.success && response.data) {
+        setMyGroups(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch my groups:', err);
+    } finally {
+      setIsGroupsLoading(false);
+    }
+  };
+
   const refetchReservationData = async () => {
     try {
-      const [reservationsResponse, userHolderResponse] = await Promise.all([
-        apiClient.getReservations(),
-        apiClient.getUserHolder()
-      ]);
+      const reservationsResponse = await apiClient.getReservations();
 
       if (reservationsResponse.success && reservationsResponse.data) {
         const formattedData: ReservationData[] = (reservationsResponse.data as any[]).map((item: any) => ({
@@ -357,23 +399,6 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
           end: new Date(item.end_time),
         }));
         setReservationData(formattedData);
-      }
-
-      if (userHolderResponse.success && userHolderResponse.data) {
-        const userHolderData = userHolderResponse.data as any;
-        const result: ReservationHolder[] = [];
-        result.push({
-          name: userHolderData.user.nickname,
-          id: null
-        });
-        
-        userHolderData.bands.forEach((band: { name: string; id: string }) => {
-          result.push({
-            name: band.name,
-            id: band.id
-          });
-        });
-        setUserHolder(result);
       }
     } catch (err) {
       console.error('Failed to refetch reservation data:', err);
@@ -392,9 +417,27 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
     []
   )
 
+  const handleAddReservation = () => {
+    setIsReservationFormOpen(true)
+  }
+
+  const handleRefresh = async () => {
+    await refetchReservationData()
+  }
+
+  const handleCancelReservation = () => {
+    setIsCancelFormOpen(true)
+  }
+
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col" ref={calendarRef} style={{ position: 'relative' }}>
-      <div className="flex-1 mx-auto px-5 w-full max-w-none">
+    <>
+      <ReservationPageHeader 
+        onAddReservation={handleAddReservation}
+        onRefresh={handleRefresh}
+        onCancelReservation={handleCancelReservation}
+      />
+      <div className="h-[calc(100vh-4rem)] flex flex-col" ref={calendarRef} style={{ position: 'relative' }}>
+        <div className="flex-1 mx-auto px-5 w-full max-w-none">
         <Card className="bg-white shadow-lg rounded-lg overflow-hidden h-full flex flex-col">
           <CardDescription className="flex-shrink-0">
             <div className={"p-2 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
@@ -438,7 +481,7 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
             <BigCalendar
               localizer={localizer}
               events={reservationData}
-               titleAccessor={(event) => event.creator_name || '予約'}
+               titleAccessor={(event) => event.group_name || event.user_name || '予約'}
                startAccessor={(event) => event.start}
                endAccessor={(event) => event.end}
               onSelectEvent={handleSelectEvent}
@@ -505,8 +548,8 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
           <div>
             <p><strong>ID</strong> # {selectedReservation.id}</p>
             <p><strong>時間</strong> {format(selectedReservation.start, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'H:mm', { locale: jaLocale })}</p>
-            <p><strong>作成者</strong> {selectedReservation.creator_name}</p>
-            {selectedReservation.holder_group_name && <p><strong>グループ</strong> {selectedReservation.holder_group_name}</p>}
+            <p><strong>予約者</strong> {selectedReservation.user_name}</p>
+            {selectedReservation.group_name && <p><strong>グループ</strong> {selectedReservation.group_name}</p>}
             <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
             <Button onClick={closePopover} variant="outline" className="mt-2 w-full">
               閉じる
@@ -514,13 +557,7 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
           </div>
         </div>
       )}
-      <div className="fixed bottom-4 right-4 flex flex-col gap-2">
-        <Dialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen}>
-          <DialogTrigger asChild>
-            <Fab color="primary" aria-label="add">
-              <CalendarPlus />
-            </Fab>
-          </DialogTrigger>
+      <Dialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen}>
           <DialogContent>
             <DialogTitle className="text-xl font-semibold">新規予約</DialogTitle>
             <Alert className="p-1">
@@ -532,9 +569,8 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
                 <ul className="list-disc pl-6 text-sm">
                   <li>二週間以上先の予約を取ることはできません。</li>
                   <li>日をまたいで予約することはできません。</li>
-                  <li>利用時間は最短30分から最長4時間です。</li>
+                  <li>利用時間は最短10分から最長4時間です。</li>
                   <li>ホールは朝6時から夜11時まで利用できます。</li>
-                  <li>予約が処理される午前0〜1時の間は予約できません。</li>
                 </ul>
               </AlertDescription>
             </Alert>
@@ -545,17 +581,32 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
                   onValueChange={(value) => setReservationDraft({ ...reservationDraft, group: value === 'none' ? null : value })}
                   value={reservationDraft.group || 'none'}
                   defaultValue='none'
+                  onOpenChange={(open) => {
+                    if (open && myGroups.length === 0) {
+                      fetchMyGroups();
+                    }
+                  }}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <ScrollArea className="max-h-[200px]">
-                      {userHolder.map((holder) => (
-                        <SelectItem key={holder.id} value={holder.id || 'none'}>
-                          {holder.name}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="none">
+                        {user?.nickname || '個人'}
+                      </SelectItem>
+                      {isGroupsLoading ? (
+                        <div className="flex items-center justify-center p-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="ml-2 text-sm text-gray-500">読み込み中...</span>
+                        </div>
+                      ) : (
+                        myGroups.map((group) => (
+                          <SelectItem key={group.id} value={group.id}>
+                            {group.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </ScrollArea>
                   </SelectContent>
                 </Select>
@@ -587,7 +638,7 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
                         setIsFormDatePickerOpen(false)
                       }}
                       disabled={(date) =>
-                        date > maxDate || isBefore(date, startOfDay(new Date()))
+                        !isReservationDateValid(date)
                       }
                       initialFocus
                       locale={jaLocale}
@@ -712,22 +763,9 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
                 予約
               </Button>
             </form>
-            {errorMessage && (
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>エラー</AlertTitle>
-                <AlertDescription>{errorMessage}</AlertDescription>
-              </Alert>
-            )}
           </DialogContent>
         </Dialog>
         <Dialog open={isCancelFormOpen} onOpenChange={setIsCancelFormOpen}>
-          <DialogTrigger asChild>
-            <Fab color="error" aria-label="cancel">
-              <CalendarX2/>
-              <span className="sr-only">Cancel Calendar</span>
-            </Fab>
-          </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle className="text-xl font-semibold">予約のキャンセル</DialogTitle>
@@ -739,8 +777,8 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
                     <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
                       <p><strong>ID</strong> # {selectedReservation.id}</p>
                       <p><strong>時間</strong> {format(selectedReservation.start, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'H:mm', { locale: jaLocale })}</p>
-                      <p><strong>作成者</strong> {selectedReservation.creator_name}</p>
-                      {selectedReservation.holder_group_name && <p><strong>グループ</strong> {selectedReservation.holder_group_name}</p>}
+                      <p><strong>予約者</strong> {selectedReservation.user_name}</p>
+                      {selectedReservation.group_name && <p><strong>グループ</strong> {selectedReservation.group_name}</p>}
                       <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
                     </div>
                     <Button onClick={() => handleCancel(selectedReservation.id)} variant="destructive" className="w-full" disabled={isSending}>
@@ -757,7 +795,6 @@ export function ReservationPage({ initialReservationData, initialUserHolder }: {
           </DialogContent>
         </Dialog>
       </div>
-    </div>
-
+    </>
   )
 }

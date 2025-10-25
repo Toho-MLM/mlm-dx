@@ -2,11 +2,13 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { User } from '@/app/types'
+import { httpClient } from '@/lib/http-client'
 
 interface AuthContextType {
   user: User | null
   loading: boolean
   signOut: () => void
+  refreshAuth: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -18,16 +20,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL }/auth/session`, {
-          credentials: 'include',
-        })
-        
-        if (response.ok) {
-          const session = await response.json()
-          setUser(session?.user || null)
-        } else {
-          setUser(null)
-        }
+        const session = await httpClient.get('/auth/session') as { user?: User }
+        setUser(session?.user || null)
       } catch (error) {
         console.error('Auth check failed:', error)
         setUser(null)
@@ -39,19 +33,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     checkAuth()
   }, [])
 
+  const refreshAuth = async () => {
+    try {
+      const session = await httpClient.get('/auth/session') as { user?: User }
+      setUser(session?.user || null)
+    } catch (error) {
+      console.error('Auth refresh failed:', error)
+      setUser(null)
+    }
+  }
+
   const signOut = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL }/auth/signout`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      
-      if (response.ok) {
-        setUser(null)
-      } else {
-        console.error('Sign out failed:', response.status)
-        setUser(null)
-      }
+      await httpClient.post('/auth/signout')
+      setUser(null)
     } catch (error) {
       console.error('Sign out failed:', error)
       setUser(null)
@@ -62,7 +57,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     <AuthContext.Provider value={{ 
       user, 
       loading, 
-      signOut
+      signOut,
+      refreshAuth
     }}>
       {children}
     </AuthContext.Provider>

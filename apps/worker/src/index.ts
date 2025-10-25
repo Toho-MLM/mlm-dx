@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, ExecutionContext, ScheduledEvent } from '@cloudflare/workers-types';
 import type { Context } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
@@ -12,6 +12,7 @@ import { reservationRoutes } from './routes/reservations';
 import { archiveRoutes } from './routes/archive';
 import type { User } from './types';
 import { UserSchema } from './schemas';
+import { processDailyReservations } from './utils/reservation-processor';
 
 export type Bindings = {
   DB: D1Database;
@@ -84,7 +85,7 @@ app.post('/auth/signin/google', async (c) => {
     return c.json({ authUrl });
   } catch (error) {
     console.error('Auth signin error:', error);
-    return c.json({ error: 'Authentication failed' }, 500);
+    return c.json({ error: 'AUTHENTICATION_FAILED' }, 500);
   }
 });
 
@@ -152,6 +153,7 @@ app.get('/auth/callback/google', async (c) => {
       ...dbUserRaw,
       instruments: parsedInstruments,
       grade: Number(dbUserRaw.grade),
+      student_number: (dbUserRaw.email as string).substring(0, 6).toUpperCase(),
     });
 
     // Format name with space between family and given name
@@ -189,7 +191,7 @@ app.get('/auth/callback/google', async (c) => {
       email: googleUser.email,
       name: formattedName,
       image: googleUser.image,
-    }, c.env.AUTH_SECRET);
+    }, dbUser.nickname, c.env.AUTH_SECRET);
 
     setCookie(c, 'auth_token', jwt, {
       httpOnly: true,
@@ -239,6 +241,7 @@ app.get('/auth/session', async (c) => {
       ...dbUserRaw,
       instruments: parsedInstruments,
       grade: Number(dbUserRaw.grade),
+      student_number: (dbUserRaw.email as string).substring(0, 6).toUpperCase(),
     });
 
     return c.json({
@@ -246,6 +249,7 @@ app.get('/auth/session', async (c) => {
         id: dbUser.id,
         email: dbUser.email,
         name: dbUser.name,
+        nickname: payload.nickname,
         picture: payload.picture,
       }
     });
@@ -267,7 +271,7 @@ app.post('/auth/signout', async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.error('Signout error:', error);
-    return c.json({ success: false, error: 'Signout failed' }, 500);
+    return c.json({ success: false, error: 'SIGNOUT_FAILED' }, 500);
   }
 });
 
@@ -281,4 +285,16 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-export default app;
+export default {
+  async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
+    return app.fetch(request, env, ctx);
+  },
+  
+  async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
+    switch (event.cron) {
+      case "0 15 * * *":
+        await processDailyReservations(env);
+        break;
+    }
+  }
+};

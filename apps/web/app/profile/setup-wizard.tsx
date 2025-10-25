@@ -12,6 +12,9 @@ import { ChevronDown, ChevronUp, InfoIcon, Loader2 } from 'lucide-react'
 import { UserData, Instrument, instrumentNames } from '@/app/types'
 import { apiClient } from '@/lib/api'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { translateError } from '@/lib/error-label'
+import { useAuth } from '@/app/context/AuthContext'
 
 const stepVariants = {
   hidden: { opacity: 0, x: -20 },
@@ -23,8 +26,8 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
   const [userData, setUserData] = useState<UserData>(initialUserData)
   const [canProceed, setCanProceed] = useState(true)
   const [isSending, setIsSending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const router = useRouter();
+  const router = useRouter()
+  const { refreshAuth } = useAuth()
 
   useEffect(() => {
     if (step === 1) {
@@ -113,14 +116,10 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
           />
         </div>
         {!canProceed && (
-          <Alert variant="destructive" className="flex items-center p-2">
-            <AlertTitle>
-              <InfoIcon className="h-4 w-4 mr-2" />
-            </AlertTitle>
-            <AlertDescription>
-              ニックネームは必須です。
-            </AlertDescription>
-          </Alert>
+          <div className="flex items-center p-2 text-red-600 text-sm">
+            <InfoIcon className="h-4 w-4 mr-2" />
+            ニックネームは必須です。
+          </div>
         )}
       </CardContent>
     </motion.div>,
@@ -144,14 +143,10 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
           </div>
         </div>
         {!canProceed && (
-          <Alert variant="destructive" className="flex items-center p-2">
-            <AlertTitle>
-              <InfoIcon className="h-4 w-4 mr-2" />
-            </AlertTitle>
-            <AlertDescription>
-              少なくとも1つの楽器を選択してください。
-            </AlertDescription>
-          </Alert>
+          <div className="flex items-center p-2 text-red-600 text-sm">
+            <InfoIcon className="h-4 w-4 mr-2" />
+            少なくとも1つの楽器を選択してください。
+          </div>
         )}
         {userData.instruments.length >= 2 && (
           <motion.div
@@ -223,10 +218,6 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
             <p className="text-sm font-semibold">{userData.instruments.map((i) => instrumentNames[i]).join(', ')}</p>
           </div>
         </div>
-        {error && <Alert variant="destructive" className="py-2">
-          <InfoIcon className="h-4 w-4 mt-0.5" />
-          <AlertDescription className="text-xs ml-2">{error}</AlertDescription>
-        </Alert>}
       </CardContent>
     </motion.div>,
   ]
@@ -238,13 +229,19 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
         nickname: userData.nickname || '',
         instruments: userData.instruments
       });
+      
+      // 認証状態を更新（JWT再発行後の新しいユーザー情報を取得）
+      await refreshAuth();
+      
       if (onComplete) {
         onComplete(userData);
       } else {
         router.push('/profile');
       }
     } catch (err) {
-      setError((err as Error).message);
+      toast.error('データの保存中にエラーが発生しました', {
+        description: translateError((err as Error).message)
+      })
     } finally {
       setIsSending(false);
     }

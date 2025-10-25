@@ -46,6 +46,7 @@ const CustomJWTPayloadSchema = z.object({
   sub: z.string(),
   email: z.string().email(),
   name: z.string(),
+  nickname: z.string().nullable(),
   picture: z.string().url().optional(),
   iat: z.number(),
   exp: z.number(),
@@ -70,6 +71,7 @@ export interface CustomJWTPayload {
   sub: string;
   email: string;
   name: string;
+  nickname: string | null;
   picture?: string;
   iat: number;
   exp: number;
@@ -102,12 +104,13 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export async function generateJWT(user: AuthUser, secret: string): Promise<string> {
+export async function generateJWT(user: AuthUser, nickname: string | null, secret: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     sub: user.id,
     email: user.email,
     name: user.name,
+    nickname: nickname,
     picture: user.image,
     iat: now,
     exp: now + (7 * 24 * 60 * 60),

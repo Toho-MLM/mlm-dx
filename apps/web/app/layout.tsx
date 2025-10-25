@@ -5,6 +5,7 @@ import "./globals.css";
 import { TitleProvider } from './context/TitleContext';
 import { Metadata } from 'next';
 import { MainContent } from './layout-client';
+import { Toaster } from '@/components/ui/sonner';
 
 const notoSansJP = localFont({
   src: "./fonts/NotoSansJP-VariableFont_wght.ttf",
@@ -43,6 +44,7 @@ export default function RootLayout({
             {children}
           </MainContent>
           <Analytics />
+          <Toaster />
         </TitleProvider>
       </body>
     </html>

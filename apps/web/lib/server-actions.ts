@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { ApiResponseSchema, ArchiveSchema, GroupWithMemberRoleSchema, type Archive, type GroupWithMemberRole } from './schemas'
+import { ApiResponseSchema, ArchiveSchema, GroupWithMemberRoleSchema, type Archive, type GroupWithMemberRole } from '../../../lib/shared-schemas'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL as string
 
@@ -14,11 +14,10 @@ export interface ApiResponse<T = unknown> {
   message?: string
 }
 
-async function serverActionRequest<T extends z.ZodType>(
+async function serverActionRequest(
   endpoint: string, 
-  schema: T, 
   options: RequestInit = {}
-): Promise<z.infer<T>> {
+): Promise<any> {
   const cookieStore = await cookies()
   const cookieHeader = cookieStore.toString()
   
@@ -38,8 +37,7 @@ async function serverActionRequest<T extends z.ZodType>(
     throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
   }
 
-  const data = await response.json()
-  return schema.parse(data)
+  return await response.json()
 }
 
 export async function createArchiveAction(data: {
@@ -48,13 +46,13 @@ export async function createArchiveAction(data: {
   year: number
 }): Promise<ApiResponse<Archive>> {
   try {
-    const result = await serverActionRequest('/archive', ApiResponseSchema(ArchiveSchema), {
+    const result = await serverActionRequest('/archive', {
       method: 'POST',
       body: JSON.stringify(data),
     })
     
     revalidatePath('/archive')
-    return result
+    return result as ApiResponse<Archive>
   } catch (error) {
     return {
       success: false,
@@ -67,15 +65,37 @@ export async function createGroupAction(data: {
   name: string
   assignments?: string
   is_main?: boolean
-}): Promise<ApiResponse<GroupWithMemberRole>> {
+}): Promise<ApiResponse<void>> {
   try {
-    const result = await serverActionRequest('/groups/upsert', ApiResponseSchema(GroupWithMemberRoleSchema), {
+    const result = await serverActionRequest('/groups/create', {
       method: 'POST',
       body: JSON.stringify(data),
     })
     
     revalidatePath('/band')
-    return result
+    return result as ApiResponse<void>
+  } catch (error) {
+    return {
+      success: false,
+      error: (error as Error).message
+    }
+  }
+}
+
+export async function updateGroupAction(id: string, data: {
+  name: string
+  assignments?: string
+  is_main?: boolean
+  is_active?: boolean
+}): Promise<ApiResponse<void>> {
+  try {
+    const result = await serverActionRequest(`/groups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+    
+    revalidatePath('/band')
+    return result as ApiResponse<void>
   } catch (error) {
     return {
       success: false,
@@ -86,12 +106,12 @@ export async function createGroupAction(data: {
 
 export async function deleteArchiveAction(id: string): Promise<ApiResponse<void>> {
   try {
-    const result = await serverActionRequest(`/archive/${id}`, ApiResponseSchema(z.void()), {
+    const result = await serverActionRequest(`/archive/${id}`, {
       method: 'DELETE',
     })
     
     revalidatePath('/archive')
-    return result
+    return result as ApiResponse<void>
   } catch (error) {
     return {
       success: false,

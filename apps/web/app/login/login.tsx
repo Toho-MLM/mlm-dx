@@ -3,16 +3,17 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useAuth } from '@/app/context/AuthContext'
 import { useEffect, useState, Suspense } from 'react'
+import LoadingScreen from '@/components/loading'
+import { httpClient } from '@/lib/http-client'
+import { toast } from 'sonner'
+import { translateError } from '@/lib/error-label'
 
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, loading } = useAuth()
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-
   useEffect(() => {
     const error = searchParams.get('error')
     if (error) {
@@ -25,38 +26,29 @@ function LoginContent() {
         access_denied: 'このメールアドレスは利用できません。管理者にお問い合わせください。',
         authentication_failed: 'ログインに失敗しました。もう一度お試しください。'
       }
-      setErrorMessage(errorMessages[error] || 'ログイン中に問題が発生しました。もう一度お試しください。')
+      toast.error(translateError(errorMessages[error] || 'ログイン中に問題が発生しました。もう一度お試しください。'))
     }
   }, [searchParams])
 
   useEffect(() => {
     if (!loading && user) {
-      router.push('/profile')
+      router.push('/')
     }
   }, [user, loading, router])
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">読み込み中...</div>
+    return <LoadingScreen />
   }
 
   if (user) {
-    return <div className="min-h-screen flex items-center justify-center">リダイレクト中...</div>
+    return <LoadingScreen />
   }
 
   const handleGoogleSignIn = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'}/auth/signin/google`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.authUrl) {
-          window.location.href = data.authUrl
-        }
-      } else {
-        console.error('Sign in failed')
+      const data = await httpClient.post('/auth/signin/google') as { authUrl?: string }
+      if (data.authUrl) {
+        window.location.href = data.authUrl
       }
     } catch (error) {
       console.error('Sign in error:', error)
@@ -70,11 +62,6 @@ function LoginContent() {
           <CardTitle className="text-center">MLM DX ログイン</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {errorMessage && (
-            <Alert variant="destructive">
-              <AlertDescription>{errorMessage}</AlertDescription>
-            </Alert>
-          )}
           <Button
             onClick={handleGoogleSignIn}
             className="w-full bg-white hover:bg-gray-50 text-gray-900 border border-gray-300"
@@ -101,7 +88,7 @@ function LoginContent() {
 
 export function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">読み込み中...</div>}>
+    <Suspense fallback={<LoadingScreen />}>
       <LoginContent />
     </Suspense>
   )

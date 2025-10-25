@@ -8,11 +8,11 @@ import { UserData, Role, Instrument } from '@/app/types'
 import { apiClient } from '@/lib/api'
 import { useAuth } from '@/app/context/AuthContext';
 import LoadingScreen from '@/components/loading';
-import ErrorAlert from '@/components/errorAlert';
+import { toast } from 'sonner'
+import { translateError } from '@/lib/error-label'
 
 export default function Page() {
   const [userData, setUserData] = useState<UserData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const router = useRouter()
   const { user, loading: authLoading } = useAuth();
@@ -36,23 +36,16 @@ export default function Page() {
     hasFetched.current = user.email
 
     const fetchUserData = async () => {
-      if (!user?.email) {
-        setError('ユーザー情報が取得できません。');
-        setLoading(false);
-        return;
-      }
-
       setLoading(true)
-      setError(null)
 
       try {
-        const response = await apiClient.getUserData(user.email);
+        const response = await apiClient.getCurrentUserData();
         
         if (response.success && response.data) {
           const userData: UserData = {
-            grade: '1', // デフォルト値
-            name: response.data.name,
-            role: 'MBR' as Role, // デフォルト値
+            grade: response.data.grade,
+            name: response.data.name ?? '',
+            role: response.data.role as Role,
             email: response.data.email,
             nickname: response.data.nickname,
             instruments: response.data.instruments as Instrument[],
@@ -60,10 +53,14 @@ export default function Page() {
           };
           setUserData(userData);
         } else {
-          setError('ユーザーデータの取得に失敗しました。' + (response.error || ''));
+          toast.error('ユーザーデータの取得に失敗しました', {
+            description: translateError(response.error || '')
+          })
         }
       } catch (err) {
-        setError((err as Error).message);
+        toast.error('ユーザーデータの取得中にエラーが発生しました', {
+          description: translateError((err as Error).message)
+        })
       } finally {
         setLoading(false);
       }
@@ -78,10 +75,6 @@ export default function Page() {
 
   if (loading) {
     return <LoadingScreen />
-  }
-
-  if (error) {
-    return <ErrorAlert error={error} />
   }
 
   if (userData) {

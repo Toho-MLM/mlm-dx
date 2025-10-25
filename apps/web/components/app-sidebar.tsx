@@ -63,13 +63,13 @@ export function AppSidebar() {
               onClick={handleProfileClick}
             >
               <Avatar className="h-8 w-8">
-                <AvatarImage src={user.picture} alt={user.name} />
+                <AvatarImage src={user.picture} alt={user.nickname || user.name || 'User'} />
                 <AvatarFallback>
-                  {user.name?.charAt(0)?.toUpperCase() || 'U'}
+                  {(user.nickname || user.name)?.charAt(0)?.toUpperCase() || 'U'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{user.name}</p>
+                <p className="text-sm font-medium truncate">{user.nickname || user.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               </div>
             </div>

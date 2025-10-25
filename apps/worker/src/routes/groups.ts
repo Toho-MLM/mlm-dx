@@ -34,78 +34,153 @@ export async function getUserGroupIds(env: Bindings, userId: string): Promise<st
 // Apply authentication middleware to all routes
 groupRoutes.use('*', requireAuth);
 
-// upsert_group - Create or update a group
-groupRoutes.post('/upsert', async (c) => {
+// create_group - Create a new group
+groupRoutes.post('/create', async (c) => {
   try {
-    const requestData = CreateGroupRequestSchema.extend({
-      id: z.string().optional()
+    const requestData = z.object({
+      name: z.string().min(1),
+      assignments: z.string().optional(),
+      is_main: z.boolean().optional(),
     }).parse(await c.req.json());
 
     const now = new Date().toISOString();
-
-    if (requestData.id) {
-      await c.env.DB.prepare(`
-        UPDATE groups 
-        SET name = ?, is_main = ?, updated_at = ?
-        WHERE id = ?
-      `).bind(requestData.name, requestData.is_main, now, requestData.id).run();
-    } else {
-      const newId = crypto.randomUUID();
-      await c.env.DB.prepare(`
-        INSERT INTO groups (id, name, is_main, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, TRUE, ?, ?)
-      `).bind(newId, requestData.name, requestData.is_main, now, now).run();
-      
-      return c.json({ 
-        success: true, 
-        data: { id: newId },
-        message: 'Group created successfully' 
-      });
+    const newId = crypto.randomUUID();
+    
+    await c.env.DB.prepare(`
+      INSERT INTO groups (id, name, is_main, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, TRUE, ?, ?)
+    `).bind(newId, requestData.name, requestData.is_main, now, now).run();
+    
+    // メンバーを追加
+    if (requestData.assignments) {
+      try {
+        const assignments = JSON.parse(requestData.assignments);
+        for (const [instrument, memberUserId] of Object.entries(assignments)) {
+          await c.env.DB.prepare(`
+            INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).bind(crypto.randomUUID(), newId, memberUserId, instrument, now, now).run();
+        }
+      } catch (parseError) {
+        console.error('Error parsing assignments:', parseError);
+      }
     }
-
-    return c.json({ success: true, message: 'Group updated successfully' });
+    
+    return c.json({ 
+      success: true, 
+      message: 'Group created successfully',
+      data: { id: newId }
+    });
   } catch (error) {
-    console.error('Error upserting group:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
+    console.error('Error creating group:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
-// Get all groups
+// Get user's groups (both active and inactive groups that user belongs to)
 groupRoutes.get('/', async (c) => {
   try {
+    const user = c.get('user');
+    const userId = user.id;
+    
     const groups = await c.env.DB.prepare(`
-      SELECT g.*, COUNT(DISTINCT gmi.user_id) as member_count
+      SELECT DISTINCT g.*
       FROM groups g
-      LEFT JOIN group_member_instruments gmi ON g.id = gmi.group_id
-      WHERE g.is_active = TRUE
-      GROUP BY g.id
-      ORDER BY g.name ASC
-    `).all();
+      JOIN group_member_instruments gmi ON g.id = gmi.group_id
+      WHERE gmi.user_id = ?
+      ORDER BY g.is_active DESC, g.is_main DESC, g.created_at DESC
+    `).bind(userId).all();
+
+    // Get assignments for each group
+    const groupsWithAssignments = await Promise.all(
+      groups.results.map(async (group: any) => {
+        const assignments = await c.env.DB.prepare(`
+          SELECT instrument, user_id
+          FROM group_member_instruments
+          WHERE group_id = ?
+        `).bind(group.id).all();
+
+        // Convert assignments to GroupMember[] format
+        const memberMap: Record<string, string[]> = {};
+        assignments.results.forEach((assignment: any) => {
+          if (!memberMap[assignment.user_id]) {
+            memberMap[assignment.user_id] = [];
+          }
+          memberMap[assignment.user_id].push(assignment.instrument);
+        });
+
+        const groupMembers = Object.entries(memberMap).map(([userId, instruments]) => ({
+          id: userId,
+          instruments: instruments
+        }));
+
+        return {
+          ...group,
+          assignments: groupMembers
+        };
+      })
+    );
+
+    const validatedGroups = groupsWithAssignments.map(group => GroupSchema.parse(group));
+
+    return c.json({ success: true, data: validatedGroups });
+  } catch (error) {
+    console.error('Error fetching user groups:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+// Get group options for reservation dialog (id and name only)
+groupRoutes.get('/options', async (c) => {
+  try {
+    const user = c.get('user');
+    const userId = user.id;
+    
+    const groups = await c.env.DB.prepare(`
+      SELECT DISTINCT g.id, g.name
+      FROM groups g
+      JOIN group_member_instruments gmi ON g.id = gmi.group_id
+      WHERE gmi.user_id = ? AND g.is_active = TRUE
+      ORDER BY g.is_main DESC, g.created_at DESC
+    `).bind(userId).all();
 
     return c.json({ success: true, data: groups.results });
   } catch (error) {
-    console.error('Error fetching groups:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
+    console.error('Error fetching group options:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
-// Get group by ID
-groupRoutes.get('/:id', async (c) => {
+// Get member options for band management (id, name, instruments)
+groupRoutes.get('/member-options', async (c) => {
   try {
-    const groupId = c.req.param('id');
+    const members = await c.env.DB.prepare(`
+      SELECT 
+        u.id,
+        u.name,
+        u.nickname,
+        u.instruments
+      FROM users u
+      WHERE u.name IS NOT NULL
+      ORDER BY u.name ASC
+    `).all();
 
-    const group = GroupSchema.parse(await c.env.DB.prepare(
-      'SELECT * FROM groups WHERE id = ? AND is_active = TRUE'
-    ).bind(groupId).first());
+    // Process the results to format name and instruments
+    const processedMembers = members.results.map((member: any) => {
+      const displayName = member.nickname || member.name;
+      const instruments = JSON.parse(member.instruments || '[]');
+      
+      return {
+        id: member.id,
+        name: displayName,
+        instruments: instruments
+      };
+    });
 
-    if (!group) {
-      return c.json({ success: false, error: 'Group not found' }, 404);
-    }
-
-    return c.json({ success: true, data: group });
+    return c.json({ success: true, data: processedMembers });
   } catch (error) {
-    console.error('Error fetching group:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
+    console.error('Error fetching member options:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
@@ -117,111 +192,40 @@ groupRoutes.put('/:id', async (c) => {
 
     const now = new Date().toISOString();
 
+    // グループ情報を更新
     await c.env.DB.prepare(`
       UPDATE groups 
       SET name = ?, is_main = ?, is_active = ?, updated_at = ?
       WHERE id = ?
     `).bind(requestData.name, requestData.is_main, requestData.is_active, now, groupId).run();
 
+    // assignmentsが提供されている場合、メンバー情報を更新
+    if (requestData.assignments) {
+      try {
+        // 既存のメンバー情報を削除
+        await c.env.DB.prepare(`
+          DELETE FROM group_member_instruments WHERE group_id = ?
+        `).bind(groupId).run();
+
+        // 新しいメンバー情報を追加
+        const assignments = JSON.parse(requestData.assignments);
+        for (const [instrument, memberUserId] of Object.entries(assignments)) {
+          await c.env.DB.prepare(`
+            INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).bind(crypto.randomUUID(), groupId, memberUserId, instrument, now, now).run();
+        }
+      } catch (parseError) {
+        console.error('Error parsing assignments:', parseError);
+      }
+    }
+
     return c.json({ success: true, message: 'Group updated successfully' });
   } catch (error) {
     console.error('Error updating group:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
-// Get mapping: user_id -> instruments[] for a group
-groupRoutes.get('/:id/member-instruments', async (c) => {
-  try {
-    const groupId = c.req.param('id');
-
-    const rows = await c.env.DB.prepare(
-      'SELECT user_id, instrument FROM group_member_instruments WHERE group_id = ? ORDER BY user_id'
-    ).bind(groupId).all();
-
-    const mapping: Record<string, ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[]> = {};
-    const MemberInstrumentSchema = z.object({
-      user_id: z.string(),
-      instrument: z.enum(['VO', 'GT', 'KEY', 'DR', 'BA'])
-    });
-    
-    for (const row of rows.results) {
-      const validatedRow = MemberInstrumentSchema.parse(row);
-      const uid = validatedRow.user_id;
-      const inst = validatedRow.instrument;
-      if (!mapping[uid]) mapping[uid] = [];
-      if (!mapping[uid].includes(inst)) mapping[uid].push(inst);
-    }
-
-    return c.json({ success: true, data: mapping });
-  } catch (error) {
-    console.error('Error fetching member instruments:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
-  }
-});
-
-// Add a single instrument assignment for a user in a group
-groupRoutes.post('/:id/member-instruments', async (c) => {
-  try {
-    const groupId = c.req.param('id');
-    const requestData = z.object({
-      user_id: z.string(),
-      instrument: z.enum(['VO', 'GT', 'KEY', 'DR', 'BA'])
-    }).parse(await c.req.json());
-
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-
-    await c.env.DB.prepare(
-      'INSERT OR IGNORE INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(id, groupId, requestData.user_id, requestData.instrument, now, now).run();
-
-    await c.env.DB.prepare(
-      'UPDATE group_member_instruments SET updated_at = ? WHERE group_id = ? AND user_id = ? AND instrument = ?'
-    ).bind(now, groupId, requestData.user_id, requestData.instrument).run();
-
-    return c.json({ success: true });
-  } catch (error) {
-    console.error('Error adding member instrument:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
-  }
-});
-
-// Remove a single instrument assignment for a user in a group
-groupRoutes.delete('/:id/member-instruments', async (c) => {
-  try {
-    const groupId = c.req.param('id');
-    const requestData = z.object({
-      user_id: z.string(),
-      instrument: z.enum(['VO', 'GT', 'KEY', 'DR', 'BA'])
-    }).parse(await c.req.json());
-
-    await c.env.DB.prepare(
-      'DELETE FROM group_member_instruments WHERE group_id = ? AND user_id = ? AND instrument = ?'
-    ).bind(groupId, requestData.user_id, requestData.instrument).run();
-
-    return c.json({ success: true });
-  } catch (error) {
-    console.error('Error removing member instrument:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
-  }
-});
-
-// Delete group (soft delete)
-groupRoutes.delete('/:id', async (c) => {
-  try {
-    const groupId = c.req.param('id');
-    const now = new Date().toISOString();
-
-    await c.env.DB.prepare(
-      'UPDATE groups SET is_active = FALSE, updated_at = ? WHERE id = ?'
-    ).bind(now, groupId).run();
-
-    return c.json({ success: true, message: 'Group deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting group:', error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
-  }
-});
 
 export { groupRoutes };

@@ -333,7 +333,7 @@ npm run seed -- user remove --email="tanaka@example.com"
 npm run seed -- user list
 npm run seed -- user reset
 npm run seed -- reservation reset
-npm run seed -- groups reset
+npm run seed -- group reset
 
 # 直接実行する場合
 node scripts/seed.js user add --email="tanaka@example.com" --grade=3
@@ -341,7 +341,7 @@ node scripts/seed.js user remove --email="tanaka@example.com"
 node scripts/seed.js user list
 node scripts/seed.js user reset
 node scripts/seed.js reservation reset
-node scripts/seed.js groups reset
+node scripts/seed.js group reset
 
 # ヘルプを表示
 npm run seed -- --help
@@ -359,7 +359,7 @@ node scripts/seed.js --help
 | `user` | `list` | ユーザー一覧を表示 | なし |
 | `user` | `reset` | データベース全体をリセット | なし |
 | `reservation` | `reset` | 予約テーブルをリセット | なし |
-| `groups` | `reset` | グループテーブルをリセット | なし |
+| `group` | `reset` | グループテーブルをリセット | なし |
 
 **オプション引数:**
 
@@ -372,7 +372,7 @@ node scripts/seed.js --help
 - `--email <email>` - メールアドレス
 
 **グローバルオプション:**
-- `--local` - ローカルデータベースを使用（デフォルト: 本番データベース）
+- `--local` - ローカルデータベースを使用（デフォルト: ローカル）
 - `--help` - ヘルプを表示
 
 **使用例:**
@@ -389,14 +389,14 @@ npm run seed -- user reset
 npm run seed -- reservation reset
 
 # グループテーブルのリセット
-npm run seed -- groups reset
+npm run seed -- group reset
 
-# ローカル環境で実行
-npm run seed -- user add --email="test@example.com" --grade=2 --local
-npm run seed -- user list --local
-npm run seed -- user reset --local
-npm run seed -- reservation reset --local
-npm run seed -- groups reset --local
+# ローカル環境で実行（デフォルト）
+npm run seed -- user add --email="test@example.com" --grade=2
+npm run seed -- user list
+npm run seed -- user reset
+npm run seed -- reservation reset
+npm run seed -- group reset
 
 # 直接実行の例
 node scripts/seed.js user add --email="admin@example.com" --grade=4 --role="ADM"
@@ -404,7 +404,7 @@ node scripts/seed.js user remove --email="test@example.com"
 node scripts/seed.js user list
 node scripts/seed.js user reset
 node scripts/seed.js reservation reset
-node scripts/seed.js groups reset
+node scripts/seed.js group reset
 ```
 
 **注意事項:**
@@ -418,7 +418,7 @@ node scripts/seed.js groups reset
 - 学年は1-6の数値である必要があります
 - `user reset`コマンドはデータベース全体を完全にリセットし、既存のデータは削除されます
 - `reservation reset`コマンドは予約テーブルのデータのみを削除します
-- `groups reset`コマンドはグループテーブルのデータのみを削除します
+- `group reset`コマンドはグループテーブルのデータのみを削除します
 - `list`コマンドはユーザーの基本情報（ID、名前、メール、学年、ロール、作成日時）を表示します
 
 **ローカルデータベースのセットアップ:**
@@ -426,12 +426,12 @@ node scripts/seed.js groups reset
 
 1. **データベースのリセット**（推奨）:
    ```bash
-   npm run seed -- user reset --local
+   npm run seed -- user reset
    ```
 
 2. **テストユーザーの追加**:
    ```bash
-   npm run seed -- user add --email="test@example.com" --grade=2 --local
+   npm run seed -- user add --email="test@example.com" --grade=2
    ```
 
 **手動セットアップ（上記が失敗する場合）:**
@@ -442,11 +442,11 @@ cd ../..
 ```
 
 **トラブルシューティング:**
-- `Couldn't find a D1 DB with the name or binding`エラーが発生した場合、`npm run seed -- user reset --local`を実行してください
+- `Couldn't find a D1 DB with the name or binding`エラーが発生した場合、`npm run seed -- user reset`を実行してください
 - ローカルデータベースは`.wrangler/state/v3/d1/`ディレクトリに保存されます
 - ローカルデータベースを完全にリセットしたい場合は、`.wrangler`ディレクトリを削除してください
 - `user reset`コマンドでデータベースの構造を再作成できます
-- `reservation reset`や`groups reset`で特定のテーブルのデータのみを削除できます
+- `reservation reset`や`group reset`で特定のテーブルのデータのみを削除できます
 - `list`コマンドでユーザー一覧を確認できます
 
 ## 機能
@@ -542,7 +542,7 @@ sequenceDiagram
     participant M as 認証ミドルウェア
     participant D as Allowlist/RBAC
 
-    F->>A: fetch /users/holder (Cookie または Bearer)
+    F->>A: fetch /users/groups (Cookie または Bearer)
     A->>M: セッション/JWT検証
     M->>D: ユーザー識別子で権限チェック
     alt 許可
@@ -617,10 +617,9 @@ INSERT INTO users (
 - `POST /auth/signout` - ログアウト（Cookie削除）
 
 ### ユーザー管理
-- `GET /users/fetch/:email` - ユーザー情報取得
+- `GET /users/me` - 現在のユーザー情報取得
 - `PUT /users/update` - ユーザー情報更新
 - `GET /users/groups` - ユーザーのグループ一覧
-- `GET /users/holder` - 予約ホルダー情報
 
 ### グループ管理
 - `GET /groups` - グループ一覧
@@ -630,12 +629,8 @@ INSERT INTO users (
 - `DELETE /groups/:id` - グループ削除
 
 ### メンバー管理
-- `GET /members/fetch` - メンバー一覧
-- `GET /members/list` - メンバーリスト
+- `GET /members` - メンバーリスト
 - `GET /members/nickname/:id` - ニックネーム取得
-- `GET /members/group/:groupId` - グループメンバー
-- `POST /members/group/:groupId` - メンバー追加
-- `DELETE /members/group/:groupId/:userId` - メンバー削除
 
 ### 予約管理
 - `GET /reservations/fetch` - 予約一覧

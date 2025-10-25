@@ -1,68 +1,29 @@
 import { z } from 'zod';
 import { Instrument, Role } from '@/app/types';
+import * as SharedSchemas from '../../../lib/shared-schemas';
 
-export const UserSchema = z.object({
-  id: z.string(),
-  email: z.string().email(),
-  name: z.string().nullable(),
-  nickname: z.string().nullable(),
-  instruments: z.array(z.string()),
-  grade: z.number(),
-  role: z.string(),
-  created_at: z.string(),
-  updated_at: z.string().nullable(),
-});
+// 共有スキーマを再エクスポート
+export const {
+  UserSchema,
+  UserWithInstrumentsSchema,
+  GroupSchema,
+  GroupWithMemberRoleSchema,
+  MemberSchema,
+  ReservationSchema,
+  ArchiveSchema,
+  SessionResponseSchema,
+  UserHolderResponseSchema,
+  CreateGroupRequestSchema,
+  UpdateGroupRequestSchema,
+  UpdateUserRequestSchema,
+  AddMemberToGroupRequestSchema,
+  CreateReservationRequestSchema,
+  CreateArchiveRequestSchema,
+  UpdateArchiveRequestSchema,
+  ApiResponseSchema,
+} = SharedSchemas;
 
-export const UserWithInstrumentsSchema = UserSchema.extend({
-  student_number: z.string(),
-});
-
-export const GroupSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  assignments: z.string().nullable(),
-  is_main: z.boolean(),
-  is_active: z.boolean(),
-  created_at: z.string(),
-  updated_at: z.string().nullable(),
-});
-
-export const GroupWithMemberRoleSchema = GroupSchema.extend({
-  member_role: z.string().nullable(),
-});
-
-export const MemberSchema = z.object({
-  id: z.string(),
-  email: z.string().email(),
-  name: z.string().nullable(),
-  nickname: z.string().nullable(),
-  instruments: z.array(z.string()),
-  student_number: z.string(),
-});
-
-export const ReservationSchema = z.object({
-  id: z.number(),
-  booked_by: z.string(),
-  booked_by_name: z.string().nullable(),
-  creator_name: z.string().nullable(),
-  holder_group_name: z.string().nullable(),
-  holder_user_id: z.string().nullable(),
-  holder_group_id: z.string().nullable(),
-  start_time: z.string(),
-  end_time: z.string(),
-  state: z.string(),
-  cancellable: z.number(),
-});
-
-export const ArchiveSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  youtube_url: z.string().nullable(),
-  year: z.number(),
-  created_at: z.string(),
-  updated_at: z.string().nullable(),
-});
-
+// フロントエンド専用のスキーマ
 export const MemberListItemSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -75,35 +36,22 @@ export const MemberListItemSchema = z.object({
   student_number: z.string(),
 });
 
-export const ApiResponseSchema = <T extends z.ZodType>(dataSchema: T) =>
-  z.object({
-    success: z.boolean(),
-    data: dataSchema.optional(),
-    error: z.string().optional(),
-    message: z.string().optional(),
-  });
-
-export const SessionResponseSchema = z.object({
-  user: z.object({
-    id: z.string(),
-    email: z.string().email(),
-    name: z.string().nullable(),
-    picture: z.string().optional(),
-  }).nullable(),
-});
-
-export const UserHolderResponseSchema = z.object({
-  user: UserWithInstrumentsSchema,
-  bands: z.array(GroupWithMemberRoleSchema),
-});
-
-export type User = z.infer<typeof UserSchema>;
-export type UserWithInstruments = z.infer<typeof UserWithInstrumentsSchema>;
-export type Group = z.infer<typeof GroupSchema>;
-export type GroupWithMemberRole = z.infer<typeof GroupWithMemberRoleSchema>;
-export type Member = z.infer<typeof MemberSchema>;
+// 型定義
+export type User = SharedSchemas.User;
+export type UserWithInstruments = SharedSchemas.UserWithInstruments;
+export type Group = SharedSchemas.Group;
+export type GroupWithMemberRole = SharedSchemas.GroupWithMemberRole;
+export type Member = SharedSchemas.Member;
 export type MemberListItem = z.infer<typeof MemberListItemSchema>;
-export type Reservation = z.infer<typeof ReservationSchema>;
-export type Archive = z.infer<typeof ArchiveSchema>;
-export type SessionResponse = z.infer<typeof SessionResponseSchema>;
-export type UserHolderResponse = z.infer<typeof UserHolderResponseSchema>;
+export type Reservation = SharedSchemas.Reservation;
+export type Archive = SharedSchemas.Archive;
+export type SessionResponse = SharedSchemas.SessionResponse;
+export type UserHolderResponse = SharedSchemas.UserHolderResponse;
+export type CreateGroupRequest = SharedSchemas.CreateGroupRequest;
+export type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest;
+export type UpdateUserRequest = SharedSchemas.UpdateUserRequest;
+export type AddMemberToGroupRequest = SharedSchemas.AddMemberToGroupRequest;
+export type CreateReservationRequest = SharedSchemas.CreateReservationRequest;
+export type CreateArchiveRequest = SharedSchemas.CreateArchiveRequest;
+export type UpdateArchiveRequest = SharedSchemas.UpdateArchiveRequest;
+export type ApiResponse<T> = SharedSchemas.ApiResponse<T>;

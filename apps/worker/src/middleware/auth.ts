@@ -3,33 +3,33 @@ import type { Bindings, Variables } from '../index';
 import type { User } from '../types';
 import { getCookie } from 'hono/cookie';
 import { verifyJWT } from '../auth';
-import { generateStudentNumber } from '../utils/student';
 
 export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Variables }>, next: () => Promise<void>) => {
   try {
     const token = getCookie(c, 'auth_token');
     
     if (!token) {
-      return c.json({ success: false, error: 'No authentication token' }, 401);
+      return c.json({ success: false, error: 'NO_AUTHENTICATION_TOKEN' }, 401);
     }
 
     const payload = await verifyJWT(token, c.env.AUTH_SECRET);
     if (!payload) {
-      return c.json({ success: false, error: 'Invalid token' }, 401);
+      return c.json({ success: false, error: 'INVALID_TOKEN' }, 401);
     }
 
     const fullUser = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?')
       .bind(payload.sub).first() as any;
 
     if (!fullUser) {
-      return c.json({ success: false, error: 'User not found' }, 401);
+      return c.json({ success: false, error: 'USER_NOT_FOUND' }, 401);
     }
 
     const userData: User = {
       id: fullUser.id,
       name: fullUser.name,
-      nickname: fullUser.nickname,
+      nickname: payload.nickname || undefined,
       email: fullUser.email,
+      picture: payload.picture,
       instruments: safeJsonParse(fullUser.instruments, []),
       grade: Number(fullUser.grade),
       role: fullUser.role,
@@ -40,7 +40,7 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
     // Add student_number as computed field
     const userWithStudentNumber = {
       ...userData,
-      student_number: generateStudentNumber(fullUser.email)
+      student_number: (fullUser.email as string).substring(0, 6).toUpperCase()
     };
 
     c.set('user', userWithStudentNumber);
@@ -48,7 +48,7 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
     return c.res;
   } catch (error) {
     console.error('Authentication error:', error);
-    return c.json({ success: false, error: 'Authentication failed' }, 401);
+    return c.json({ success: false, error: 'AUTHENTICATION_FAILED' }, 401);
   }
 };
 

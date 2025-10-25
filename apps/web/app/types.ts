@@ -17,7 +17,7 @@ export enum Role {
 }
 
 export interface UserData {
-    grade: string;
+    grade: number;
     name: string;
     role: Role;
     email: string;
@@ -71,12 +71,10 @@ export const roleNames: Record<Role, string> = {
 
 export interface ReservationData {
     id: number;
-    booked_by: string;
-    booked_by_name?: string;
-    creator_name?: string;
-    holder_group_name?: string;
-    holder_user_id: string | null;
-    holder_group_id: string | null;
+    user_id: string;
+    group_id: string | null;
+    user_name?: string;
+    group_name?: string;
     start: Date;
     end: Date;
     state: ReservationState;
@@ -121,6 +119,7 @@ export interface Group {
     id: string
     name: string
     isMain: boolean
+    isActive: boolean
     assignments: GroupMember[]
 }
 

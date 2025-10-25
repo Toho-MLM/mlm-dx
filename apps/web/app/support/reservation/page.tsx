@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertCircleIcon, CalendarPlusIcon, CalendarX2 } from 'lucide-react';
 import { ReservationState, reservationStateColors } from '@/app/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { PageHeader } from '@/components/page-header';
 
 const AboutPage = () => {
   const [isClient, setIsClient] = useState(false);
@@ -19,11 +20,10 @@ const AboutPage = () => {
   }
 
   return (
-    <div className="p-4 max-w-3xl mx-auto">
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle className="text-center text-3xl">ホール予約の使い方</CardTitle>
-        </CardHeader>
+    <>
+      <PageHeader />
+      <div className="p-4 mx-auto">
+      <Card className="pt-4">
         <CardContent>
           <h3 className="text-lg font-semibold">予約の状態について</h3>
           <div className="ml-1">
@@ -95,7 +95,8 @@ const AboutPage = () => {
           </ul>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   );
 };
 

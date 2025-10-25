@@ -6,8 +6,10 @@ import { BandForm } from "./band-form"
 import { Button } from "@/components/ui/button"
 import { Group, Member } from "@/app/types"
 import { useRouter } from 'next/navigation'
+import { apiClient } from '@/lib/api'
+import { BandPageHeader } from '@/components/band-page-header'
 
-export function BandList({ bands, members }: { bands: Group[], members: Member[] }) {
+export function BandList({ bands, memberOptions }: { bands: Group[], memberOptions: { id: string; name: string; instruments: string[] }[] }) {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBand, setEditingBand] = useState<Group | undefined>()
   const router = useRouter()
@@ -20,6 +22,31 @@ export function BandList({ bands, members }: { bands: Group[], members: Member[]
     }
   }
 
+  const handleToggleActive = async (id: string) => {
+    const band = bands.find(b => b.id === id)
+    if (!band) return
+    
+    try {
+      const response = await apiClient.updateGroup(id, {
+        name: band.name,
+        is_main: band.isMain,
+        is_active: !band.isActive,
+        assignments: JSON.stringify(band.assignments.reduce((acc, member) => {
+          member.instruments.forEach(instrument => {
+            acc[instrument] = member.id
+          })
+          return acc
+        }, {} as Record<string, string>))
+      })
+      
+      if (response.success) {
+        router.refresh()
+      }
+    } catch (error) {
+      console.error('Error toggling band active status:', error)
+    }
+  }
+
   const handleAdd = () => {
     setEditingBand(undefined)
     setIsFormOpen(true)
@@ -29,30 +56,38 @@ export function BandList({ bands, members }: { bands: Group[], members: Member[]
     router.refresh()
   }
 
+  const handleRefresh = () => {
+    router.refresh()
+  }
+
   return (
-    <div className="p-5">
+    <>
+      <BandPageHeader 
+        onAddBand={handleAdd}
+        onRefresh={handleRefresh}
+      />
+      <div className="p-5">
       <div className="grid gap-5 md:grid-cols-2">
         {bands.map((band) => (
           <div className="flex justify-center" key={band.id}>
             <BandCard
               band={band}
-              members={members}
+              memberOptions={memberOptions}
               onEdit={handleEdit}
+              onToggleActive={handleToggleActive}
             />
           </div>
         ))}
       </div>
-      <div className="flex justify-center">
-        <Button onClick={handleAdd} className="mt-5">バンドを追加</Button>
-      </div>
       <BandForm
         band={editingBand}
-        members={members}
+        memberOptions={memberOptions}
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         onSuccess={handleSuccess}
       />
-    </div>
+      </div>
+    </>
   )
 }
 
