@@ -1,0 +1,14 @@
+name = "mlm-dx-web"
+main = ".open-next/worker/index.js"
+compatibility_date = "2024-12-20"
+
+[vars]
+NODE_VERSION = "22"
+
+[env.development]
+name = "mlm-dx-web-dev"
+
+[env.production]
+name = "mlm-dx-web"
+
+

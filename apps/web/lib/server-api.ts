@@ -1,23 +1,14 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
-import { z } from 'zod'
+import { cache } from 'react'
 import { 
-  ApiResponseSchema, 
-  SessionResponseSchema, 
-  UserWithInstrumentsSchema,
-  GroupWithMemberRoleSchema,
-  MemberSchema,
-  ReservationSchema,
-  ArchiveSchema,
   type SessionResponse,
-  type UserWithInstruments,
   type GroupWithMemberRole,
-  type Member,
   type Reservation,
   type Archive,
   type User
 } from '../../../lib/shared-schemas'
-import { MemberListItemSchema, type MemberListItem } from './schemas'
+import { type MemberListItem } from './schemas'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL as string
 
@@ -54,17 +45,25 @@ async function serverRequest(
   return await response.json()
 }
 
-export async function getServerUser(): Promise<SessionResponse['user']> {
+export const getServerUser = cache(async (): Promise<SessionResponse['user']> => {
   try {
     const session = await serverRequest('/auth/session')
     return session.user
   } catch (error) {
     return null
   }
-}
+})
+
+export const requireAuth = cache(async (): Promise<SessionResponse['user']> => {
+  const user = await getServerUser()
+  if (!user) {
+    redirect('/login')
+  }
+  return user
+})
 
 export async function getServerReservations(): Promise<ApiResponse<Reservation[]>> {
-  return serverRequest('/reservations/fetch')
+  return serverRequest('/reservations')
 }
 
 export async function getServerUserGroups(admin: boolean = false): Promise<ApiResponse<GroupWithMemberRole[]>> {
@@ -77,7 +76,7 @@ export async function getServerMemberList(): Promise<ApiResponse<MemberListItem[
 }
 
 export async function getServerMemberOptions(): Promise<ApiResponse<{ id: string; name: string; instruments: string[] }[]>> {
-  return serverRequest('/groups/member-options')
+  return serverRequest('/groups/options')
 }
 
 export async function getServerArchives(): Promise<ApiResponse<Archive[]>> {
@@ -85,5 +84,5 @@ export async function getServerArchives(): Promise<ApiResponse<Archive[]>> {
 }
 
 export async function getServerUserData(): Promise<ApiResponse<User>> {
-  return serverRequest('/users/me')
+  return serverRequest('/me')
 }

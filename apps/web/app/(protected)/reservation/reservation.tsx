@@ -24,8 +24,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ReservationData, ReservationHolder, ReservationState, eventStateNames } from '../types'
-import { validateReservationTime, isReservationDateValid, isReservationTimeValid } from '../../../../lib/shared-schemas'
+import { ReservationData, ReservationHolder, ReservationState, eventStateNames } from '../../types'
+import { validateReservationTime, isReservationDateValid, isReservationTimeValid } from '@shared-schemas'
 type GroupOption = {
   id: string;
   name: string;
@@ -33,7 +33,7 @@ type GroupOption = {
 import { apiClient } from '@/lib/api'
 import TimeGrid from 'react-big-calendar/lib/TimeGrid'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../../context/AuthContext'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
 
 
@@ -221,24 +221,7 @@ export function ReservationPage({ initialReservationData }: { initialReservation
       });
 
       if (response.success) {
-        // ステータスに応じてtoastを表示
-        switch (response.status) {
-          case 'CONFIRMED':
-            toast.success('予約が確定されました')
-            break
-          case 'ADJUSTED':
-            toast.success('予約が確定されました（時間を調整しました）', {
-              description: `元の時間: ${format(new Date(response.details.originalStartTime), 'HH:mm')} - ${format(new Date(response.details.originalEndTime), 'HH:mm')}\n調整後: ${format(new Date(response.details.adjustedStartTime), 'HH:mm')} - ${format(new Date(response.details.adjustedEndTime), 'HH:mm')}`
-            })
-            break
-          case 'DECLINED':
-            toast.error('予約は確定できませんでした', {
-              description: '指定された時間帯に他の予約があります'
-            })
-            break
-          default:
-            toast.success('予約を送信しました')
-        }
+        toast.success('予約を送信しました')
         
         setReservationDraft({
           date: new Date(),
@@ -264,7 +247,7 @@ export function ReservationPage({ initialReservationData }: { initialReservation
     }
   }
 
-  const handleCancel = async (id: number) => {
+  const handleCancel = async (id: string) => {
     setIsSending(true)
     try {
       const response = await apiClient.cancelReservation(id);
@@ -554,7 +537,6 @@ export function ReservationPage({ initialReservationData }: { initialReservation
           }}
         >
           <div>
-            <p><strong>ID</strong> # {selectedReservation.id}</p>
             <p><strong>時間</strong> {format(selectedReservation.start, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'H:mm', { locale: jaLocale })}</p>
             <p><strong>予約者</strong> {selectedReservation.user_name}</p>
             {selectedReservation.group_name && <p><strong>グループ</strong> {selectedReservation.group_name}</p>}
@@ -783,7 +765,6 @@ export function ReservationPage({ initialReservationData }: { initialReservation
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
                     <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
-                      <p><strong>ID</strong> # {selectedReservation.id}</p>
                       <p><strong>時間</strong> {format(selectedReservation.start, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'H:mm', { locale: jaLocale })}</p>
                       <p><strong>予約者</strong> {selectedReservation.user_name}</p>
                       {selectedReservation.group_name && <p><strong>グループ</strong> {selectedReservation.group_name}</p>}

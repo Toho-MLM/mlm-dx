@@ -2,8 +2,7 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema } from '../schemas';
-import { isAdmin, requireAdmin } from '../utils/admin';
-import { z } from 'zod';
+import { requireAdmin } from '../utils/admin';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -38,11 +37,7 @@ groupRoutes.use('*', requireAuth);
 // create_group - Create a new group
 groupRoutes.post('/', async (c) => {
   try {
-    const requestData = z.object({
-      name: z.string().min(1),
-      assignments: z.string().optional(),
-      is_main: z.boolean().optional(),
-    }).parse(await c.req.json());
+    const requestData = CreateGroupRequestSchema.parse(await c.req.json());
 
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
@@ -54,24 +49,29 @@ groupRoutes.post('/', async (c) => {
     
     // メンバーを追加
     if (requestData.assignments) {
-      try {
-        const assignments = JSON.parse(requestData.assignments);
-        for (const [instrument, memberUserId] of Object.entries(assignments)) {
-          await c.env.DB.prepare(`
-            INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).bind(crypto.randomUUID(), newId, memberUserId, instrument, now, now).run();
+      let assignments: Record<string, string>;
+      if (typeof requestData.assignments === 'string') {
+        try {
+          assignments = JSON.parse(requestData.assignments);
+        } catch (parseError) {
+          return c.json({ 
+            success: false, 
+            error: 'INVALID_ASSIGNMENTS_FORMAT' 
+          }, 400);
         }
-      } catch (parseError) {
-        console.error('Error parsing assignments:', parseError);
+      } else {
+        assignments = requestData.assignments;
+      }
+
+      for (const [instrument, memberUserId] of Object.entries(assignments)) {
+        await c.env.DB.prepare(`
+          INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(crypto.randomUUID(), newId, memberUserId, instrument, now, now).run();
       }
     }
     
-    return c.json({ 
-      success: true, 
-      message: 'Group created successfully',
-      data: { id: newId }
-    });
+    return c.json({ success: true });
   } catch (error) {
     console.error('Error creating group:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
@@ -162,13 +162,13 @@ groupRoutes.get('/', async (c) => {
 });
 
 // Get group options for reservation dialog (id and name only)
-groupRoutes.get('/options', async (c) => {
+groupRoutes.get('/options-simple', async (c) => {
   try {
     const user = c.get('user');
     const userId = user.id;
     
     const groups = await c.env.DB.prepare(`
-      SELECT DISTINCT g.id, g.name
+      SELECT DISTINCT g.id, g.name, g.is_main
       FROM groups g
       JOIN group_member_instruments gmi ON g.id = gmi.group_id
       WHERE gmi.user_id = ? AND g.is_active = TRUE
@@ -183,7 +183,7 @@ groupRoutes.get('/options', async (c) => {
 });
 
 // Get member options for band management (id, name, instruments)
-groupRoutes.get('/member-options', async (c) => {
+groupRoutes.get('/options', async (c) => {
   try {
     const members = await c.env.DB.prepare(`
       SELECT 
@@ -232,26 +232,35 @@ groupRoutes.put('/:id', async (c) => {
 
     // assignmentsが提供されている場合、メンバー情報を更新
     if (requestData.assignments) {
-      try {
-        // 既存のメンバー情報を削除
-        await c.env.DB.prepare(`
-          DELETE FROM group_member_instruments WHERE group_id = ?
-        `).bind(groupId).run();
-
-        // 新しいメンバー情報を追加
-        const assignments = JSON.parse(requestData.assignments);
-        for (const [instrument, memberUserId] of Object.entries(assignments)) {
-          await c.env.DB.prepare(`
-            INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).bind(crypto.randomUUID(), groupId, memberUserId, instrument, now, now).run();
+      let assignments: Record<string, string>;
+      if (typeof requestData.assignments === 'string') {
+        try {
+          assignments = JSON.parse(requestData.assignments);
+        } catch (parseError) {
+          return c.json({ 
+            success: false, 
+            error: 'INVALID_ASSIGNMENTS_FORMAT' 
+          }, 400);
         }
-      } catch (parseError) {
-        console.error('Error parsing assignments:', parseError);
+      } else {
+        assignments = requestData.assignments;
+      }
+
+      // 既存のメンバー情報を削除
+      await c.env.DB.prepare(`
+        DELETE FROM group_member_instruments WHERE group_id = ?
+      `).bind(groupId).run();
+
+      // 新しいメンバー情報を追加
+      for (const [instrument, memberUserId] of Object.entries(assignments)) {
+        await c.env.DB.prepare(`
+          INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(crypto.randomUUID(), groupId, memberUserId, instrument, now, now).run();
       }
     }
 
-    return c.json({ success: true, message: 'Group updated successfully' });
+    return c.json({ success: true });
   } catch (error) {
     console.error('Error updating group:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);

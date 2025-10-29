@@ -2,7 +2,10 @@
 -- Unified schema for Cloudflare D1 (SQLite)
 
 -- Drop existing tables (for reset functionality)
-DROP TABLE IF EXISTS archive;
+DROP TABLE IF EXISTS archives;
+DROP TABLE IF EXISTS setlist_items;
+DROP TABLE IF EXISTS entries;
+DROP TABLE IF EXISTS events;
 DROP TABLE IF EXISTS reservations;
 DROP TABLE IF EXISTS group_member_instruments;
 DROP TABLE IF EXISTS groups;
@@ -10,7 +13,7 @@ DROP TABLE IF EXISTS users;
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
-  name TEXT,
+  name TEXT NOT NULL,
   nickname TEXT,
   email TEXT UNIQUE NOT NULL,
   instruments TEXT NOT NULL DEFAULT '[]', -- JSON array of instrument codes: ["VO","GT","KEY","DR","BA"]
@@ -42,7 +45,7 @@ CREATE TABLE IF NOT EXISTS group_member_instruments (
 );
 
 CREATE TABLE IF NOT EXISTS reservations (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   group_id TEXT,
   start_time DATETIME NOT NULL,
@@ -54,7 +57,7 @@ CREATE TABLE IF NOT EXISTS reservations (
   FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS archive (
+CREATE TABLE IF NOT EXISTS archives (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   youtube_url TEXT NOT NULL,
@@ -63,3 +66,38 @@ CREATE TABLE IF NOT EXISTS archive (
   updated_at DATETIME NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  event_date DATETIME NOT NULL,
+  entry_deadline DATETIME NOT NULL,
+  is_entry_accepting BOOLEAN NOT NULL DEFAULT TRUE,
+  setlist_deadline DATETIME NOT NULL,
+  is_setlist_accepting BOOLEAN NOT NULL DEFAULT TRUE,
+  group_limit INTEGER NOT NULL DEFAULT 2,
+  song_limit INTEGER NOT NULL DEFAULT 10,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS entries (
+  id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL,
+  group_id TEXT NOT NULL,
+  note TEXT,
+  created_at DATETIME NOT NULL,
+  FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+  FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+  UNIQUE(event_id, group_id)
+);
+
+CREATE TABLE IF NOT EXISTS setlist_items (
+  id TEXT PRIMARY KEY,
+  entry_id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  artist TEXT NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+);

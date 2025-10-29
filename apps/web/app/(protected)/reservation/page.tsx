@@ -1,17 +1,17 @@
 import { ReservationPage } from './reservation'
 import { ReservationData } from '@/app/types'
-import { getServerUser, getServerReservations } from '@/lib/server-api'
+import { getServerReservations, getServerUserData } from '@/lib/server-api'
 import { redirect } from 'next/navigation'
 import ErrorAlert from '@/components/errorAlert';
 
 export default async function Page() {
-  const user = await getServerUser()
-  
-  if (!user) {
+  const userDataResponse = await getServerUserData()
+  if (!userDataResponse.success || !userDataResponse.data) {
     redirect('/login')
   }
+  const user = userDataResponse.data
   
-  if (!user.nickname) {
+  if (!user?.nickname) {
     redirect('/profile')
   }
   

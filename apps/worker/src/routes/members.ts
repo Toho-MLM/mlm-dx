@@ -65,6 +65,15 @@ memberRoutes.post('/', async (c) => {
       grade: z.number().min(1).max(6),
     }).parse(await c.req.json());
 
+    const normalizedEmail = requestData.email.trim().toLowerCase();
+
+    const existing = await c.env.DB.prepare(
+      'SELECT id FROM users WHERE lower(email) = lower(?)'
+    ).bind(normalizedEmail).first();
+    if (existing) {
+      return c.json({ success: false, error: 'EMAIL_ALREADY_EXISTS' }, 409);
+    }
+
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
     
@@ -74,30 +83,33 @@ memberRoutes.post('/', async (c) => {
     `).bind(
       newId,
       requestData.name,
-      null, // nickname
-      requestData.email,
+      null,
+      normalizedEmail,
       requestData.grade,
-      JSON.stringify([]), // instruments
-      'MBR', // role
+      JSON.stringify([]),
+      'MBR',
       now,
       now
     ).run();
     
-    return c.json({ 
-      success: true, 
-      message: 'Member created successfully',
-      data: { id: newId }
-    });
+    return c.json({ success: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return c.json({ success: false, error: 'INVALID_REQUEST_DATA' }, 400);
     }
+    
+    if (error && typeof error === 'object' && 'message' in error) {
+      const errorMessage = String(error.message);
+      if (errorMessage.includes('UNIQUE constraint failed') || errorMessage.includes('email')) {
+        return c.json({ success: false, error: 'EMAIL_ALREADY_EXISTS' }, 409);
+      }
+    }
+    
     console.error('Error creating member:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
-// Update member - Admin only
 memberRoutes.put('/:id', async (c) => {
   try {
     const user = c.get('user');
@@ -105,7 +117,7 @@ memberRoutes.put('/:id', async (c) => {
 
     const memberId = c.req.param('id');
     const requestData = z.object({
-      nickname: z.string().optional(),
+      nickname: z.string().min(1),
       grade: z.number().min(1).max(6),
       instruments: z.array(z.string()),
       role: z.enum(['MGR', 'CHF', 'MAC', 'MBR', 'ADM', 'NHD', 'NAC']),
@@ -126,17 +138,127 @@ memberRoutes.put('/:id', async (c) => {
       memberId
     ).run();
 
-    return c.json({ success: true, message: 'Member updated successfully' });
+    return c.json({ success: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return c.json({ success: false, error: 'INVALID_REQUEST_DATA' }, 400);
     }
+    
+    if (error && typeof error === 'object' && 'message' in error) {
+      const errorMessage = String(error.message);
+      if (errorMessage.includes('UNIQUE constraint failed') || errorMessage.includes('email')) {
+        return c.json({ success: false, error: 'EMAIL_ALREADY_EXISTS' }, 409);
+      }
+    }
+    
     console.error('Error updating member:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
-// Delete member - Admin only
+memberRoutes.post('/bulk', async (c) => {
+  try {
+    const user = c.get('user');
+    requireAdmin(user.role);
+
+    const requestData = z.object({
+      members: z.array(z.object({
+        name: z.string().min(1),
+        email: z.string().email(),
+        grade: z.number().min(1).max(6),
+        nickname: z.string().optional(),
+        instruments: z.array(z.string()).optional(),
+        role: z.enum(['MGR', 'CHF', 'MAC', 'MBR', 'ADM', 'NHD', 'NAC']).optional(),
+      })),
+    }).parse(await c.req.json());
+
+    const now = new Date().toISOString();
+    const results = {
+      created: [] as string[],
+      failed: [] as Array<{ email: string; error: string }>,
+    };
+
+    const normalizedMembers = requestData.members.map(m => ({
+      name: m.name,
+      email: m.email.trim().toLowerCase(),
+      grade: m.grade,
+      nickname: m.nickname ?? null,
+      instruments: Array.isArray(m.instruments) ? m.instruments : [],
+      role: m.role,
+    }));
+
+    const seen = new Set<string>();
+    const inputDuplicates = new Set<string>();
+    for (const m of normalizedMembers) {
+      if (seen.has(m.email)) {
+        inputDuplicates.add(m.email);
+      } else {
+        seen.add(m.email);
+      }
+    }
+
+    for (const dup of inputDuplicates) {
+      results.failed.push({ email: dup, error: 'DUPLICATE_IN_INPUT' });
+    }
+
+    const uniqueEmails = [...seen];
+    if (uniqueEmails.length > 0) {
+      const placeholders = uniqueEmails.map(() => '?').join(',');
+      const existingRows = await c.env.DB.prepare(
+        `SELECT email FROM users WHERE lower(email) IN (${placeholders})`
+      ).bind(...uniqueEmails).all();
+      const existingEmails = new Set(
+        (existingRows.results as Array<{ email: string }>).map(r => String(r.email).toLowerCase())
+      );
+
+      for (const m of normalizedMembers) {
+        if (inputDuplicates.has(m.email)) {
+          continue;
+        }
+        if (existingEmails.has(m.email)) {
+          results.failed.push({ email: m.email, error: 'EMAIL_ALREADY_EXISTS' });
+          continue;
+        }
+        try {
+          const newId = crypto.randomUUID();
+          await c.env.DB.prepare(
+            `INSERT INTO users (id, name, nickname, email, grade, instruments, role, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            newId,
+            m.name,
+            m.nickname,
+            m.email,
+            m.grade,
+            JSON.stringify(m.instruments || []),
+            m.role ?? 'MBR',
+            now,
+            now
+          ).run();
+          results.created.push(m.email);
+        } catch (error) {
+          results.failed.push({ email: m.email, error: 'INTERNAL_ERROR' });
+        }
+      }
+    }
+
+    return c.json({ 
+      success: true, 
+      data: {
+        created: results.created,
+        failed: results.failed,
+      }
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ success: false, error: 'INVALID_REQUEST_DATA' }, 400);
+    }
+    
+    console.error('Error creating members in bulk:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
 memberRoutes.delete('/:id', async (c) => {
   try {
     const user = c.get('user');

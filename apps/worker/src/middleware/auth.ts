@@ -27,14 +27,14 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
     const userData: User = {
       id: fullUser.id,
       name: fullUser.name,
-      nickname: payload.nickname || undefined,
+      nickname: payload.nickname,
       email: fullUser.email,
       picture: payload.picture,
       instruments: safeJsonParse(fullUser.instruments, []),
       grade: Number(fullUser.grade),
       role: fullUser.role,
       created_at: fullUser.created_at,
-      updated_at: fullUser.updated_at,
+      updated_at: fullUser.updated_at || '',
     };
 
     // Add student_number as computed field

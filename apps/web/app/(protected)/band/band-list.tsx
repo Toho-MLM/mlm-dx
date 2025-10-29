@@ -3,13 +3,12 @@
 import { useState } from 'react'
 import { BandCard } from "./band-card"
 import { BandForm } from "./band-form"
-import { Button } from "@/components/ui/button"
-import { Group, Member } from "@/app/types"
+import { Group } from "@/app/types"
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api'
 import { BandPageHeader } from '@/components/band-page-header'
 import { useAuth } from '@/app/context/AuthContext'
-import { isAdmin } from '../../../../lib/shared-schemas'
+import { isAdmin } from '@shared-schemas'
 
 export function BandList({ bands, memberOptions }: { bands: Group[], memberOptions: { id: string; name: string; instruments: string[] }[] }) {
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -102,6 +101,7 @@ export function BandList({ bands, memberOptions }: { bands: Group[], memberOptio
               memberOptions={memberOptions}
               onEdit={handleEdit}
               onToggleActive={handleToggleActive}
+              isAdminMode={isAdminMode}
             />
           </div>
         ))}
@@ -112,6 +112,7 @@ export function BandList({ bands, memberOptions }: { bands: Group[], memberOptio
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         onSuccess={handleSuccess}
+        isAdminMode={isAdminMode}
       />
       </div>
     </>

@@ -35,7 +35,7 @@ async function isReservationCancellable(
 reservationRoutes.use('*', requireAuth);
 
 // fetch_reservations - Get all reservations
-reservationRoutes.get('/fetch', async (c) => {
+reservationRoutes.get('/', async (c) => {
   try {
     const user = c.get('user');
     
@@ -78,7 +78,7 @@ reservationRoutes.get('/fetch', async (c) => {
 
 
 // create_reservation - Create a new reservation
-reservationRoutes.post('/create', async (c) => {
+reservationRoutes.post('/', async (c) => {
   try {
     const user = c.get('user');
     const requestData = await c.req.json();
@@ -120,6 +120,7 @@ reservationRoutes.post('/create', async (c) => {
     }
 
     const now = new Date().toISOString();
+    const reservationId = crypto.randomUUID();
 
     // Determine user_id and group_id based on group_id
     const userId = user.id;
@@ -147,37 +148,11 @@ reservationRoutes.post('/create', async (c) => {
 
     // 1回の書き込みで予約を作成（最終的な状態で）
     await c.env.DB.prepare(`
-      INSERT INTO reservations (user_id, group_id, start_time, end_time, state, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).bind(userId, groupId, adjustedStartTime, adjustedEndTime, finalState, now, now).run();
+      INSERT INTO reservations (id, user_id, group_id, start_time, end_time, state, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(reservationId, userId, groupId, adjustedStartTime, adjustedEndTime, finalState, now, now).run();
 
-    // ステータスコードと詳細情報を返す
-    let status = 'PENDING';
-    let details = null;
-    
-    if (isSameDay) {
-      if (finalState === 'CONFIRMED') {
-        if (processResult?.adjustedStartTime && processResult?.adjustedEndTime) {
-          status = 'ADJUSTED';
-          details = {
-            originalStartTime: start_time,
-            originalEndTime: end_time,
-            adjustedStartTime: adjustedStartTime,
-            adjustedEndTime: adjustedEndTime
-          };
-        } else {
-          status = 'CONFIRMED';
-        }
-      } else if (finalState === 'DECLINED') {
-        status = 'DECLINED';
-      }
-    }
-
-    return c.json({ 
-      success: true, 
-      status: status,
-      details: details
-    });
+    return c.json({ success: true });
   } catch (error) {
     console.error('Error creating reservation:', error);
     
@@ -196,7 +171,7 @@ reservationRoutes.post('/create', async (c) => {
 });
 
 // cancel_reservation - Cancel a reservation
-reservationRoutes.put('/cancel/:id', async (c) => {
+reservationRoutes.post('/:id/cancel', async (c) => {
   try {
     const user = c.get('user');
     const reservationId = c.req.param('id');
@@ -221,7 +196,7 @@ reservationRoutes.put('/cancel/:id', async (c) => {
       'UPDATE reservations SET state = ?, updated_at = ? WHERE id = ?'
     ).bind('CANCELLED', now, reservationId).run();
 
-    return c.json({ success: true, message: 'Reservation cancelled successfully' });
+    return c.json({ success: true });
   } catch (error) {
     console.error('Error cancelling reservation:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);

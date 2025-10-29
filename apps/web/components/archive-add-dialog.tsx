@@ -51,7 +51,7 @@ export function ArchiveAddDialog({ onArchiveAdded }: ArchiveAddDialogProps) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>アーカイブを追加</DialogTitle>
+          <DialogTitle>アーカイブを作成</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="space-y-2">
@@ -91,7 +91,7 @@ export function ArchiveAddDialog({ onArchiveAdded }: ArchiveAddDialogProps) {
               キャンセル
             </Button>
             <LoadingButton type="submit" isLoading={isPending}>
-              追加
+              作成
             </LoadingButton>
           </div>
         </form>

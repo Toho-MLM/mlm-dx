@@ -1,13 +1,8 @@
-import { getServerUser, getServerArchives } from '@/lib/server-api'
+import { requireAuth, getServerArchives } from '@/lib/server-api'
 import { ArchiveClient } from './archive-client'
-import { redirect } from 'next/navigation'
 
 export default async function Page() {
-  const user = await getServerUser()
-  
-  if (!user) {
-    redirect('/login')
-  }
+  await requireAuth()
   
   const archivesResponse = await getServerArchives()
   

@@ -17,6 +17,23 @@ export const ERROR_MESSAGES: Record<string, string> = {
   
   // グループ・メンバー関連エラー
   'INVALID_PARAMETERS': '無効なパラメータです。',
+  'EMAIL_ALREADY_EXISTS': 'このメールアドレスは既に登録されています。',
+  'MEMBER_NOT_FOUND': 'メンバーが見つかりません。',
+  'NO_VALID_GROUPS': '有効なグループがありません。',
+  
+  // イベント・エントリー関連エラー
+  'INVALID_DATE_ORDER': 'イベントの日付が不正な順序です。',
+  'ENTRY_NOT_FOUND': 'エントリーが見つかりません。',
+  'SETLIST_ITEM_NOT_FOUND': 'セットリストアイテムが見つかりません。',
+  'GROUP_LIMIT_EXCEEDED': 'メンバーのバンド登録数が上限を超えています。',
+  'EVENT_NOT_FOUND': 'イベントが見つかりません。',
+  
+  // 権限関連エラー
+  'INSUFFICIENT_PERMISSIONS': 'この操作を実行する権限がありません。',
+  
+  // 入力バリデーションエラー
+  'INVALID_INPUT': '入力が無効です。',
+  'INVALID_REQUEST_DATA': 'リクエストデータが無効です。',
   
   // アーカイブ関連エラー
   'TITLE_REQUIRED': 'タイトルは必須です。',
