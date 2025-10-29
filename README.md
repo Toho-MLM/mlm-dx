@@ -610,43 +610,7 @@ INSERT INTO users (
 
 ## 主なAPIエンドポイント
 
-### 認証
-- `POST /auth/signin/google` - Googleログイン開始（PKCE/nonce生成）
-- `GET /auth/callback/google` - Googleコールバック（state/code_verifier検証 + JWKS検証）
-- `GET /auth/session` - セッション情報取得（JWT検証）
-- `POST /auth/signout` - ログアウト（Cookie削除）
-
-### ユーザー管理
-- `GET /users/me` - 現在のユーザー情報取得
-- `PUT /users/update` - ユーザー情報更新
-- `GET /users/groups` - ユーザーのグループ一覧
-
-### グループ管理
-- `GET /groups` - グループ一覧
-- `POST /groups/upsert` - グループ作成/更新
-- `GET /groups/:id` - グループ詳細
-- `PUT /groups/:id` - グループ更新
-- `DELETE /groups/:id` - グループ削除
-
-### メンバー管理
-- `GET /members` - メンバーリスト
-- `GET /members/nickname/:id` - ニックネーム取得
-
-### 予約管理
-- `GET /reservations/fetch` - 予約一覧
-- `GET /reservations/user` - ユーザー予約
-- `GET /reservations/group/:groupId` - グループ予約
-- `POST /reservations/create` - 予約作成
-- `PUT /reservations/cancel/:id` - 予約キャンセル
-
-### アーカイブ管理
-- `GET /archive/group/:groupId` - アーカイブ一覧
-- `POST /archive/group/:groupId` - アーカイブ追加
-- `PUT /archive/:id` - アーカイブ更新
-- `DELETE /archive/:id` - アーカイブ削除
-
-### YouTubeアーカイブ
-- `GET /archive/youtube/playlists` - 自アカウントの限定公開プレイリスト一覧を返す
+詳細なAPI仕様については [apps/worker/API_REFERENCE.md](apps/worker/API_REFERENCE.md) を参照してください。
 
 ## トラブルシューティング
 

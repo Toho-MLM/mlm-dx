@@ -2,10 +2,31 @@
 
 import React from 'react';
 import { usePathname } from 'next/navigation';
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import type { User } from '@/app/types'
+
+function Content({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { user } = useAuth();
+
+  const shouldHideSidebar = 
+    pathname === "/" || 
+    pathname === "/login" || 
+    !user ||
+    !user.nickname ||
+    (user.instruments && user.instruments.length === 0);
+
+  return (
+    <>
+      {!shouldHideSidebar && <AppSidebar />}
+      <div className="w-full">
+        {children}
+      </div>
+    </>
+  );
+}
 
 export function MainContent({ 
   children, 
@@ -14,17 +35,10 @@ export function MainContent({
   children: React.ReactNode;
   initialUser: User | null;
 }) {
-  const pathname = usePathname();
-
-  const shouldHideSidebar = pathname === "/" || pathname === "/login";
-
   return (
     <AuthProvider initialUser={initialUser}>
       <SidebarProvider>
-        {!shouldHideSidebar && <AppSidebar />}
-        <div className="w-full">
-          {children}
-        </div>
+        <Content>{children}</Content>
       </SidebarProvider>
     </AuthProvider>
   )

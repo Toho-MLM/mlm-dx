@@ -24,6 +24,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@shared-schemas": [
+        "../../lib/shared-schemas"
       ]
     },
     "target": "ES2017",

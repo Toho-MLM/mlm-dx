@@ -10,6 +10,9 @@ import { groupRoutes } from './routes/groups';
 import { memberRoutes } from './routes/members';
 import { reservationRoutes } from './routes/reservations';
 import { archiveRoutes } from './routes/archive';
+import { eventRoutes } from './routes/events';
+import { entriesRoutes } from './routes/entries';
+import { setlistRoutes } from './routes/setlist';
 import type { User } from './types';
 import { UserSchema } from './schemas';
 import { processDailyReservations } from './utils/reservation-processor';
@@ -175,7 +178,7 @@ app.get('/auth/callback/google', async (c) => {
       return c.redirect(`${c.env.FRONTEND_URL}/login?error=name_formatting_failed`);
     }
     
-    if (dbUser.name !== formattedName) {
+    if (!dbUser.name || dbUser.name !== formattedName) {
       const now = new Date().toISOString();
       await c.env.DB.prepare(
         'UPDATE users SET name = ?, updated_at = ? WHERE email = ?'
@@ -280,11 +283,14 @@ app.post('/auth/signout', async (c) => {
   }
 });
 
-app.route('/users', userRoutes);
+app.route('/me', userRoutes);
 app.route('/groups', groupRoutes);
 app.route('/members', memberRoutes);
 app.route('/reservations', reservationRoutes);
 app.route('/archive', archiveRoutes);
+app.route('/events', eventRoutes);
+app.route('/entries', entriesRoutes);
+app.route('/setlist', setlistRoutes);
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {

@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
-import { UserWithInstrumentsSchema, UpdateUserRequestSchema } from '../schemas';
+import { UserWithInstrumentsSchema, UpdateUserRequestSchema, GroupSchema } from '../schemas';
+import { z } from 'zod';
+import { getUserGroupIds } from './groups';
 
 const userRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -9,24 +11,40 @@ const userRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 userRoutes.use('*', requireAuth);
 
 // get_me - Get current user data
-userRoutes.get('/me', async (c) => {
+userRoutes.get('/', async (c) => {
   try {
     const user = c.get('user');
     
-    const userWithStudentNumber = UserWithInstrumentsSchema.parse({
-      ...user,
+    const { picture, ...userWithoutPicture } = user;
+    
+    const userDataToValidate = {
+      ...userWithoutPicture,
       student_number: (user.email as string).substring(0, 6).toUpperCase()
-    });
+    };
+    
+    console.log('User data to validate:', JSON.stringify(userDataToValidate, null, 2));
+    
+    const userWithStudentNumber = UserWithInstrumentsSchema.parse(userDataToValidate);
 
     return c.json({ success: true, data: userWithStudentNumber });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.error('Zod validation errors:');
+      error.issues.forEach((issue) => {
+        if ('expected' in issue && 'received' in issue) {
+          console.error(`  Path: ${JSON.stringify(issue.path)}, Expected: ${(issue as any).expected}, Received: ${(issue as any).received}`);
+        } else {
+          console.error(`  Path: ${JSON.stringify(issue.path)}, Issue: ${issue.code}`);
+        }
+      });
+    }
     console.error('Error fetching current user:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
 // update_user - Update user data
-userRoutes.put('/me', async (c) => {
+userRoutes.put('/', async (c) => {
   try {
     const user = c.get('user');
     const requestData = UpdateUserRequestSchema.parse(await c.req.json());
@@ -59,7 +77,7 @@ userRoutes.put('/me', async (c) => {
       });
     }
 
-    return c.json({ success: true, message: 'User updated successfully' });
+    return c.json({ success: true });
   } catch (error) {
     console.error('Error updating user:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
@@ -67,3 +85,4 @@ userRoutes.put('/me', async (c) => {
 });
 
 export { userRoutes };
+

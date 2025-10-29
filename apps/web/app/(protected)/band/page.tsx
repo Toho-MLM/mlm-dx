@@ -1,15 +1,10 @@
 import { BandList } from './band-list'
 import { Group, Member, Instrument } from '@/app/types'
-import { getServerUser, getServerUserGroups, getServerMemberOptions } from '@/lib/server-api'
-import { redirect } from 'next/navigation'
+import { requireAuth, getServerUserGroups, getServerMemberOptions } from '@/lib/server-api'
 import ErrorAlert from '@/components/errorAlert';
 
 export default async function Page() {
-  const user = await getServerUser()
-  
-  if (!user) {
-    redirect('/login')
-  }
+  await requireAuth()
   
   const [groupResponse, memberOptionsResponse] = await Promise.all([
     getServerUserGroups(),

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
@@ -11,7 +11,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { MemberListItem, instrumentNames, roleNames, instrumentColors } from '@/app/types'
 import { PageHeader } from '@/components/page-header'
 import { useAuth } from '@/app/context/AuthContext'
-import { isAdmin } from '../../../../lib/shared-schemas'
+import { isAdmin } from '@shared-schemas'
 import { apiClient } from '@/lib/api'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -23,9 +23,10 @@ import {
   DialogTrigger 
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { PlusIcon, EditIcon, TrashIcon } from 'lucide-react'
+import { PlusIcon, EditIcon, TrashIcon, UploadIcon } from 'lucide-react'
 
 
 export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
@@ -33,6 +34,9 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isWarningDialogOpen, setIsWarningDialogOpen] = useState(false)
+  const [isCsvImportDialogOpen, setIsCsvImportDialogOpen] = useState(false)
+  const [csvMembers, setCsvMembers] = useState<Array<{ name: string; email: string; grade: number; nickname?: string; instruments?: string[]; role?: string }>>([])
   const [editingMember, setEditingMember] = useState<MemberListItem | null>(null)
   const [deletingMember, setDeletingMember] = useState<MemberListItem | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -71,6 +75,13 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
       user.student_number.includes(searchTerm)
     )
   }, [sortedUsers, searchTerm])
+
+  const existingEmails = useMemo(() => new Set(memberData.map(u => (u.email || '').trim().toLowerCase())), [memberData])
+  const duplicateEmailsInDb = useMemo(() => {
+    const emails = csvMembers.map(m => m.email.trim().toLowerCase()).filter(e => e)
+    const dup = Array.from(new Set(emails.filter(e => existingEmails.has(e))))
+    return dup
+  }, [csvMembers, existingEmails])
 
   const resetForm = () => {
     setFormData({
@@ -129,6 +140,15 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
       return
     }
 
+    const isEditingSelf = user && editingMember.id === user.id
+    const isSettingToMember = editFormData.role === 'MBR'
+    const originalRole = editingMember.role
+
+    if (isEditingSelf && isSettingToMember && originalRole !== 'MBR' && isUserAdmin) {
+      setIsWarningDialogOpen(true)
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const response = await apiClient.updateMember(editingMember.id, {
@@ -151,6 +171,36 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleWarningConfirm = () => {
+    setIsWarningDialogOpen(false)
+    const originalUpdate = async () => {
+      if (!editingMember) return
+      setIsSubmitting(true)
+      try {
+        const response = await apiClient.updateMember(editingMember.id, {
+          nickname: editFormData.nickname,
+          grade: formData.grade,
+          instruments: editFormData.instruments,
+          role: editFormData.role,
+        })
+        if (response.success) {
+          toast.success('メンバーを更新しました')
+          setIsEditDialogOpen(false)
+          setEditingMember(null)
+          resetForm()
+          router.refresh()
+        } else {
+          toast.error('メンバーの更新に失敗しました')
+        }
+      } catch (error) {
+        toast.error('エラーが発生しました')
+      } finally {
+        setIsSubmitting(false)
+      }
+    }
+    originalUpdate()
   }
 
   const handleDeleteClick = (member: MemberListItem) => {
@@ -188,18 +238,242 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
     }))
   }
 
+  const handleCsvSelect = async (file: File) => {
+    try {
+      const text = await file.text()
+      const lines = text.split('\n').filter(line => line.trim())
+      if (lines.length === 0) {
+        toast.error('CSVファイルが空です')
+        return
+      }
+      const parseCsvLine = (input: string): string[] => {
+        const result: string[] = []
+        let current = ''
+        let inQuotes = false
+        for (let i = 0; i < input.length; i++) {
+          const ch = input[i]
+          if (ch === '"') {
+            if (inQuotes && input[i + 1] === '"') {
+              current += '"'
+              i++
+            } else {
+              inQuotes = !inQuotes
+            }
+          } else if (ch === ',' && !inQuotes) {
+            result.push(current)
+            current = ''
+          } else {
+            current += ch
+          }
+        }
+        result.push(current)
+        return result.map(cell => cell.replace(/^\s*\"|\"\s*$/g, '').trim())
+      }
+      const headerRaw = lines[0]
+      const headers = parseCsvLine(headerRaw).map(col => col.toLowerCase())
+      const required = ['name','email','grade']
+      const hasAll = required.every(h => headers.includes(h))
+      if (!hasAll) {
+        toast.error('ヘッダーが不足しています: name,email,grade は必須です')
+        return
+      }
+      const idx = {
+        name: headers.indexOf('name'),
+        email: headers.indexOf('email'),
+        grade: headers.indexOf('grade'),
+        nickname: headers.indexOf('nickname'),
+        instruments: headers.indexOf('instruments'),
+        role: headers.indexOf('role'),
+      }
+      const members: Array<{ name: string; email: string; grade: number; nickname?: string; instruments?: string[]; role?: string }> = []
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i]
+        const columns = parseCsvLine(line)
+        if (columns.length === 0) continue
+        const name = columns[idx.name] || ''
+        const email = columns[idx.email] || ''
+        const gradeStr = columns[idx.grade] || ''
+        const nickname = idx.nickname >= 0 ? (columns[idx.nickname] || '') : ''
+        const instrumentsRaw = idx.instruments >= 0 ? (columns[idx.instruments] || '') : ''
+        const roleRaw = idx.role >= 0 ? (columns[idx.role] || '') : ''
+        if (!name || !email || !gradeStr) continue
+        const grade = parseInt(gradeStr) || 1
+        const normalizeInstruments = (raw: string): string[] => {
+          if (!raw) return []
+          const text = raw.toUpperCase()
+          const codes: Array<'VO'|'GT'|'KEY'|'DR'|'BA'> = ['VO','GT','KEY','DR','BA']
+          const found = codes.filter(code => text.includes(code))
+          return Array.from(new Set(found))
+        }
+        const instrumentsArr = normalizeInstruments(instrumentsRaw)
+        const instruments = instrumentsArr.length > 0 ? instrumentsArr : undefined
+        const allowedRoles = new Set(['MGR','CHF','MAC','MBR','ADM','NHD','NAC'])
+        const role = roleRaw ? roleRaw.toUpperCase() : undefined
+        const roleFinal = role && allowedRoles.has(role) ? role : undefined
+        members.push({ name, email, grade, nickname, instruments, role: roleFinal })
+      }
+      if (members.length === 0) {
+        toast.error('インポートするメンバーが見つかりません')
+        return
+      }
+      setCsvMembers(members)
+    } catch {
+      toast.error('CSVファイルの読み込みに失敗しました')
+    }
+  }
+
+  const submitCsvImport = async () => {
+    if (csvMembers.length === 0) {
+      toast.error('インポート対象がありません')
+      return
+    }
+    const sendingList = csvMembers.filter(
+      m => !existingEmails.has((m.email || '').trim().toLowerCase())
+    )
+    if (sendingList.length === 0) {
+      toast.error('全て既存メンバーと重複しています')
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const response = await apiClient.bulkCreateMembers(sendingList)
+      if (response.success && response.data) {
+        const successCount = response.data.created.length
+        const failCount = response.data.failed.length
+        if (successCount > 0) {
+          toast.success(`${successCount}件のメンバーを追加しました`)
+        }
+        if (failCount > 0) {
+          toast.error(`${failCount}件のインポートに失敗しました`)
+        }
+        setCsvMembers([])
+        setIsCsvImportDialogOpen(false)
+        router.refresh()
+      } else {
+        toast.error('CSVインポートに失敗しました')
+      }
+    } catch {
+      toast.error('CSVインポートに失敗しました')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   return (
     <>
       <PageHeader 
         rightActions={
           isUserAdmin ? (
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={() => resetForm()}>
-                  <PlusIcon className="h-4 w-4" />
-                  追加
-                </Button>
-              </DialogTrigger>
+            <>
+              <Dialog open={isCsvImportDialogOpen} onOpenChange={(open) => { setIsCsvImportDialogOpen(open); if (!open) setCsvMembers([]) }}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <UploadIcon className="h-4 w-4" />
+                    CSVインポート
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>CSVインポート</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>CSVファイル</Label>
+                      <Input
+                        type="file"
+                        accept=".csv"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleCsvSelect(file)
+                          }
+                        }}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    {csvMembers.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-sm text-gray-700">{csvMembers.length}件を読み込みました</div>
+                        {duplicateEmailsInDb.length > 0 && (
+                          <Alert variant="destructive">
+                            <AlertTitle>重複ユーザーはスキップされます</AlertTitle>
+                            <AlertDescription>
+                              {duplicateEmailsInDb.length}件のメールアドレスが既存データと重複しています。{duplicateEmailsInDb.slice(0,5).join(', ')}{duplicateEmailsInDb.length > 5 ? ' 他' + (duplicateEmailsInDb.length-5) + '件' : ''}
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                        <div className="max-h-64 overflow-auto border rounded">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>名前</TableHead>
+                                <TableHead>メール</TableHead>
+                                <TableHead>学年</TableHead>
+                                <TableHead>ニックネーム</TableHead>
+                                <TableHead>楽器</TableHead>
+                                <TableHead>役職</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {csvMembers.map((m, idx) => (
+                                <TableRow key={idx} className={existingEmails.has((m.email || '').trim().toLowerCase()) ? 'bg-red-50' : undefined}>
+                                  <TableCell>{m.name}</TableCell>
+                                  <TableCell>{m.email}</TableCell>
+                                  <TableCell>{m.grade}</TableCell>
+                                  <TableCell>{m.nickname || '-'}</TableCell>
+                                  <TableCell>
+                                    {Array.isArray(m.instruments) && m.instruments.length > 0 ? (
+                                      <div className="flex flex-wrap gap-1">
+                                        {m.instruments.map((inst, i) => (
+                                          <span key={`${inst}-${i}`} className={`${instrumentColors[inst as keyof typeof instrumentColors] || ''} px-2 py-0.5 rounded text-xs whitespace-nowrap`}>
+                                            {instrumentNames[inst as keyof typeof instrumentNames] || inst}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      '-'
+                                    )}
+                                  </TableCell>
+                                  <TableCell>{m.role || '-'}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+                    <div className="text-sm text-gray-500 space-y-1">
+                      <p>CSV仕様</p>
+                      <p>・1行目はヘッダー必須</p>
+                      <p>・必須ヘッダー: name, email, grade（gradeは1-6の整数）</p>
+                      <p>・任意ヘッダー: nickname, instruments, role</p>
+                      <p>・instruments: VO, GT, KEY, DR, BA のコードを文字列内に含めて記述（複数可）</p>
+                      <p>　例: DR,GT,VO｜DR GT VO｜["DR","GT","VO"]</p>
+                      <p>・role: MGR, CHF, MAC, MBR, ADM, NHD, NAC のいずれか</p>
+                      <p>・既存メールアドレスと重複する行は保存時にスキップ（プレビューで赤表示）</p>
+                      <p>・例（ヘッダー行）: name,email,grade,nickname,instruments,role</p>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => { setCsvMembers([]); }} disabled={isSubmitting || csvMembers.length === 0}>
+                        クリア
+                      </Button>
+                      <LoadingButton onClick={submitCsvImport} isLoading={isSubmitting} disabled={csvMembers.length === 0}>
+                        保存
+                      </LoadingButton>
+                      <Button variant="outline" onClick={() => setIsCsvImportDialogOpen(false)} disabled={isSubmitting}>
+                        閉じる
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button onClick={() => resetForm()}>
+                    <PlusIcon className="h-4 w-4" />
+                    追加
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                   <DialogTitle>メンバーを追加</DialogTitle>
@@ -246,6 +520,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
                 </div>
               </DialogContent>
             </Dialog>
+            </>
           ) : undefined
         }
       />
@@ -405,7 +680,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
                 キャンセル
               </Button>
               <LoadingButton onClick={handleUpdate} isLoading={isSubmitting}>
-                更新
+                保存
               </LoadingButton>
             </div>
           </div>
@@ -442,6 +717,39 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
                 isLoading={isSubmitting}
               >
                 削除
+              </LoadingButton>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Warning Dialog */}
+      <Dialog open={isWarningDialogOpen} onOpenChange={setIsWarningDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>確認</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              管理者権限を持つアカウントの役職を「部員」に変更しようとしています。
+            </p>
+            <p className="text-xs text-gray-500">
+              役職を「部員」に変更すると、管理者権限が失われます。本当に実行しますか？
+            </p>
+            <div className="flex justify-end space-x-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsWarningDialogOpen(false)}
+                disabled={isSubmitting}
+              >
+                キャンセル
+              </Button>
+              <LoadingButton 
+                variant="destructive" 
+                onClick={handleWarningConfirm}
+                isLoading={isSubmitting}
+              >
+                変更する
               </LoadingButton>
             </div>
           </div>

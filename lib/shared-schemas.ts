@@ -7,12 +7,11 @@ import { addMinutes, addHours, isBefore, startOfDay, addDays } from 'date-fns';
 export const UserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
-  name: z.string().nullable(),
+  name: z.string(),
   nickname: z.string().nullable(),
   instruments: z.array(z.string()),
   grade: z.number(),
   role: z.string(),
-  student_number: z.string(),
   created_at: z.string(),
   updated_at: z.string().nullable(),
 });
@@ -33,7 +32,7 @@ export const GroupSchema = z.object({
 });
 
 export const ReservationSchema = z.object({
-  id: z.number(),
+  id: z.string(),
   user_id: z.string(),
   group_id: z.string().nullable(),
   user_name: z.string().nullable(),
@@ -55,7 +54,7 @@ export const GroupWithMemberRoleSchema = GroupSchema.extend({
 export const MemberSchema = z.object({
   id: z.string(),
   email: z.string().email(),
-  name: z.string().nullable(),
+  name: z.string(),
   nickname: z.string().nullable(),
   instruments: z.array(z.string()),
   student_number: z.string(),
@@ -65,7 +64,7 @@ export const SessionResponseSchema = z.object({
   user: z.object({
     id: z.string(),
     email: z.string().email(),
-    name: z.string().nullable(),
+    name: z.string(),
     nickname: z.string().nullable(),
     picture: z.string().optional(),
   }).nullable(),
@@ -85,16 +84,32 @@ export const ArchiveSchema = z.object({
   updated_at: z.string().nullable(),
 });
 
+export const EventSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  event_date: z.string(),
+  entry_deadline: z.string(),
+  is_entry_accepting: z.boolean(),
+  setlist_deadline: z.string(),
+  is_setlist_accepting: z.boolean(),
+  group_limit: z.number(),
+  song_limit: z.number(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
 // リクエストスキーマ
+export const AssignmentMapSchema = z.record(z.string(), z.string());
+
 export const CreateGroupRequestSchema = z.object({
   name: z.string().min(1),
-  assignments: z.string().optional(),
+  assignments: z.union([z.string(), AssignmentMapSchema]).optional(),
   is_main: z.boolean().optional(),
 });
 
 export const UpdateGroupRequestSchema = z.object({
   name: z.string().min(1),
-  assignments: z.string().optional(),
+  assignments: z.union([z.string(), AssignmentMapSchema]).optional(),
   is_main: z.boolean().optional(),
   is_active: z.boolean().optional(),
 });
@@ -229,6 +244,79 @@ export const UpdateArchiveRequestSchema = z.object({
   year: z.number().min(1900).max(new Date().getFullYear() + 10),
 });
 
+export const CreateEventRequestSchema = z.object({
+  title: z.string().min(1),
+  event_date: z.string(),
+  entry_deadline: z.string(),
+  is_entry_accepting: z.boolean(),
+  setlist_deadline: z.string(),
+  is_setlist_accepting: z.boolean(),
+  group_limit: z.number().min(0),
+  song_limit: z.number().min(0),
+});
+
+export const UpdateEventRequestSchema = z.object({
+  title: z.string().min(1),
+  event_date: z.string(),
+  entry_deadline: z.string(),
+  is_entry_accepting: z.boolean(),
+  setlist_deadline: z.string(),
+  is_setlist_accepting: z.boolean(),
+  group_limit: z.number().min(0),
+  song_limit: z.number().min(0),
+});
+
+export const EntrySchema = z.object({
+  id: z.string(),
+  event_id: z.string(),
+  group_id: z.string(),
+  note: z.string().nullable(),
+  created_at: z.string(),
+});
+
+export const CreateEntryRequestSchema = z.object({
+  event_id: z.string(),
+  group_ids: z.array(z.string()),
+});
+
+export const SetlistItemSchema = z.object({
+  id: z.string(),
+  entry_id: z.string(),
+  position: z.number(),
+  title: z.string(),
+  artist: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const CreateSetlistItemRequestSchema = z.object({
+  entry_id: z.string(),
+  position: z.number(),
+  title: z.string().min(1),
+  artist: z.string().min(1),
+  admin: z.boolean().optional(),
+});
+
+export const UpdateSetlistItemRequestSchema = z.object({
+  position: z.number().optional(),
+  title: z.string().min(1).optional(),
+  artist: z.string().optional(),
+  admin: z.boolean().optional(),
+});
+
+export const BulkCreateMemberRequestSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  grade: z.number().min(1).max(6),
+  nickname: z.string().optional(),
+  instruments: z.array(z.string()).optional(),
+  role: z.enum(['MGR', 'CHF', 'MAC', 'MBR', 'ADM', 'NHD', 'NAC']).optional(),
+});
+
+export const BulkCreateMembersRequestSchema = z.object({
+  members: z.array(BulkCreateMemberRequestSchema),
+});
+
 // APIレスポンススキーマ
 export const ApiResponseSchema = <T extends z.ZodType>(dataSchema: T) =>
   z.object({
@@ -253,9 +341,20 @@ export type CreateGroupRequest = z.infer<typeof CreateGroupRequestSchema>;
 export type UpdateGroupRequest = z.infer<typeof UpdateGroupRequestSchema>;
 export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
 export type AddMemberToGroupRequest = z.infer<typeof AddMemberToGroupRequestSchema>;
+export type AssignmentMap = z.infer<typeof AssignmentMapSchema>;
 export type CreateReservationRequest = z.infer<typeof CreateReservationRequestSchema>;
 export type CreateArchiveRequest = z.infer<typeof CreateArchiveRequestSchema>;
 export type UpdateArchiveRequest = z.infer<typeof UpdateArchiveRequestSchema>;
+export type Event = z.infer<typeof EventSchema>;
+export type CreateEventRequest = z.infer<typeof CreateEventRequestSchema>;
+export type UpdateEventRequest = z.infer<typeof UpdateEventRequestSchema>;
+export type Entry = z.infer<typeof EntrySchema>;
+export type CreateEntryRequest = z.infer<typeof CreateEntryRequestSchema>;
+export type SetlistItem = z.infer<typeof SetlistItemSchema>;
+export type CreateSetlistItemRequest = z.infer<typeof CreateSetlistItemRequestSchema>;
+export type UpdateSetlistItemRequest = z.infer<typeof UpdateSetlistItemRequestSchema>;
+export type BulkCreateMemberRequest = z.infer<typeof BulkCreateMemberRequestSchema>;
+export type BulkCreateMembersRequest = z.infer<typeof BulkCreateMembersRequestSchema>;
 
 export interface ApiResponse<T = unknown> {
   success: boolean;

@@ -1,14 +1,8 @@
 import { MemberList } from './member-list'
-import { getServerUser, getServerMemberList } from '@/lib/server-api'
-import { redirect } from 'next/navigation'
+import { getServerMemberList } from '@/lib/server-api'
 import ErrorAlert from '@/components/errorAlert';
 
 export default async function Page() {
-  const user = await getServerUser()
-  
-  if (!user) {
-    redirect('/login')
-  }
   
   const memberResponse = await getServerMemberList();
 

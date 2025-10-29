@@ -13,21 +13,25 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { createGroupAction, updateGroupAction } from '@/lib/server-actions'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../../context/AuthContext'
 import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 interface BandFormProps {
   band?: Group
   memberOptions: { id: string; name: string; instruments: string[] }[]
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
+  isAdminMode?: boolean
 }
 
-export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: BandFormProps) {
+export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAdminMode = false }: BandFormProps) {
   const [name, setName] = useState(band?.name || '')
   const [bandMembers, setBandMembers] = useState<GroupMember[]>(band?.assignments || [])
+  const [isMain, setIsMain] = useState(band?.isMain ? 'main' : 'free')
   const [isPending, startTransition] = useTransition()
   const { user } = useAuth()
 
@@ -35,9 +39,11 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
     if (band) {
       setName(band.name)
       setBandMembers(band.assignments)
+      setIsMain(band.isMain ? 'main' : 'free')
     } else {
       setName('')
       setBandMembers([])
+      setIsMain('free')
     }
   }, [band])
 
@@ -57,21 +63,20 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
           return acc;
         }, {} as Record<string, string>);
 
+        const isMainBand = isMain === 'main'
         let response;
         if (band) {
-          // 編集時
           response = await updateGroupAction(band.id, {
             name,
             assignments: JSON.stringify(assignments),
-            is_main: band.isMain,
+            is_main: isAdminMode ? isMainBand : band.isMain,
             is_active: true
           });
         } else {
-          // 新規作成時
           response = await createGroupAction({
             name,
             assignments: JSON.stringify(assignments),
-            is_main: false
+            is_main: isMainBand
           });
         }
 
@@ -122,14 +127,14 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
   const availableInstruments = (bandMember: GroupMember) => {
     const memberOption = memberOptions.find(m => m.id === bandMember.id);
     const memberInstruments = memberOption?.instruments || [];
-    
+
     const allInstruments = Object.values(Instrument);
     const unassignedInstruments = allInstruments.filter(i => !bandMember.instruments.includes(i));
-    
+
     return unassignedInstruments.sort((a, b) => {
       const aIsMemberInstrument = memberInstruments.includes(a);
       const bIsMemberInstrument = memberInstruments.includes(b);
-      
+
       if (aIsMemberInstrument && !bIsMemberInstrument) return -1;
       if (!aIsMemberInstrument && bIsMemberInstrument) return 1;
       return 0;
@@ -148,9 +153,9 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
     if (bandMembers.length === 0) return false;
     if (bandMembers.length < 2) return false;
     if (bandMembers.some(member => member.instruments.length === 0)) return false;
-    if (!bandMembers.some(member => member.id === user?.id)) return false;
+    if (!isAdminMode && !bandMembers.some(member => member.id === user?.id)) return false;
     return true;
-  }, [name, bandMembers, user?.id]);
+  }, [name, bandMembers, user?.id, isAdminMode]);
 
   const validationChecks = useMemo(() => {
     return {
@@ -158,15 +163,15 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
       hasMembers: bandMembers.length > 0,
       hasMultipleMembers: bandMembers.length >= 2,
       allMembersHaveInstruments: bandMembers.length > 0 && !bandMembers.some(member => member.instruments.length === 0),
-      includesSelf: bandMembers.some(member => member.id === user?.id)
+      includesSelf: bandMembers.some(member => member.id === user?.id) || isMain === 'main'
     };
-  }, [name, bandMembers, user?.id]);
+  }, [name, bandMembers, user?.id, isMain]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onDialogClose}>
       <DialogContent className="p-5">
         <DialogHeader>
-          <DialogTitle>{band ? 'バンドを編集' : 'バンドを追加'}</DialogTitle>
+          <DialogTitle>{band ? 'バンドを更新' : 'バンドを作成'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Input
@@ -174,6 +179,25 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
+          {isAdminMode && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">バンド種類</Label>
+              <RadioGroup value={isMain} onValueChange={setIsMain}>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="main" id="type-main" />
+                  <Label htmlFor="type-main" className="font-normal cursor-pointer">
+                    本バンド
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="free" id="type-free" />
+                  <Label htmlFor="type-free" className="font-normal cursor-pointer">
+                    自由バンド
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+          )}
           <div className="space-y-2">
             <h3 className="font-medium">メンバー</h3>
             {bandMembers.map((bandMember, index) => {
@@ -264,16 +288,18 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
                   {validationChecks.allMembersHaveInstruments ? "全メンバーに楽器が割り当てられています" : "全メンバーに楽器を割り当ててください"}
                 </span>
               </div>
-              <div className="flex items-center space-x-2 text-sm">
-                {validationChecks.includesSelf ? (
-                  <CircleCheckBig className="h-4 w-4 text-green-600" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-red-600" />
-                )}
-                <span className={validationChecks.includesSelf ? "text-green-600" : "text-red-600"}>
-                  {validationChecks.includesSelf ? "自分がメンバーに含まれています" : "自分をメンバーに追加してください"}
-                </span>
-              </div>
+              {!isAdminMode && (
+                <div className="flex items-center space-x-2 text-sm">
+                  {validationChecks.includesSelf ? (
+                    <CircleCheckBig className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-red-600" />
+                  )}
+                  <span className={validationChecks.includesSelf ? "text-green-600" : "text-red-600"}>
+                    {validationChecks.includesSelf ? "自分がメンバーに含まれています" : "自分をメンバーに追加してください"}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-between">
               <DropdownMenu>
@@ -294,7 +320,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess }: Ba
                 </DropdownMenuContent>
               </DropdownMenu>
               <LoadingButton onClick={handleSubmit} isLoading={isPending} disabled={!isFormValid}>
-                保存
+                {band ? '保存' : '作成'}
               </LoadingButton>
             </div>
           </div>

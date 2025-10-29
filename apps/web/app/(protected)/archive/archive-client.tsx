@@ -7,7 +7,7 @@ import { LoadingButton } from '@/components/ui/loading-button'
 import { PageHeader } from '@/components/page-header';
 import { ArchiveAddDialog } from '@/components/archive-add-dialog';
 import { useAuth } from '@/app/context/AuthContext';
-import { isAdmin } from '../../../../lib/shared-schemas';
+import { isAdmin } from '@shared-schemas';
 
 interface ArchiveClientProps {
   initialArchives: Archive[];

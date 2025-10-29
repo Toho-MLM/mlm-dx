@@ -7,13 +7,13 @@ export enum Instrument {
 }
 
 export enum Role {
+    admin = 'ADM',
     manager = 'MGR',
     chief = 'CHF',
-    nursing_head = 'NHD',
     medical_accountant = 'MAC',
+    nursing_head = 'NHD',
     nursing_accountant = 'NAC',
     member = 'MBR',
-    admin = 'ADM',
 }
 
 export interface UserData {
@@ -70,7 +70,7 @@ export const roleNames: Record<Role, string> = {
 }
 
 export interface ReservationData {
-    id: number;
+    id: string;
     user_id: string;
     group_id: string | null;
     user_name?: string;
@@ -138,6 +138,38 @@ export const reservationStateColors: Record<ReservationState, string> = {
     [ReservationState.CONFIRMED]: 'bg-green-100 text-green-800',
     [ReservationState.CANCELLED]: 'bg-gray-100 text-gray-800',
     [ReservationState.COMPLETED]: 'bg-gray-100 text-gray-800',
+}
+
+export interface Event {
+    id: string
+    title: string
+    event_date: string
+    entry_deadline: string
+    is_entry_accepting: boolean
+    setlist_deadline: string
+    is_setlist_accepting: boolean
+    group_limit: number
+    song_limit: number
+    created_at: string
+    updated_at: string
+}
+
+export interface Entry {
+    id: string
+    event_id: string
+    group_id: string
+    note?: string | null
+    created_at: string
+}
+
+export interface SetlistItem {
+    id: string
+    entry_id: string
+    position: number
+    title: string
+    artist: string
+    created_at: string
+    updated_at: string
 }
 
 

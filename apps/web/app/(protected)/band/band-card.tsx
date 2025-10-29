@@ -15,9 +15,10 @@ interface BandCardProps {
   memberOptions?: { id: string; name: string; instruments: string[] }[]
   onEdit: (id: string) => void
   onToggleActive?: (id: string) => void
+  isAdminMode?: boolean
 }
 
-export function BandCard({ band, memberOptions = [], onEdit, onToggleActive }: BandCardProps) {
+export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, isAdminMode = false }: BandCardProps) {
   return (
     <Card className={`w-full max-w-md transition-shadow duration-200 ${band.isActive ? 'hover:shadow-lg' : 'opacity-60 bg-gray-50'}`}>
       <CardHeader className="pb-3">
@@ -30,50 +31,48 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive }: B
             >
               {band.isMain ? "本バンド" : "自由バンド"}
             </Badge>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  disabled={band.isMain}
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {band.isActive ? (
-                  <>
-                    <DropdownMenuItem 
-                      onClick={() => onEdit(band.id)}
-                      disabled={band.isMain}
-                      className="flex items-center gap-2"
-                    >
-                      編集
-                    </DropdownMenuItem>
-                    {onToggleActive && (
+            {!(band.isMain && !isAdminMode) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {band.isActive ? (
+                    <>
                       <DropdownMenuItem 
-                        onClick={() => onToggleActive(band.id)}
-                        disabled={band.isMain}
+                        onClick={() => onEdit(band.id)}
                         className="flex items-center gap-2"
                       >
-                        無効化
+                        編集
                       </DropdownMenuItem>
-                    )}
-                  </>
-                ) : (
-                  onToggleActive && (
-                    <DropdownMenuItem 
-                      onClick={() => onToggleActive(band.id)}
-                      disabled={band.isMain}
-                      className="flex items-center gap-2"
-                    >
-                      有効化
-                    </DropdownMenuItem>
-                  )
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                      {onToggleActive && (
+                        <DropdownMenuItem 
+                          onClick={() => onToggleActive(band.id)}
+                          className="flex items-center gap-2"
+                        >
+                          無効化
+                        </DropdownMenuItem>
+                      )}
+                    </>
+                  ) : (
+                    onToggleActive && (
+                      <DropdownMenuItem 
+                        onClick={() => onToggleActive(band.id)}
+                        className="flex items-center gap-2"
+                      >
+                        有効化
+                      </DropdownMenuItem>
+                    )
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
       </CardHeader>

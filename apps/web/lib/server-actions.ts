@@ -2,8 +2,7 @@
 
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
-import { z } from 'zod'
-import { ApiResponseSchema, ArchiveSchema, GroupWithMemberRoleSchema, type Archive, type GroupWithMemberRole } from '../../../lib/shared-schemas'
+import { type Archive } from '../../../lib/shared-schemas'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL as string
 
@@ -111,6 +110,74 @@ export async function deleteArchiveAction(id: string): Promise<ApiResponse<void>
     })
     
     revalidatePath('/archive')
+    return result as ApiResponse<void>
+  } catch (error) {
+    return {
+      success: false,
+      error: (error as Error).message
+    }
+  }
+}
+
+export async function createEventAction(data: {
+  title: string
+  event_date: string
+  entry_deadline: string
+  is_entry_accepting: boolean
+  setlist_deadline: string
+  is_setlist_accepting: boolean
+  group_limit: number
+  song_limit: number
+}): Promise<ApiResponse<void>> {
+  try {
+    const result = await serverActionRequest('/events', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+    
+    revalidatePath('/event')
+    return result as ApiResponse<void>
+  } catch (error) {
+    return {
+      success: false,
+      error: (error as Error).message
+    }
+  }
+}
+
+export async function updateEventAction(id: string, data: {
+  title: string
+  event_date: string
+  entry_deadline: string
+  is_entry_accepting: boolean
+  setlist_deadline: string
+  is_setlist_accepting: boolean
+  group_limit: number
+  song_limit: number
+}): Promise<ApiResponse<void>> {
+  try {
+    const result = await serverActionRequest(`/events/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+    
+    revalidatePath('/event')
+    return result as ApiResponse<void>
+  } catch (error) {
+    return {
+      success: false,
+      error: (error as Error).message
+    }
+  }
+}
+
+export async function deleteEventAction(id: string): Promise<ApiResponse<void>> {
+  try {
+    const result = await serverActionRequest(`/events/${id}`, {
+      method: 'DELETE',
+    })
+    
+    revalidatePath('/event')
     return result as ApiResponse<void>
   } catch (error) {
     return {

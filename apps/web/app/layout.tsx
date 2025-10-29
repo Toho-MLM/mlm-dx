@@ -1,13 +1,9 @@
 import React from 'react';
-import { Analytics } from '@vercel/analytics/react';
 import localFont from "next/font/local";
 import "./globals.css";
 import { TitleProvider } from './context/TitleContext';
 import { Metadata } from 'next';
-import { MainContent } from './layout-client';
 import { Toaster } from '@/components/ui/sonner';
-import { getServerUser } from '@/lib/server-api';
-import type { User } from '@/app/types';
 
 const notoSansJP = localFont({
   src: "./fonts/NotoSansJP-VariableFont_wght.ttf",
@@ -33,22 +29,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const serverUser = await getServerUser();
-  const initialUser = serverUser as User | null;
-
   return (
     <html lang="ja">
       <body className={`${notoSansJP.variable} antialiased bg-gray-100`}>
         <TitleProvider>
-          <MainContent initialUser={initialUser}>
-            {children}
-          </MainContent>
-          <Analytics />
+          {children}
           <Toaster />
         </TitleProvider>
       </body>

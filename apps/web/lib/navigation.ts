@@ -18,6 +18,12 @@ export const navigationConfig: NavigationGroup[] = [
     ]
   },
   {
+    label: "イベント",
+    items: [
+      { iconName: "CalendarIcon", href: "/event", title: "イベント管理" }
+    ]
+  },
+  {
     label: "バンド",
     items: [
       { iconName: "UsersIcon", href: "/band", title: "バンド管理" }
@@ -36,6 +42,7 @@ export const additionalPages: Record<string, string> = {
   '/': 'ホーム',
   '/profile': 'プロフィール',
   '/login': 'ログイン',
+  '/event': 'イベント管理',
 };
 
 export const getPageTitle = (pathname: string): string => {
