@@ -10,7 +10,7 @@ import { ja as jaLocale } from 'date-fns/locale'
 import { CalendarIcon } from 'lucide-react'
 import { cn } from "@/lib/utils"
 import { Event } from "@/app/types"
-import { createEventAction, updateEventAction } from '@/lib/server-actions'
+import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
 import {
   Select,
@@ -114,7 +114,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
     startTransition(async () => {
       try {
         if (event) {
-          const response = await updateEventAction(event.id, {
+          const response = await apiClient.updateEvent(event.id, {
             title,
             event_date: formattedDate,
             entry_deadline: formattedEntryDeadline,
@@ -141,16 +141,10 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
             onClose()
             onSuccess?.(updatedEvent)
           } else {
-            if (response.error === 'INSUFFICIENT_PERMISSIONS') {
-              toast.error('管理者権限が必要です')
-            } else if (response.error === 'INVALID_DATE_ORDER') {
-              toast.error('日付の順序が正しくありません')
-            } else {
-              toast.error('イベントの更新中にエラーが発生しました')
-            }
+            toast.error('イベントの更新中にエラーが発生しました')
           }
         } else {
-          const response = await createEventAction({
+          const response = await apiClient.createEvent({
             title,
             event_date: formattedDate,
             entry_deadline: formattedEntryDeadline,
@@ -166,13 +160,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
             onClose()
             onSuccess?.()
           } else {
-            if (response.error === 'INSUFFICIENT_PERMISSIONS') {
-              toast.error('管理者権限が必要です')
-            } else if (response.error === 'INVALID_DATE_ORDER') {
-              toast.error('日付の順序が正しくありません')
-            } else {
-              toast.error('イベントの作成中にエラーが発生しました')
-            }
+            toast.error('イベントの作成中にエラーが発生しました')
           }
         }
       } catch (error) {

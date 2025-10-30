@@ -12,9 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { createGroupAction, updateGroupAction } from '@/lib/server-actions'
-import { useAuth } from '../../context/AuthContext'
 import { apiClient } from '@/lib/api'
+import { useAuth } from '../../context/AuthContext'
 import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
 import { Label } from "@/components/ui/label"
@@ -66,14 +65,14 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
         const isMainBand = isMain === 'main'
         let response;
         if (band) {
-          response = await updateGroupAction(band.id, {
+          response = await apiClient.updateGroup(band.id, {
             name,
             assignments: JSON.stringify(assignments),
             is_main: isAdminMode ? isMainBand : band.isMain,
             is_active: true
           });
         } else {
-          response = await createGroupAction({
+          response = await apiClient.createGroup({
             name,
             assignments: JSON.stringify(assignments),
             is_main: isMainBand

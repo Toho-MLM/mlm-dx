@@ -47,7 +47,6 @@ groupRoutes.post('/', async (c) => {
       VALUES (?, ?, ?, TRUE, ?, ?)
     `).bind(newId, requestData.name, requestData.is_main, now, now).run();
     
-    // メンバーを追加
     if (requestData.assignments) {
       let assignments: Record<string, string>;
       if (typeof requestData.assignments === 'string') {
@@ -161,59 +160,6 @@ groupRoutes.get('/', async (c) => {
   }
 });
 
-// Get group options for reservation dialog (id and name only)
-groupRoutes.get('/options-simple', async (c) => {
-  try {
-    const user = c.get('user');
-    const userId = user.id;
-    
-    const groups = await c.env.DB.prepare(`
-      SELECT DISTINCT g.id, g.name, g.is_main
-      FROM groups g
-      JOIN group_member_instruments gmi ON g.id = gmi.group_id
-      WHERE gmi.user_id = ? AND g.is_active = TRUE
-      ORDER BY g.is_main DESC, g.created_at DESC
-    `).bind(userId).all();
-
-    return c.json({ success: true, data: groups.results });
-  } catch (error) {
-    console.error('Error fetching group options:', error);
-    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
-  }
-});
-
-// Get member options for band management (id, name, instruments)
-groupRoutes.get('/options', async (c) => {
-  try {
-    const members = await c.env.DB.prepare(`
-      SELECT 
-        u.id,
-        u.name,
-        u.nickname,
-        u.instruments
-      FROM users u
-      WHERE u.name IS NOT NULL
-      ORDER BY u.name ASC
-    `).all();
-
-    // Process the results to format name and instruments
-    const processedMembers = members.results.map((member: any) => {
-      const displayName = member.nickname || member.name;
-      const instruments = JSON.parse(member.instruments || '[]');
-      
-      return {
-        id: member.id,
-        name: displayName,
-        instruments: instruments
-      };
-    });
-
-    return c.json({ success: true, data: processedMembers });
-  } catch (error) {
-    console.error('Error fetching member options:', error);
-    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
-  }
-});
 
 // Update group
 groupRoutes.put('/:id', async (c) => {

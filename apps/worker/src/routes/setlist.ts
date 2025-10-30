@@ -85,6 +85,66 @@ setlistRoutes.get('/entry/:entryId', async (c) => {
   }
 });
 
+setlistRoutes.get('/event/:eventId', async (c) => {
+  try {
+    const eventId = c.req.param('eventId');
+
+    const rows = await c.env.DB.prepare(`
+      SELECT 
+        e.id as entry_id,
+        e.event_id as entry_event_id,
+        e.group_id as entry_group_id,
+        e.note as entry_note,
+        e.created_at as entry_created_at,
+        g.name as group_name,
+        s.id as item_id,
+        s.position as item_position,
+        s.title as item_title,
+        s.artist as item_artist,
+        s.created_at as item_created_at,
+        s.updated_at as item_updated_at
+      FROM entries e
+      LEFT JOIN groups g ON g.id = e.group_id
+      LEFT JOIN setlist_items s ON s.entry_id = e.id
+      WHERE e.event_id = ?
+      ORDER BY e.created_at ASC, s.position ASC
+    `).bind(eventId).all();
+
+    const map = new Map<string, any>();
+    for (const r of rows.results as any[]) {
+      if (!map.has(r.entry_id)) {
+        map.set(r.entry_id, {
+          entry: {
+            id: r.entry_id,
+            event_id: r.entry_event_id,
+            group_id: r.entry_group_id,
+            note: r.entry_note,
+            created_at: r.entry_created_at,
+          },
+          group_name: r.group_name || '不明なグループ',
+          setlist_items: [] as Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>,
+        });
+      }
+      if (r.item_id) {
+        map.get(r.entry_id).setlist_items.push({
+          id: r.item_id,
+          entry_id: r.entry_id,
+          position: r.item_position,
+          title: r.item_title,
+          artist: r.item_artist || '',
+          created_at: r.item_created_at,
+          updated_at: r.item_updated_at,
+        });
+      }
+    }
+
+    return c.json({ success: true, data: Array.from(map.values()) });
+  } catch (error) {
+    console.error('Error fetching event setlist bundle:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
 setlistRoutes.put('/:id', async (c) => {
   try {
     const user = c.get('user');

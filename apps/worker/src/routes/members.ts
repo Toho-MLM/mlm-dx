@@ -287,4 +287,35 @@ memberRoutes.delete('/:id', async (c) => {
   }
 });
 
+// GET /members/select - メンバー選択用の軽量リスト
+memberRoutes.get('/select', async (c) => {
+  try {
+    const members = await c.env.DB.prepare(`
+      SELECT 
+        u.id,
+        u.name,
+        u.nickname,
+        u.instruments
+      FROM users u
+      WHERE u.name IS NOT NULL
+      ORDER BY u.name ASC
+    `).all();
+
+    const processedMembers = members.results.map((member: any) => {
+      const displayName = member.nickname || member.name;
+      const instruments = safeJsonParse<string[]>(member.instruments || '[]', []);
+      return {
+        id: member.id,
+        name: displayName,
+        instruments,
+      };
+    });
+
+    return c.json({ success: true, data: processedMembers });
+  } catch (error) {
+    console.error('Error fetching member select:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
 export { memberRoutes };

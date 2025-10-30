@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 import { EventPageHeader } from '@/components/event-page-header'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
-import { deleteEventAction } from '@/lib/server-actions'
+// removed server actions usage
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -20,12 +20,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { apiClient } from '@/lib/api'
 
-interface EventClientProps {
-  initialEvents: Event[]
-}
-
-export function EventClient({ initialEvents }: EventClientProps) {
-  const [events, setEvents] = useState<Event[]>(initialEvents)
+export function EventClient() {
+  const [events, setEvents] = useState<Event[]>([])
+  const [loadingEvents, setLoadingEvents] = useState(true)
   const [groupOptions, setGroupOptions] = useState<Array<{ id: string; name: string; is_main: boolean }>>([])
   const [entries, setEntries] = useState<Array<{ id: string; event_id: string; group_id: string; note?: string | null; created_at: string }>>([])
   const [loadingEntries, setLoadingEntries] = useState(true)
@@ -52,7 +49,18 @@ export function EventClient({ initialEvents }: EventClientProps) {
     }
   }
 
+  const fetchEvents = async () => {
+    try {
+      setLoadingEvents(true)
+      const res = await apiClient.getEvents()
+      if (res.success && res.data) setEvents(res.data)
+    } finally {
+      setLoadingEvents(false)
+    }
+  }
+
   useEffect(() => {
+    fetchEvents()
     fetchAggregates()
   }, [])
 
@@ -74,17 +82,12 @@ export function EventClient({ initialEvents }: EventClientProps) {
     
     startTransition(async () => {
       try {
-        const response = await deleteEventAction(deletingEventId)
-        
+        const response = await apiClient.deleteEvent(deletingEventId)
         if (response.success) {
           setEvents(prev => prev.filter(e => e.id !== deletingEventId))
           toast.success('イベントを削除しました')
         } else {
-          if (response.error === 'INSUFFICIENT_PERMISSIONS') {
-            toast.error('管理者権限が必要です')
-          } else {
-            toast.error('イベントの削除中にエラーが発生しました')
-          }
+          toast.error('イベントの削除中にエラーが発生しました')
         }
       } catch (error) {
         console.error('Error deleting event:', error)
@@ -110,13 +113,13 @@ export function EventClient({ initialEvents }: EventClientProps) {
         setEvents(prev => [newEvent, ...prev])
       }
     } else {
-      router.refresh()
+      fetchEvents()
     }
   }
 
   const handleRefresh = async () => {
     try {
-      router.refresh()
+      await fetchEvents()
       fetchAggregates()
     } catch (error) {
       console.error('Failed to refresh events:', error)
@@ -125,6 +128,41 @@ export function EventClient({ initialEvents }: EventClientProps) {
 
   const handleEntriesChanged = () => {
     fetchAggregates()
+  }
+
+  if (loadingEvents) {
+    const placeholder: Event = {
+      id: 'placeholder',
+      title: '',
+      event_date: new Date().toISOString(),
+      entry_deadline: new Date().toISOString(),
+      is_entry_accepting: true,
+      setlist_deadline: new Date().toISOString(),
+      is_setlist_accepting: true,
+      group_limit: 1,
+      song_limit: 10,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    return (
+      <>
+        <EventPageHeader 
+          onAddEvent={isUserAdmin ? handleAdd : undefined}
+          onRefresh={handleRefresh}
+        />
+        <div className="p-5">
+          <div className="space-y-5">
+            <EventCard
+              event={placeholder}
+              groupOptions={[]}
+              userEntries={[]}
+              loading={true}
+              onEntriesChanged={handleEntriesChanged}
+            />
+          </div>
+        </div>
+      </>
+    )
   }
 
   return (

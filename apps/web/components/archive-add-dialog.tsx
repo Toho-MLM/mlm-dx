@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
 import React, { useState, useTransition } from 'react';
-import { createArchiveAction } from '@/lib/server-actions';
+import { apiClient } from '@/lib/api'
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 interface ArchiveAddDialogProps {
-  onArchiveAdded: (archive: any) => void;
+  onArchiveAdded: () => void;
 }
 
 export function ArchiveAddDialog({ onArchiveAdded }: ArchiveAddDialogProps) {
@@ -25,14 +25,13 @@ export function ArchiveAddDialog({ onArchiveAdded }: ArchiveAddDialogProps) {
     
     startTransition(async () => {
       try {
-        const res = await createArchiveAction({ 
+        const res = await apiClient.createArchive({ 
           title: title.trim(), 
           youtube_url: youtubeUrl.trim(), 
           year 
         });
-        
-        if (res.success && res.data) {
-          onArchiveAdded(res.data);
+        if (res.success) {
+          onArchiveAdded();
           setTitle('');
           setYoutubeUrl('');
           setYear(new Date().getFullYear());

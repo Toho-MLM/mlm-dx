@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
@@ -13,7 +13,7 @@ import { PageHeader } from '@/components/page-header'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
 import { apiClient } from '@/lib/api'
-import { useRouter } from 'next/navigation'
+import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { 
   Dialog, 
@@ -29,20 +29,41 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { PlusIcon, EditIcon, TrashIcon, UploadIcon } from 'lucide-react'
 
 
-export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
+export function MemberList() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isWarningDialogOpen, setIsWarningDialogOpen] = useState(false)
   const [isCsvImportDialogOpen, setIsCsvImportDialogOpen] = useState(false)
-  const [csvMembers, setCsvMembers] = useState<Array<{ name: string; email: string; grade: number; nickname?: string; instruments?: string[]; role?: string }>>([])
+  const [csvMembers, setCsvMembers] = useState<Array<{ name: string; email: string; grade: number | null; nickname?: string; instruments?: string[]; role?: string; row: number; errors: string[] }>>([])
   const [editingMember, setEditingMember] = useState<MemberListItem | null>(null)
   const [deletingMember, setDeletingMember] = useState<MemberListItem | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const router = useRouter()
   const { user } = useAuth()
   const isUserAdmin = user && isAdmin(user.role)
+  const [members, setMembers] = useState<MemberListItem[] | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const fetchMembers = async () => {
+    try {
+      setLoading(true)
+      const res = await apiClient.getMemberList()
+      if (res.success && res.data) {
+        setMembers(res.data)
+      } else {
+        toast.error('メンバーリストの取得に失敗しました')
+      }
+    } catch {
+      toast.error('メンバーリストの取得に失敗しました')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchMembers()
+  }, [])
 
   const [formData, setFormData] = useState({
     name: '',
@@ -57,16 +78,16 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
   })
 
   const sortedUsers = useMemo(() => {
-    if (!Array.isArray(memberData)) {
-      return [];
+    if (!Array.isArray(members)) {
+      return []
     }
-    return memberData.sort((a, b) => {
+    return members.sort((a, b) => {
       if (a.grade !== b.grade) {
         return b.grade - a.grade
       }
       return a.student_number.localeCompare(b.student_number)
     })
-  }, [memberData])
+  }, [members])
 
   const filteredUsers = useMemo(() => {
     return sortedUsers.filter(user =>
@@ -76,12 +97,14 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
     )
   }, [sortedUsers, searchTerm])
 
-  const existingEmails = useMemo(() => new Set(memberData.map(u => (u.email || '').trim().toLowerCase())), [memberData])
+  const existingEmails = useMemo(() => new Set((members || []).map(u => (u.email || '').trim().toLowerCase())), [members])
   const duplicateEmailsInDb = useMemo(() => {
-    const emails = csvMembers.map(m => m.email.trim().toLowerCase()).filter(e => e)
+    const emails = csvMembers.map(m => (m.email || '').trim().toLowerCase()).filter(e => e)
     const dup = Array.from(new Set(emails.filter(e => existingEmails.has(e))))
     return dup
   }, [csvMembers, existingEmails])
+  const missingRequiredRows = useMemo(() => csvMembers.filter(r => r.errors.includes('REQUIRED_MISSING')), [csvMembers])
+  const invalidGradeRows = useMemo(() => csvMembers.filter(r => r.errors.includes('INVALID_GRADE')), [csvMembers])
 
   const resetForm = () => {
     setFormData({
@@ -108,7 +131,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
         toast.success('メンバーを作成しました')
         setIsCreateDialogOpen(false)
         resetForm()
-        router.refresh()
+        await fetchMembers()
       } else {
         toast.error('メンバーの作成に失敗しました')
       }
@@ -162,7 +185,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
         setIsEditDialogOpen(false)
         setEditingMember(null)
         resetForm()
-        router.refresh()
+        await fetchMembers()
       } else {
         toast.error('メンバーの更新に失敗しました')
       }
@@ -190,7 +213,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
           setIsEditDialogOpen(false)
           setEditingMember(null)
           resetForm()
-          router.refresh()
+          await fetchMembers()
         } else {
           toast.error('メンバーの更新に失敗しました')
         }
@@ -218,7 +241,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
         toast.success('メンバーを削除しました')
         setIsDeleteDialogOpen(false)
         setDeletingMember(null)
-        router.refresh()
+        await fetchMembers()
       } else {
         toast.error('メンバーの削除に失敗しました')
       }
@@ -285,7 +308,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
         instruments: headers.indexOf('instruments'),
         role: headers.indexOf('role'),
       }
-      const members: Array<{ name: string; email: string; grade: number; nickname?: string; instruments?: string[]; role?: string }> = []
+      const members: Array<{ name: string; email: string; grade: number | null; nickname?: string; instruments?: string[]; role?: string; row: number; errors: string[] }> = []
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i]
         const columns = parseCsvLine(line)
@@ -296,8 +319,17 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
         const nickname = idx.nickname >= 0 ? (columns[idx.nickname] || '') : ''
         const instrumentsRaw = idx.instruments >= 0 ? (columns[idx.instruments] || '') : ''
         const roleRaw = idx.role >= 0 ? (columns[idx.role] || '') : ''
-        if (!name || !email || !gradeStr) continue
-        const grade = parseInt(gradeStr) || 1
+        const errors: string[] = []
+        if (!name || !email || !gradeStr) {
+          errors.push('REQUIRED_MISSING')
+        }
+        const parsed = parseInt(gradeStr)
+        const grade = Number.isFinite(parsed) ? parsed : null
+        if (grade === null || grade < 1 || grade > 6) {
+          if (gradeStr) {
+            errors.push('INVALID_GRADE')
+          }
+        }
         const normalizeInstruments = (raw: string): string[] => {
           if (!raw) return []
           const text = raw.toUpperCase()
@@ -310,7 +342,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
         const allowedRoles = new Set(['MGR','CHF','MAC','MBR','ADM','NHD','NAC'])
         const role = roleRaw ? roleRaw.toUpperCase() : undefined
         const roleFinal = role && allowedRoles.has(role) ? role : undefined
-        members.push({ name, email, grade, nickname, instruments, role: roleFinal })
+        members.push({ name, email, grade, nickname, instruments, role: roleFinal, row: i + 1, errors })
       }
       if (members.length === 0) {
         toast.error('インポートするメンバーが見つかりません')
@@ -328,15 +360,23 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
       return
     }
     const sendingList = csvMembers.filter(
-      m => !existingEmails.has((m.email || '').trim().toLowerCase())
+      m => m.errors.length === 0 && !existingEmails.has((m.email || '').trim().toLowerCase())
     )
     if (sendingList.length === 0) {
-      toast.error('全て既存メンバーと重複しています')
+      toast.error('全てスキップ対象です（重複または必須不足）')
       return
     }
     setIsSubmitting(true)
     try {
-      const response = await apiClient.bulkCreateMembers(sendingList)
+      const payload = sendingList.map(m => ({
+        name: m.name,
+        email: m.email,
+        grade: m.grade as number,
+        nickname: m.nickname || undefined,
+        instruments: m.instruments || undefined,
+        role: m.role || undefined,
+      }))
+      const response = await apiClient.bulkCreateMembers(payload)
       if (response.success && response.data) {
         const successCount = response.data.created.length
         const failCount = response.data.failed.length
@@ -348,7 +388,7 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
         }
         setCsvMembers([])
         setIsCsvImportDialogOpen(false)
-        router.refresh()
+        await fetchMembers()
       } else {
         toast.error('CSVインポートに失敗しました')
       }
@@ -358,6 +398,8 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
       setIsSubmitting(false)
     }
   }
+
+  
 
   return (
     <>
@@ -402,6 +444,14 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
                             </AlertDescription>
                           </Alert>
                         )}
+                        {(missingRequiredRows.length > 0 || invalidGradeRows.length > 0) && (
+                          <Alert className="border-amber-500/50 text-amber-800 bg-amber-50">
+                            <AlertTitle>必須不足の行はスキップされます</AlertTitle>
+                            <AlertDescription>
+                              必須列不足 {missingRequiredRows.length} 行{invalidGradeRows.length > 0 ? `、無効な学年 ${invalidGradeRows.length} 行` : ''}
+                            </AlertDescription>
+                          </Alert>
+                        )}
                         <div className="max-h-64 overflow-auto border rounded">
                           <Table>
                             <TableHeader>
@@ -415,11 +465,15 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {csvMembers.map((m, idx) => (
-                                <TableRow key={idx} className={existingEmails.has((m.email || '').trim().toLowerCase()) ? 'bg-red-50' : undefined}>
+                              {csvMembers.map((m, idx) => {
+                                const isDup = existingEmails.has((m.email || '').trim().toLowerCase())
+                                const isInvalid = m.errors.length > 0
+                                const rowClass = isDup ? 'bg-red-50' : isInvalid ? 'bg-amber-50' : undefined
+                                return (
+                                <TableRow key={idx} className={rowClass}>
                                   <TableCell>{m.name}</TableCell>
                                   <TableCell>{m.email}</TableCell>
-                                  <TableCell>{m.grade}</TableCell>
+                                  <TableCell>{m.grade ?? '-'}</TableCell>
                                   <TableCell>{m.nickname || '-'}</TableCell>
                                   <TableCell>
                                     {Array.isArray(m.instruments) && m.instruments.length > 0 ? (
@@ -436,7 +490,8 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
                                   </TableCell>
                                   <TableCell>{m.role || '-'}</TableCell>
                                 </TableRow>
-                              ))}
+                                )
+                              })}
                             </TableBody>
                           </Table>
                         </div>
@@ -450,19 +505,21 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
                       <p>・instruments: VO, GT, KEY, DR, BA のコードを文字列内に含めて記述（複数可）</p>
                       <p>　例: DR,GT,VO｜DR GT VO｜["DR","GT","VO"]</p>
                       <p>・role: MGR, CHF, MAC, MBR, ADM, NHD, NAC のいずれか</p>
-                      <p>・既存メールアドレスと重複する行は保存時にスキップ（プレビューで赤表示）</p>
-                      <p>・例（ヘッダー行）: name,email,grade,nickname,instruments,role</p>
                     </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => { setCsvMembers([]); }} disabled={isSubmitting || csvMembers.length === 0}>
-                        クリア
-                      </Button>
-                      <LoadingButton onClick={submitCsvImport} isLoading={isSubmitting} disabled={csvMembers.length === 0}>
-                        保存
-                      </LoadingButton>
-                      <Button variant="outline" onClick={() => setIsCsvImportDialogOpen(false)} disabled={isSubmitting}>
-                        閉じる
-                      </Button>
+                    <div className="flex justify-between items-center gap-2">
+                      <div>
+                        <Button variant="outline" onClick={() => { setCsvMembers([]); }} disabled={isSubmitting || csvMembers.length === 0}>
+                          クリア
+                        </Button>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => setIsCsvImportDialogOpen(false)}>
+                          閉じる
+                        </Button>
+                        <LoadingButton onClick={submitCsvImport} isLoading={isSubmitting} disabled={csvMembers.length === 0}>
+                          保存
+                        </LoadingButton>
+                      </div>
                     </div>
                   </div>
                 </DialogContent>
@@ -528,13 +585,17 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
       <Card className="w-full max-w-6xl max-w-screen mx-auto">
         <CardContent className="p-6">
           <div className="mb-6">
-            <Input
-              type="text"
-              placeholder="名前、ニックネーム、学籍番号で検索..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="max-w-sm mx-auto"
-            />
+            {loading ? (
+              <Skeleton className="h-10 w-full max-w-sm mx-auto" />
+            ) : (
+              <Input
+                type="text"
+                placeholder="名前、ニックネーム、学籍番号で検索..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-sm mx-auto"
+              />
+            )}
           </div>
           <div className="rounded-lg border border-gray-200">
             <Table>
@@ -553,7 +614,29 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
               </TableHeader>
               <TableBody>
                 <AnimatePresence>
-                  {filteredUsers.length > 0 ? (
+                  {loading ? (
+                    Array.from({ length: 8 }).map((_, idx) => (
+                      <motion.tr
+                        key={`skeleton-${idx}`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <TableCell className="text-center"><Skeleton className="h-4 w-24 mx-auto" /></TableCell>
+                        <TableCell className="text-center"><Skeleton className="h-4 w-10 mx-auto" /></TableCell>
+                        <TableCell className="text-center"><Skeleton className="h-4 w-28 mx-auto" /></TableCell>
+                        <TableCell className="text-center"><Skeleton className="h-4 w-16 mx-auto" /></TableCell>
+                        <TableCell className="text-center"><Skeleton className="h-4 w-24 mx-auto" /></TableCell>
+                        <TableCell className="text-left"><Skeleton className="h-4 w-40" /></TableCell>
+                        {isUserAdmin && (
+                          <TableCell className="text-center">
+                            <Skeleton className="h-8 w-24 mx-auto" />
+                          </TableCell>
+                        )}
+                      </motion.tr>
+                    ))
+                  ) : filteredUsers.length > 0 ? (
                     filteredUsers.map((user) => (
                       <motion.tr
                         key={user.student_number}
@@ -687,7 +770,6 @@ export function MemberList({ memberData }: { memberData: MemberListItem[] }) {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>

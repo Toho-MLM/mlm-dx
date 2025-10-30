@@ -20,7 +20,8 @@ export const navigationConfig: NavigationGroup[] = [
   {
     label: "イベント",
     items: [
-      { iconName: "CalendarIcon", href: "/event", title: "イベント管理" }
+      { iconName: "CalendarIcon", href: "/event", title: "イベント管理" },
+      { iconName: "CalendarIcon", href: "/event/setlist", title: "セットリスト管理" }
     ]
   },
   {
@@ -43,6 +44,7 @@ export const additionalPages: Record<string, string> = {
   '/profile': 'プロフィール',
   '/login': 'ログイン',
   '/event': 'イベント管理',
+  '/event/setlist': 'セットリスト管理',
 };
 
 export const getPageTitle = (pathname: string): string => {
