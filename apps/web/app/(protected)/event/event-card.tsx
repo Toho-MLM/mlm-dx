@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { EventEntryDialog } from "@/components/event-entry-dialog"
-import { MySetlistDialog } from "@/components/my-setlist-dialog"
+import Link from 'next/link'
 import { Badge } from "@/components/ui/badge"
 import { Music } from 'lucide-react'
 
@@ -149,7 +149,11 @@ export function EventCard({ event, groupOptions, userEntries, loading, onEntries
     <Card className="w-full max-w-lg transition-all duration-200 hover:shadow-xl hover:scale-[1.02] mx-auto">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-xl font-bold text-gray-900">{event.title}</CardTitle>
+          {loading ? (
+            <Skeleton className="h-6 w-40" />
+          ) : (
+            <CardTitle className="text-xl font-bold text-gray-900">{event.title}</CardTitle>
+          )}
           {(onEdit || onDelete) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -187,34 +191,56 @@ export function EventCard({ event, groupOptions, userEntries, loading, onEntries
         <div className="space-y-3">
           <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
             <div className="text-xs text-gray-600 mb-1">イベント日</div>
-            <div className="text-base font-semibold text-gray-900">
-              {formatDate(event.event_date)}
-            </div>
+            {loading ? (
+              <Skeleton className="h-5 w-32" />
+            ) : (
+              <div className="text-base font-semibold text-gray-900">
+                {formatDate(event.event_date)}
+              </div>
+            )}
           </div>
 
           <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
             <div className="text-xs text-gray-600 mb-1">出場締切</div>
-            <div className="flex items-baseline justify-between gap-2">
-              <div className="text-sm font-medium text-gray-900">
-                {formatDeadlineDate(event.entry_deadline)}
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-4 w-24" />
               </div>
-              <Countdown targetDate={event.entry_deadline} />
-            </div>
-            {!event.is_entry_accepting && (
-              <Badge variant="destructive" className="mt-2">受け付け終了</Badge>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="text-sm font-medium text-gray-900">
+                    {formatDeadlineDate(event.entry_deadline)}
+                  </div>
+                  <Countdown targetDate={event.entry_deadline} />
+                </div>
+                {!event.is_entry_accepting && (
+                  <Badge variant="destructive" className="mt-2">受け付け終了</Badge>
+                )}
+              </>
             )}
           </div>
 
           <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
             <div className="text-xs text-gray-600 mb-1">セットリスト締切</div>
-            <div className="flex items-baseline justify-between gap-2">
-              <div className="text-sm font-medium text-gray-900">
-                {formatDeadlineDate(event.setlist_deadline)}
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-4 w-24" />
               </div>
-              <Countdown targetDate={event.setlist_deadline} />
-            </div>
-            {!event.is_setlist_accepting && (
-              <Badge variant="destructive" className="mt-2">受け付け終了</Badge>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="text-sm font-medium text-gray-900">
+                    {formatDeadlineDate(event.setlist_deadline)}
+                  </div>
+                  <Countdown targetDate={event.setlist_deadline} />
+                </div>
+                {!event.is_setlist_accepting && (
+                  <Badge variant="destructive" className="mt-2">受け付け終了</Badge>
+                )}
+              </>
             )}
           </div>
 
@@ -242,25 +268,32 @@ export function EventCard({ event, groupOptions, userEntries, loading, onEntries
             )}
           </div>
 
-          {groupLimit > 0 && event.is_entry_accepting && (
+          {groupLimit > 0 && (loading || event.is_entry_accepting) && (
             <div className="mt-4 space-y-2">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => setIsEntryDialogOpen(true)}
-              >
-                <Users className="mr-2 h-4 w-4" />
-                参加登録
-              </Button>
-              {userEntryIds.length > 0 && event.is_setlist_accepting && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setIsEntriesDialogOpen(true)}
-                >
-                  <Music className="mr-2 h-4 w-4" />
-                  セットリストを管理
-                </Button>
+              {loading ? (
+                <>
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-9 w-full" />
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setIsEntryDialogOpen(true)}
+                  >
+                    <Users className="mr-2 h-4 w-4" />
+                    参加登録
+                  </Button>
+                  {userEntryIds.length > 0 && (
+                    <Link href={`/event/setlist?eventId=${event.id}`} className="w-full">
+                      <Button variant="outline" className="w-full">
+                        <Music className="mr-2 h-4 w-4" />
+                        セットリスト管理へ
+                      </Button>
+                    </Link>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -272,13 +305,7 @@ export function EventCard({ event, groupOptions, userEntries, loading, onEntries
         onClose={() => setIsEntryDialogOpen(false)}
         onSuccess={handleEntrySuccess}
       />
-      <MySetlistDialog
-        eventId={event.id}
-        eventTitle={event.title}
-        event={{ song_limit: event.song_limit }}
-        isOpen={isEntriesDialogOpen}
-        onClose={() => setIsEntriesDialogOpen(false)}
-      />
+      {/* セットリストはページに移行 */}
     </Card>
   )
 }

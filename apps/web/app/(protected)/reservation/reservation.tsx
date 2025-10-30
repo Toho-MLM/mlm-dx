@@ -24,7 +24,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ReservationData, ReservationHolder, ReservationState, eventStateNames } from '../../types'
+import { ReservationData, ReservationState, eventStateNames } from '../../types'
 import { validateReservationTime, isReservationDateValid, isReservationTimeValid } from '@shared-schemas'
 type GroupOption = {
   id: string;
@@ -35,6 +35,8 @@ import TimeGrid from 'react-big-calendar/lib/TimeGrid'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useAuth } from '../../context/AuthContext'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useRouter } from 'next/navigation'
 
 
 const locales = {
@@ -118,7 +120,7 @@ ThreeDayView.title = (date: Date) => {
   return `3日間表示: ${start} - ${end}`
 }
 
-export function ReservationPage({ initialReservationData }: { initialReservationData: ReservationData[] }) {
+export function ReservationPage() {
   const [isMobile, setIsMobile] = useState(false)
   const [isAdminMode, setIsAdminMode] = useState(false)
   const [reservationDraft, setReservationDraft] = useState({
@@ -140,10 +142,40 @@ export function ReservationPage({ initialReservationData }: { initialReservation
   const [currentView, setCurrentView] = useState<View>(Views.WEEK)
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
   const [popoverPosition, setPopoverPosition] = useState<{ y: number; x: number } | null>(null)
-  const [reservationData, setReservationData] = useState<ReservationData[]>(initialReservationData)
+  const [reservationData, setReservationData] = useState<ReservationData[]>([])
+  const [loading, setLoading] = useState(true)
   const [myGroups, setMyGroups] = useState<GroupOption[]>([])
   const [isGroupsLoading, setIsGroupsLoading] = useState(false)
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter()
+
+  useEffect(() => {
+    const init = async () => {
+      if (authLoading) return
+      if (!user) {
+        router.push('/login')
+        return
+      }
+      if (!user.nickname) {
+        router.push('/profile')
+        return
+      }
+      try {
+        const reservationsResponse = await apiClient.getReservations();
+        if (reservationsResponse.success && reservationsResponse.data) {
+          const formattedData: ReservationData[] = (reservationsResponse.data as any[]).map((item: any) => ({
+            ...item,
+            start: new Date(item.start_time),
+            end: new Date(item.end_time),
+          }));
+          setReservationData(formattedData);
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+    init()
+  }, [authLoading, user, router])
 
   useEffect(() => {
     const checkMobile = () => {
@@ -232,7 +264,7 @@ export function ReservationPage({ initialReservationData }: { initialReservation
           endMinute: null,
         })
         setIsReservationFormOpen(false)
-        await refetchReservationData()
+        await fetchReservations()
       } else {
         toast.error('データの送信中にエラーが発生しました', {
           description: translateError(response.error || 'UNKNOWN_ERROR')
@@ -256,7 +288,7 @@ export function ReservationPage({ initialReservationData }: { initialReservation
         console.log('Reservation cancelled successfully')
         setSelectedReservation(null)
         setIsCancelFormOpen(false)
-        await refetchReservationData()
+        await fetchReservations()
       } else {
         toast.error('データの送信中にエラーが発生しました', {
           description: translateError(response.error || 'UNKNOWN_ERROR')
@@ -373,7 +405,7 @@ export function ReservationPage({ initialReservationData }: { initialReservation
     }
   };
 
-  const refetchReservationData = async () => {
+  const fetchReservations = async () => {
     try {
       const reservationsResponse = await apiClient.getReservations();
 
@@ -407,17 +439,19 @@ export function ReservationPage({ initialReservationData }: { initialReservation
   }
 
   const handleRefresh = async () => {
-    await refetchReservationData()
+    await fetchReservations()
   }
 
   const handleAdminToggle = async (checked: boolean) => {
     setIsAdminMode(checked)
-    await refetchReservationData()
+    await fetchReservations()
   }
 
   const handleCancelReservation = () => {
     setIsCancelFormOpen(true)
   }
+
+  
 
   return (
     <>
@@ -431,98 +465,112 @@ export function ReservationPage({ initialReservationData }: { initialReservation
         <div className="flex-1 mx-auto px-5 w-full max-w-none">
         <Card className="bg-white shadow-lg rounded-lg overflow-hidden h-full flex flex-col">
           <CardDescription className="flex-shrink-0">
-            <div className={"p-2 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
-              <Button variant="outline" onClick={() => handleNavigate(subDays(currentDate, getRangeSkip()), currentView)}>
-                <ChevronLeftIcon className=" h-4 w-4" />
-              </Button>
-              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline">
-                    {currentView === Views.DAY ? format(currentDate, 'yyyy年M月d日', { locale: jaLocale }) : format(currentDate, 'yyyy年M月', { locale: jaLocale })}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="center">
-                  <CalendarPrimitive
-                    mode="single"
-                    locale={jaLocale}
-                    selected={currentDate}
-                    onSelect={handleDateChange}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <CalendarRangeIcon className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuCheckboxItem checked={currentView === Views.DAY} onCheckedChange={() => handleViewChange(Views.DAY)}>１日</DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem checked={currentView === 'myRange' as View} onCheckedChange={() => handleViewChange('myRange' as View)}>３日</DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem checked={currentView === Views.WEEK} onCheckedChange={() => handleViewChange(Views.WEEK)} disabled={isMobile}>週</DropdownMenuCheckboxItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button variant="outline" onClick={() => handleNavigate(addDays(currentDate, getRangeSkip()), currentView)}>
-                <ChevronRightIcon className=" h-4 w-4" />
-              </Button> 
-            </div>
+            {loading ? (
+              <div className={"p-2 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
+                <Skeleton className="h-9 w-10" />
+                <Skeleton className="h-9 w-40" />
+                <Skeleton className="h-9 w-10" />
+              </div>
+            ) : (
+              <div className={"p-2 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
+                <Button variant="outline" onClick={() => handleNavigate(subDays(currentDate, getRangeSkip()), currentView)}>
+                  <ChevronLeftIcon className=" h-4 w-4" />
+                </Button>
+                <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline">
+                      {currentView === Views.DAY ? format(currentDate, 'yyyy年M月d日', { locale: jaLocale }) : format(currentDate, 'yyyy年M月', { locale: jaLocale })}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="center">
+                    <CalendarPrimitive
+                      mode="single"
+                      locale={jaLocale}
+                      selected={currentDate}
+                      onSelect={handleDateChange}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      <CalendarRangeIcon className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuCheckboxItem checked={currentView === Views.DAY} onCheckedChange={() => handleViewChange(Views.DAY)}>１日</DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={currentView === 'myRange' as View} onCheckedChange={() => handleViewChange('myRange' as View)}>３日</DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={currentView === Views.WEEK} onCheckedChange={() => handleViewChange(Views.WEEK)} disabled={isMobile}>週</DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="outline" onClick={() => handleNavigate(addDays(currentDate, getRangeSkip()), currentView)}>
+                  <ChevronRightIcon className=" h-4 w-4" />
+                </Button> 
+              </div>
+            )}
           </CardDescription>
           <CardContent className="flex-1">
-            <BigCalendar
-              localizer={localizer}
-              events={reservationData}
-               titleAccessor={(event) => event.group_name || event.user_name || '予約'}
-               startAccessor={(event) => event.start}
-               endAccessor={(event) => event.end}
-              onSelectEvent={handleSelectEvent}
-              views={customViews}
-              messages={messages}
-              culture='ja'
-              toolbar={false}
-              min={new Date(0, 0, 0, 6, 0, 0)}
-              max={new Date(0, 0, 0, 23, 0, 0)}
-              date={currentDate}
-              view={currentView}
-              onView={handleViewChange}
-              onNavigate={handleNavigate}
-              formats={{
-                dayFormat: (date) => format(date, 'dd日（eee）', { locale: jaLocale }),
-                dayHeaderFormat: (date) => format(date, 'yyyy年M月d日（eee）', { locale: jaLocale }),
-                dayRangeHeaderFormat: (dates) => format(dates.start, 'yyyy年M月d日', { locale: jaLocale }) + ' 〜 ' + format(dates.end, 'M月d日', { locale: jaLocale }),
-                eventTimeRangeFormat: (event) => format(event.start, 'H:mm', { locale: jaLocale }) + ' 〜 ' + format(event.end, 'H:mm', { locale: jaLocale })
-              }}
-              eventPropGetter={(event) => ({
-                style: {
-                  backgroundColor: (() => {
-                    switch (event.state) {
-                      case ReservationState.PENDING:
-                        return '#FFE599';
-                      case ReservationState.DECLINED:
-                        return '#F9C6C0';
-                      case ReservationState.CONFIRMED:
-                        return '#C8E6CD';
-                      default:
-                        return '#D5D8DC';
-                    }
-                  })(),
-                  color: 'black',
-                  border: '2px solid ' + (() => {
-                    switch (event.state) {
-                      case ReservationState.PENDING:
-                        return '#F1C40F';
-                      case ReservationState.DECLINED:
-                        return '#E74C3C';
-                      case ReservationState.CONFIRMED:
-                        return '#2ECC71';
-                      default:
-                        return '#BDC3C7';
-                    }
-                  })()
-                }
-              })}
-              onRangeChange={handleRangeChange}
-            />
+            {loading ? (
+              <div className="w-full h-[720px]">
+                <Skeleton className="w-full h-full" />
+              </div>
+            ) : (
+              <BigCalendar
+                localizer={localizer}
+                events={reservationData}
+                 titleAccessor={(event) => event.group_name || event.user_name || '予約'}
+                 startAccessor={(event) => event.start}
+                 endAccessor={(event) => event.end}
+                onSelectEvent={handleSelectEvent}
+                views={customViews}
+                messages={messages}
+                culture='ja'
+                toolbar={false}
+                min={new Date(0, 0, 0, 6, 0, 0)}
+                max={new Date(0, 0, 0, 23, 0, 0)}
+                date={currentDate}
+                view={currentView}
+                onView={handleViewChange}
+                onNavigate={handleNavigate}
+                formats={{
+                  dayFormat: (date) => format(date, 'dd日（eee）', { locale: jaLocale }),
+                  dayHeaderFormat: (date) => format(date, 'yyyy年M月d日（eee）', { locale: jaLocale }),
+                  dayRangeHeaderFormat: (dates) => format(dates.start, 'yyyy年M月d日', { locale: jaLocale }) + ' 〜 ' + format(dates.end, 'M月d日', { locale: jaLocale }),
+                  eventTimeRangeFormat: (event) => format(event.start, 'H:mm', { locale: jaLocale }) + ' 〜 ' + format(event.end, 'H:mm', { locale: jaLocale })
+                }}
+                eventPropGetter={(event) => ({
+                  style: {
+                    backgroundColor: (() => {
+                      switch (event.state) {
+                        case ReservationState.PENDING:
+                          return '#FFE599';
+                        case ReservationState.DECLINED:
+                          return '#F9C6C0';
+                        case ReservationState.CONFIRMED:
+                          return '#C8E6CD';
+                        default:
+                          return '#D5D8DC';
+                      }
+                    })(),
+                    color: 'black',
+                    border: '2px solid ' + (() => {
+                      switch (event.state) {
+                        case ReservationState.PENDING:
+                          return '#F1C40F';
+                        case ReservationState.DECLINED:
+                          return '#E74C3C';
+                        case ReservationState.CONFIRMED:
+                          return '#2ECC71';
+                        default:
+                          return '#BDC3C7';
+                      }
+                    })()
+                  }
+                })}
+                onRangeChange={handleRangeChange}
+              />
+            )}
           </CardContent>
         </Card>
       </div>

@@ -76,7 +76,7 @@ export async function getServerMemberList(): Promise<ApiResponse<MemberListItem[
 }
 
 export async function getServerMemberOptions(): Promise<ApiResponse<{ id: string; name: string; instruments: string[] }[]>> {
-  return serverRequest('/groups/options')
+  return serverRequest('/members/select')
 }
 
 export async function getServerArchives(): Promise<ApiResponse<Archive[]>> {

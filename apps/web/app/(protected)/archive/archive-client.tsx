@@ -1,22 +1,27 @@
-'use client';
+"use client";
 
-import React, { useMemo, useState, useTransition } from 'react';
-import { deleteArchiveAction } from '@/lib/server-actions';
+import React, { useEffect, useMemo, useState, useTransition, useCallback } from 'react';
 import type { Archive } from '@/lib/schemas';
 import { LoadingButton } from '@/components/ui/loading-button'
 import { PageHeader } from '@/components/page-header';
 import { ArchiveAddDialog } from '@/components/archive-add-dialog';
 import { useAuth } from '@/app/context/AuthContext';
 import { isAdmin } from '@shared-schemas';
+import { apiClient } from '@/lib/api'
 
-interface ArchiveClientProps {
-  initialArchives: Archive[];
-}
-
-export function ArchiveClient({ initialArchives }: ArchiveClientProps) {
-  const [archives, setArchives] = useState<Archive[]>(initialArchives);
+export function ArchiveClient() {
+  const [archives, setArchives] = useState<Archive[]>([]);
   const [isPending, startTransition] = useTransition();
   const { user } = useAuth();
+
+  const fetchArchives = useCallback(async () => {
+    const res = await apiClient.getArchives()
+    if (res.success && res.data) setArchives(res.data)
+  }, [])
+
+  useEffect(() => {
+    fetchArchives()
+  }, [fetchArchives])
 
   const grouped = useMemo(() => {
     const byYear: Record<number, Archive[]> = {};
@@ -29,14 +34,14 @@ export function ArchiveClient({ initialArchives }: ArchiveClientProps) {
       .map(([y, list]) => ({ year: Number(y), list }));
   }, [archives]);
 
-  const handleArchiveAdded = (newArchive: Archive) => {
-    setArchives((prev) => [newArchive, ...prev]);
+  const handleArchiveAdded = () => {
+    fetchArchives()
   };
 
   const handleDelete = async (id: string) => {
     startTransition(async () => {
       try {
-        const res = await deleteArchiveAction(id);
+        const res = await apiClient.deleteArchive(id);
         if (res.success) {
           setArchives((prev) => prev.filter((a) => a.id !== id));
         }

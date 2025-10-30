@@ -3,7 +3,6 @@ import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { UserWithInstrumentsSchema, UpdateUserRequestSchema, GroupSchema } from '../schemas';
 import { z } from 'zod';
-import { getUserGroupIds } from './groups';
 
 const userRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -22,8 +21,6 @@ userRoutes.get('/', async (c) => {
       student_number: (user.email as string).substring(0, 6).toUpperCase()
     };
     
-    console.log('User data to validate:', JSON.stringify(userDataToValidate, null, 2));
-    
     const userWithStudentNumber = UserWithInstrumentsSchema.parse(userDataToValidate);
 
     return c.json({ success: true, data: userWithStudentNumber });
@@ -39,6 +36,27 @@ userRoutes.get('/', async (c) => {
       });
     }
     console.error('Error fetching current user:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+// GET /me/groups/select - ログインユーザーの有効グループの軽量リスト
+userRoutes.get('/groups/select', async (c) => {
+  try {
+    const user = c.get('user');
+    const userId = user.id;
+
+    const groups = await c.env.DB.prepare(`
+      SELECT DISTINCT g.id, g.name, g.is_main
+      FROM groups g
+      JOIN group_member_instruments gmi ON g.id = gmi.group_id
+      WHERE gmi.user_id = ? AND g.is_active = TRUE
+      ORDER BY g.is_main DESC, g.created_at DESC
+    `).bind(userId).all();
+
+    return c.json({ success: true, data: groups.results });
+  } catch (error) {
+    console.error('Error fetching my group select:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });

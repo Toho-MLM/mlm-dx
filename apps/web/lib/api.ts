@@ -40,11 +40,11 @@ class ApiClient {
   }
 
   async getGroupOptions(): Promise<ApiResponse<{ id: string; name: string; is_main: boolean }[]>> {
-    return httpClient.get<ApiResponse<{ id: string; name: string; is_main: boolean }[]>>('/groups/options-simple')
+    return httpClient.get<ApiResponse<{ id: string; name: string; is_main: boolean }[]>>('/me/groups/select')
   }
 
   async getMemberOptions(): Promise<ApiResponse<{ id: string; name: string; instruments: string[] }[]>> {
-    return httpClient.get<ApiResponse<{ id: string; name: string; instruments: string[] }[]>>('/groups/options')
+    return httpClient.get<ApiResponse<{ id: string; name: string; instruments: string[] }[]>>('/members/select')
   }
 
   // グループ関連
@@ -172,6 +172,18 @@ class ApiClient {
 
   async getSetlistItems(entryId: string): Promise<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>>> {
     return httpClient.get<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>>>(`/setlist/entry/${entryId}`)
+  }
+
+  async getEventSetlist(eventId: string): Promise<ApiResponse<Array<{
+    entry: { id: string; event_id: string; group_id: string; note?: string | null; created_at: string }
+    group_name: string
+    setlist_items: Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>
+  }>>> {
+    return httpClient.get<ApiResponse<Array<{
+      entry: { id: string; event_id: string; group_id: string; note?: string | null; created_at: string }
+      group_name: string
+      setlist_items: Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>
+    }>>>(`/setlist/event/${eventId}`)
   }
 
   async createSetlistItem(data: { entry_id: string; position: number; title: string; artist: string; admin?: boolean }): Promise<ApiResponse<void>> {

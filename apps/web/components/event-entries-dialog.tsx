@@ -15,7 +15,7 @@ import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
 import { Music, FileText } from 'lucide-react'
 import { Entry } from '@/app/types'
-import { SetlistDialog as SetlistDialogComponent } from './setlist-dialog'
+import Link from 'next/link'
 
 interface EventEntriesDialogProps {
   eventId: string
@@ -26,7 +26,7 @@ interface EventEntriesDialogProps {
 
 export function EventEntriesDialog({ eventId, eventTitle, isOpen, onClose }: EventEntriesDialogProps) {
   const [entries, setEntries] = useState<Entry[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [isSetlistDialogOpen, setIsSetlistDialogOpen] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const [groups, setGroups] = useState<Map<string, string>>(new Map())
@@ -62,8 +62,7 @@ export function EventEntriesDialog({ eventId, eventTitle, isOpen, onClose }: Eve
   }
 
   const handleOpenSetlist = (entry: Entry) => {
-    setSelectedEntry(entry)
-    setIsSetlistDialogOpen(true)
+    window.location.href = `/event/setlist?eventId=${eventId}`
   }
 
   const handleDeleteEntry = async (entryId: string) => {
@@ -149,14 +148,7 @@ export function EventEntriesDialog({ eventId, eventTitle, isOpen, onClose }: Eve
         </DialogContent>
       </Dialog>
       
-      {selectedEntry && (
-        <SetlistDialogComponent
-          entry={selectedEntry}
-          isOpen={isSetlistDialogOpen}
-          onClose={() => setIsSetlistDialogOpen(false)}
-          onSuccess={handleSetlistSuccess}
-        />
-      )}
+      {/* セットリストはページに移行 */}
     </>
   )
 }

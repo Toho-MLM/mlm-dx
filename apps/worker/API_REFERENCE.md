@@ -144,13 +144,13 @@ Worker は以下の `Bindings` を前提としています。
 - クエリ `admin=true` を付けると全グループ取得 (管理者権限が必要)。付けない場合は所属グループのみ。
 - 返却データは各グループに `assignments` 配列が付き、要素は `{ "id": "<user-id>", "instruments": ["VO","GT"] }`。
 
-#### GET `/groups/options-simple`
+#### GET `/me/groups/select`
 - 認証必須。
 - ログインユーザーが所属する有効なグループの `id`, `name`, `is_main` を返却。予約ダイアログ向け。
 
-#### GET `/groups/options`
+#### GET `/members/select`
 - 認証必須。
-- 全ユーザーの一覧。各要素は `{ "id": "<user-id>", "name": "<nickname||name>", "instruments": ["VO", ...] }`。
+- 全ユーザーの軽量一覧。各要素は `{ "id": "<user-id>", "name": "<nickname||name>", "instruments": ["VO", ...] }`。
 
 #### PUT `/groups/:id`
 - 認証必須。

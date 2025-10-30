@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Music, Users, FileText } from 'lucide-react'
 import { apiClient } from '@/lib/api'
 import { Entry } from '@/app/types'
-import { SetlistDialog } from '@/components/setlist-dialog'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -24,10 +24,10 @@ export function EntriesList({ eventId, eventTitle }: EntriesListProps) {
   const [groups, setGroups] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
-    loadData()
+    fetchEntries()
   }, [eventId])
 
-  const loadData = async () => {
+  const fetchEntries = async () => {
     try {
       setLoading(true)
       const [entriesResponse, groupsResponse] = await Promise.all([
@@ -52,12 +52,11 @@ export function EntriesList({ eventId, eventTitle }: EntriesListProps) {
   }
 
   const handleOpenSetlist = (entry: Entry) => {
-    setSelectedEntry(entry)
-    setIsSetlistDialogOpen(true)
+    window.location.href = `/event/setlist?eventId=${eventId}`
   }
 
   const handleSetlistSuccess = () => {
-    loadData()
+    fetchEntries()
   }
 
   const handleDeleteEntry = async (entryId: string) => {
@@ -66,7 +65,7 @@ export function EntriesList({ eventId, eventTitle }: EntriesListProps) {
     try {
       await apiClient.deleteEntry(entryId)
       toast.success('エントリーを削除しました')
-      loadData()
+      fetchEntries()
     } catch (error) {
       console.error('Error deleting entry:', error)
       toast.error('エントリーの削除に失敗しました')
@@ -148,14 +147,7 @@ export function EntriesList({ eventId, eventTitle }: EntriesListProps) {
         </CardContent>
       </Card>
       
-      {selectedEntry && (
-        <SetlistDialog
-          entry={selectedEntry}
-          isOpen={isSetlistDialogOpen}
-          onClose={() => setIsSetlistDialogOpen(false)}
-          onSuccess={handleSetlistSuccess}
-        />
-      )}
+      {/* セットリストはページに移行 */}
     </>
   )
 }

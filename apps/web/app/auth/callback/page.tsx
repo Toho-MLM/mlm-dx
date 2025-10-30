@@ -1,9 +1,9 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, Suspense } from 'react'
+import { useEffect } from 'react'
 import { useAuth } from '@/app/context/AuthContext'
-import LoadingScreen from '@/components/loading'
+import { Skeleton } from '@/components/ui/skeleton'
 
 function CallbackContent() {
   const router = useRouter()
@@ -23,13 +23,18 @@ function CallbackContent() {
     }
   }, [user, loading, router, searchParams])
 
-  return <LoadingScreen />
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md p-6">
+        <div className="space-y-3">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function CallbackPage() {
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      <CallbackContent />
-    </Suspense>
-  )
+  return <CallbackContent />
 }
