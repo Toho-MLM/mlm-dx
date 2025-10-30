@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect } from 'react'
 import { useAuth } from '@/app/context/AuthContext'
@@ -36,5 +37,9 @@ function CallbackContent() {
 }
 
 export default function CallbackPage() {
-  return <CallbackContent />
+  return (
+    <Suspense fallback={null}>
+      <CallbackContent />
+    </Suspense>
+  )
 }

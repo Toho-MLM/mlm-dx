@@ -17,9 +17,9 @@ import { Music } from 'lucide-react'
 
 interface EventCardProps {
   event: Event
-  groupOptions: { id: string; name: string; is_main: boolean }[]
-  userEntries: Array<{ id: string; event_id: string; group_id: string; note?: string | null; created_at: string }>
-  loading: boolean
+  groupOptions?: { id: string; name: string; is_main: boolean }[]
+  userEntries?: Array<{ id: string; event_id: string; group_id: string; note?: string | null; created_at: string }>
+  loading?: boolean
   onEntriesChanged?: () => void
   onEdit?: (id: string) => void
   onDelete?: (id: string) => void
@@ -93,14 +93,7 @@ function Countdown({ targetDate }: { targetDate: string }) {
     </span>
   )
 }
-
-interface EventCardProps {
-  event: Event
-  onEdit?: (id: string) => void
-  onDelete?: (id: string) => void
-}
-
-export function EventCard({ event, groupOptions, userEntries, loading, onEntriesChanged, onEdit, onDelete }: EventCardProps) {
+export function EventCard({ event, groupOptions = [], userEntries = [], loading = false, onEntriesChanged, onEdit, onDelete }: EventCardProps) {
   const [isEntryDialogOpen, setIsEntryDialogOpen] = useState(false)
   const [isEntriesDialogOpen, setIsEntriesDialogOpen] = useState(false)
   
