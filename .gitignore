@@ -40,6 +40,5 @@ apps/worker/.dev.vars
 next-env.d.ts
 
 # wrangler
-apps/worker/wrangler.toml
 /apps/worker/.wrangler
 /apps/worker/migrations
