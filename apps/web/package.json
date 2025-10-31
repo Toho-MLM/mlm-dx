@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:open": "npx open-next@latest build --adapter=cloudflare",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "preview": "wrangler dev .open-next/worker",
-    "deploy": "npm run build:open && wrangler deploy .open-next/worker"
+    "_legacy:preview": "wrangler dev .open-next/worker",
+    "_legacy:deploy": "npm run build:open && wrangler deploy .open-next/worker"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
