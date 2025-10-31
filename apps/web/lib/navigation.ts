@@ -20,8 +20,9 @@ export const navigationConfig: NavigationGroup[] = [
   {
     label: "イベント",
     items: [
-      { iconName: "CalendarIcon", href: "/event", title: "イベント管理" },
-      { iconName: "CalendarIcon", href: "/event/setlist", title: "セットリスト管理" }
+      { iconName: "SpotlightIcon", href: "/event", title: "イベント管理" },
+      { iconName: "ListMusicIcon", href: "/event/setlist", title: "セットリスト管理" },
+      { iconName: "ListIcon", href: "/event/timeline", title: "タイムライン" }
     ]
   },
   {
@@ -34,7 +35,8 @@ export const navigationConfig: NavigationGroup[] = [
     label: "資料",
     items: [
       { iconName: "SquarePlayIcon", href: "/archive", title: "ライブアーカイブ" },
-      { iconName: "FileUserIcon", href: "/member", title: "部員名簿" }
+      { iconName: "FileUserIcon", href: "/member", title: "部員名簿" },
+      { iconName: "HelpCircleIcon", href: "/support/admin", title: "管理者マニュアル" }
     ]
   },
 ];
@@ -45,6 +47,7 @@ export const additionalPages: Record<string, string> = {
   '/login': 'ログイン',
   '/event': 'イベント管理',
   '/event/setlist': 'セットリスト管理',
+  '/event/timeline': 'タイムライン',
 };
 
 export const getPageTitle = (pathname: string): string => {

@@ -13,6 +13,15 @@ mlm-dx/
 └── README.md
 ```
 
+## 主な機能
+
+- **予約管理**: バンドまたは個人名義でスタジオ予約を作成・閲覧・キャンセル。予約日の午前0時（JST）に自動判定を行い、同日予約は即時に確定/却下を決定します。
+- **イベント / エントリー**: エントリー受付状態と締切を管理し、バンド構成員の重複上限（`group_limit`）をチェックします。
+- **セットリスト**: エントリーごとの曲順を登録・一括置換。SE（位置0）や楽曲上限 (`song_limit`) に対応し、締切以降の更新を拒否します。
+- **タイムライン**: イベントの進行表（開始/終了時刻、出演順）を管理。管理者は番号重複や欠番を持たないように一括更新できます。
+- **メンバー管理**: 管理者による個別追加・一括登録・編集・削除。メンバー選択用の軽量APIも提供します。
+- **アーカイブ**: 過去ライブの映像や情報を保存するCRUD APIを提供します。
+
 ## セットアップ
 
 ### 1. 依存関係のインストール
@@ -157,7 +166,10 @@ FRONTEND_URL=http://localhost:3000
 ```toml
 name = "mlm-dx-worker"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-12-20"
+
+[triggers]
+crons = ["0 15 * * *"]
 
 [env.development]
 name = "mlm-dx-worker-dev"
@@ -169,11 +181,6 @@ name = "mlm-dx-worker"
 binding = "DB"
 database_name = "mlm-dx-db"
 database_id = "your-production-database-id"
-
-[[env.development.d1_databases]]
-binding = "DB"
-database_name = "mlm-dx-db-dev"
-database_id = "your-dev-database-id"
 
 # 共通設定
 [vars]
@@ -190,6 +197,8 @@ FRONTEND_URL = "https://your-frontend-domain.com"
 CORS_ORIGIN = "http://localhost:3000"
 FRONTEND_URL = "http://localhost:3000"
 ```
+
+イベント終了後のクリーンアップ処理（`deleteExpiredEvents`）も有効にする場合は、`crons` に `"0 16 * * *"` を追加してください。
 
 #### 4.5 環境変数の詳細説明
 
@@ -319,6 +328,11 @@ npm run db:setup:prod
 npm run db:migrate:prod
 npm run db:seed:prod
 ```
+
+### バッチ処理
+
+- `0 15 * * *`（JST 午前0時）: `processDailyReservations` が当日分の保留中予約を取得し、重複判定・時間帯の自動調整を行ったうえで `CONFIRMED` / `DECLINED` を更新します。
+- `0 16 * * *`（JST 午前1時、Cron 登録時）: `deleteExpiredEvents` がイベント開催日から2日経過したレコードを削除し、該当イベントに紐づくグループを一括で非アクティブ化します。
 
 #### データベース管理CLI
 

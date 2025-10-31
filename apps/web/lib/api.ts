@@ -19,6 +19,11 @@ type Event = SharedSchemas.Event
 type CreateEventRequest = SharedSchemas.CreateEventRequest
 type UpdateEventRequest = SharedSchemas.UpdateEventRequest
 type Entry = SharedSchemas.Entry
+type EventSetlistBundleItem = SharedSchemas.EventSetlistBundleItem
+type ReplaceSetlistItemsRequest = SharedSchemas.ReplaceSetlistItemsRequest
+type TimelineItem = SharedSchemas.TimelineItem
+type GetTimelineResponse = SharedSchemas.GetTimelineResponse
+type UpdateTimelineRequest = SharedSchemas.UpdateTimelineRequest
 type CreateEntryRequest = SharedSchemas.CreateEntryRequest
 type ApiResponse<T> = SharedSchemas.ApiResponse<T>
 
@@ -170,20 +175,25 @@ class ApiClient {
     return httpClient.delete<ApiResponse<void>>(`/entries/${id}`)
   }
 
+  async updateEntry(id: string, data: { note: string | null }): Promise<ApiResponse<void>> {
+    SharedSchemas.UpdateEntryRequestSchema.parse(data)
+    return httpClient.put<ApiResponse<void>>(`/entries/${id}`, data)
+  }
+
   async getSetlistItems(entryId: string): Promise<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>>> {
     return httpClient.get<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>>>(`/setlist/entry/${entryId}`)
   }
 
-  async getEventSetlist(eventId: string): Promise<ApiResponse<Array<{
-    entry: { id: string; event_id: string; group_id: string; note?: string | null; created_at: string }
-    group_name: string
-    setlist_items: Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>
-  }>>> {
-    return httpClient.get<ApiResponse<Array<{
-      entry: { id: string; event_id: string; group_id: string; note?: string | null; created_at: string }
-      group_name: string
-      setlist_items: Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>
-    }>>>(`/setlist/event/${eventId}`)
+  async getEventSetlist(eventId: string): Promise<ApiResponse<EventSetlistBundleItem[]>> {
+    return httpClient.get<ApiResponse<EventSetlistBundleItem[]>>(`/setlist/event/${eventId}`)
+  }
+
+  async getTimeline(eventId: string): Promise<ApiResponse<GetTimelineResponse>> {
+    return httpClient.get<ApiResponse<GetTimelineResponse>>(`/timeline/event/${eventId}`)
+  }
+
+  async updateTimeline(eventId: string, payload: UpdateTimelineRequest): Promise<ApiResponse<void>> {
+    return httpClient.put<ApiResponse<void>>(`/timeline/event/${eventId}` , payload)
   }
 
   async createSetlistItem(data: { entry_id: string; position: number; title: string; artist: string; admin?: boolean }): Promise<ApiResponse<void>> {
@@ -196,6 +206,11 @@ class ApiClient {
 
   async deleteSetlistItem(id: string): Promise<ApiResponse<void>> {
     return httpClient.delete<ApiResponse<void>>(`/setlist/${id}`)
+  }
+
+  async replaceSetlistItems(entryId: string, items: ReplaceSetlistItemsRequest['items'], hasSE: boolean, admin?: boolean): Promise<ApiResponse<void>> {
+    const body: ReplaceSetlistItemsRequest = { items, hasSE, admin }
+    return httpClient.put<ApiResponse<void>>(`/setlist?entryId=${entryId}`, body)
   }
 }
 

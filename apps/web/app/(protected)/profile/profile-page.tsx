@@ -41,6 +41,10 @@ export function ProfilePage() {
             student_number: anyData?.student_number
           }
           setUserData(ud)
+          const needsSetup = !ud.nickname || (ud.instruments && ud.instruments.length === 0)
+          if (needsSetup) {
+            setIsEditing(true)
+          }
         }
       } finally {
         setLoading(false)

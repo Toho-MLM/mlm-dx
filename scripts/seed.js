@@ -18,9 +18,12 @@ function validateEmail(email) {
 function createUserSQL(user) {
   const id = randomUUID();
   const timestamp = generateTimestamp();
+  const safeName = (user.name && user.name.trim().length > 0)
+    ? user.name.trim()
+    : (user.email.split('@')[0]);
   
-  return `INSERT OR IGNORE INTO users (id, name, nickname, email, instruments, grade, role, created_at, updated_at) VALUES 
-('${id}', NULL, NULL, '${user.email}', '[]', ${user.grade}, '${user.role}', '${timestamp}', '${timestamp}');`;
+  return `INSERT INTO users (id, name, nickname, email, instruments, grade, role, created_at, updated_at) VALUES 
+('${id}', '${safeName}', NULL, '${user.email}', '[]', ${user.grade}, '${user.role}', '${timestamp}', '${timestamp}');`;
 }
 
 function createGroupSQL(group) {
@@ -84,6 +87,7 @@ Group Member Instrument Actions:
   list                    List all group member instruments
 
 Add Options:
+  --name <name>          User's display name (required)
   --email <email>         User's email address (required)
   --grade <grade>         Grade level 1-6 (required)
   --role <role>           Role: MGR,CHF,MAC,MBR,ADM,NHD,NAC (default: MBR)
@@ -97,7 +101,7 @@ Global Options:
 
 Examples:
   # User management
-  node scripts/seed.js user add --email "tanaka@example.com" --grade 3
+  node scripts/seed.js user add --email "tanaka@example.com" --grade 3 --name "田中"
   node scripts/seed.js user remove --email "tanaka@example.com"
   node scripts/seed.js user list
   node scripts/seed.js user reset
@@ -118,7 +122,7 @@ Examples:
   node scripts/seed.js group reset
 
   # Use local database
-  node scripts/seed.js user add --email "test@example.com" --grade 2 --local
+  node scripts/seed.js user add --email "test@example.com" --grade 2 --name "テスト" --local
   node scripts/seed.js reservation list --local
   node scripts/seed.js reservation reset --local
   node scripts/seed.js group list --local
@@ -260,6 +264,7 @@ function main() {
     const { values } = parseArgs({
       args: args.slice(2),
       options: {
+        name: { type: 'string' },
         email: { type: 'string' },
         grade: { type: 'string' },
         role: { type: 'string' },
@@ -276,8 +281,9 @@ function main() {
           const email = values.email;
           const grade = values.grade;
           const role = values.role || 'MBR';
+          const name = values.name;
           
-          if (!email || !grade) {
+          if (!email || !grade || !name) {
             console.error('ERROR: Missing required fields. Use --help for usage information.');
             process.exit(1);
           }
@@ -299,6 +305,7 @@ function main() {
           }
           
           const user = {
+            name,
             email,
             grade: gradeNum,
             role

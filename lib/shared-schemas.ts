@@ -279,6 +279,34 @@ export const CreateEntryRequestSchema = z.object({
   group_ids: z.array(z.string()),
 });
 
+export const UpdateEntryRequestSchema = z.object({
+  note: z.string().nullable(),
+});
+
+export const TimelineItemSchema = z.object({
+  entry_id: z.string(),
+  group_id: z.string(),
+  group_name: z.string(),
+  start_time: z.string().nullable(),
+  end_time: z.string().nullable(),
+  position: z.number().nullable(),
+  created_at: z.string(),
+});
+
+export const GetTimelineResponseSchema = z.object({
+  configured: z.array(TimelineItemSchema),
+  unconfigured: z.array(TimelineItemSchema),
+});
+
+export const UpdateTimelineRequestSchema = z.object({
+  items: z.array(z.object({
+    entry_id: z.string(),
+    position: z.number().int().min(1).nullable(),
+    start_time: z.string().datetime().nullable().optional(),
+    end_time: z.string().datetime().nullable().optional(),
+  })),
+});
+
 export const SetlistItemSchema = z.object({
   id: z.string(),
   entry_id: z.string(),
@@ -302,6 +330,32 @@ export const UpdateSetlistItemRequestSchema = z.object({
   title: z.string().min(1).optional(),
   artist: z.string().optional(),
   admin: z.boolean().optional(),
+});
+
+// Setlist 差分更新リクエスト
+export const ReplaceSetlistItemsRequestSchema = z.object({
+  items: z.array(z.object({
+    title: z.string().min(1),
+    artist: z.string().optional().default(''),
+  })).max(100),
+  hasSE: z.boolean(),
+  admin: z.boolean().optional(),
+});
+
+// GET /setlist/event/:eventId レスポンス要素
+export const EventSetlistBundleItemSchema = z.object({
+  entry: z.object({
+    id: z.string(),
+    event_id: z.string(),
+    group_id: z.string(),
+    note: z.string().nullable().optional(),
+  }),
+  group_name: z.string(),
+  setlist_items: z.array(z.object({
+    position: z.number(),
+    title: z.string(),
+    artist: z.string(),
+  })),
 });
 
 export const BulkCreateMemberRequestSchema = z.object({
@@ -350,11 +404,17 @@ export type CreateEventRequest = z.infer<typeof CreateEventRequestSchema>;
 export type UpdateEventRequest = z.infer<typeof UpdateEventRequestSchema>;
 export type Entry = z.infer<typeof EntrySchema>;
 export type CreateEntryRequest = z.infer<typeof CreateEntryRequestSchema>;
+export type UpdateEntryRequest = z.infer<typeof UpdateEntryRequestSchema>;
 export type SetlistItem = z.infer<typeof SetlistItemSchema>;
 export type CreateSetlistItemRequest = z.infer<typeof CreateSetlistItemRequestSchema>;
 export type UpdateSetlistItemRequest = z.infer<typeof UpdateSetlistItemRequestSchema>;
+export type ReplaceSetlistItemsRequest = z.infer<typeof ReplaceSetlistItemsRequestSchema>;
+export type EventSetlistBundleItem = z.infer<typeof EventSetlistBundleItemSchema>;
 export type BulkCreateMemberRequest = z.infer<typeof BulkCreateMemberRequestSchema>;
 export type BulkCreateMembersRequest = z.infer<typeof BulkCreateMembersRequestSchema>;
+export type TimelineItem = z.infer<typeof TimelineItemSchema>;
+export type GetTimelineResponse = z.infer<typeof GetTimelineResponseSchema>;
+export type UpdateTimelineRequest = z.infer<typeof UpdateTimelineRequestSchema>;
 
 export interface ApiResponse<T = unknown> {
   success: boolean;

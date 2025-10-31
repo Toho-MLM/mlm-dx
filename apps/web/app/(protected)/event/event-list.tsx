@@ -18,6 +18,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { EventProvider } from './event-context'
 
 export function EventList({ events }: { events: Event[] }) {
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -96,16 +97,16 @@ export function EventList({ events }: { events: Event[] }) {
         onRefresh={handleRefresh}
       />
       <div className="p-5">
-      <div className="space-y-5">
-        {events.map((event) => (
-          <EventCard
-            key={event.id}
-            event={event}
-            onEdit={isUserAdmin ? handleEdit : undefined}
-            onDelete={isUserAdmin ? handleDeleteClick : undefined}
-          />
-        ))}
-      </div>
+      <EventProvider value={{ onEdit: isUserAdmin ? handleEdit : undefined, onDelete: isUserAdmin ? handleDeleteClick : undefined }}>
+        <div className="space-y-5">
+          {events.map((event) => (
+            <EventCard
+              key={event.id}
+              event={event}
+            />
+          ))}
+        </div>
+      </EventProvider>
       {isUserAdmin && (
         <EventForm
           event={editingEvent}

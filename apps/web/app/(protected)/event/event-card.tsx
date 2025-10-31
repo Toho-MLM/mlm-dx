@@ -14,15 +14,10 @@ import { EventEntryDialog } from "@/components/event-entry-dialog"
 import Link from 'next/link'
 import { Badge } from "@/components/ui/badge"
 import { Music } from 'lucide-react'
+import { useEventContext } from './event-context'
 
 interface EventCardProps {
   event: Event
-  groupOptions?: { id: string; name: string; is_main: boolean }[]
-  userEntries?: Array<{ id: string; event_id: string; group_id: string; note?: string | null; created_at: string }>
-  loading?: boolean
-  onEntriesChanged?: () => void
-  onEdit?: (id: string) => void
-  onDelete?: (id: string) => void
 }
 
 function Countdown({ targetDate }: { targetDate: string }) {
@@ -93,7 +88,14 @@ function Countdown({ targetDate }: { targetDate: string }) {
     </span>
   )
 }
-export function EventCard({ event, groupOptions = [], userEntries = [], loading = false, onEntriesChanged, onEdit, onDelete }: EventCardProps) {
+export function EventCard({ event }: EventCardProps) {
+  const ctx = useEventContext()
+  const groupOptions = ctx?.groupOptions ?? []
+  const userEntries = ctx?.userEntries ?? []
+  const loading = ctx?.loadingEntries ?? false
+  const onEntriesChanged = ctx?.onEntriesChanged
+  const onEdit = ctx?.onEdit
+  const onDelete = ctx?.onDelete
   const [isEntryDialogOpen, setIsEntryDialogOpen] = useState(false)
   const [isEntriesDialogOpen, setIsEntriesDialogOpen] = useState(false)
   
@@ -261,28 +263,29 @@ export function EventCard({ event, groupOptions = [], userEntries = [], loading 
             )}
           </div>
 
-          {groupLimit > 0 && (loading || event.is_entry_accepting) && (
-            <div className="mt-4 space-y-2">
+          {groupLimit > 0 && (
+            <div className="mt-4">
               {loading ? (
-                <>
+                <div className="space-y-2">
                   <Skeleton className="h-9 w-full" />
                   <Skeleton className="h-9 w-full" />
-                </>
+                </div>
               ) : (
                 <>
                   <Button
                     variant="outline"
                     className="w-full"
                     onClick={() => setIsEntryDialogOpen(true)}
+                    disabled={!event.is_entry_accepting}
                   >
                     <Users className="mr-2 h-4 w-4" />
                     参加登録
                   </Button>
                   {userEntryIds.length > 0 && (
                     <Link href={`/event/setlist?eventId=${event.id}`} className="w-full">
-                      <Button variant="outline" className="w-full">
+                      <Button variant="outline" className="w-full mt-2">
                         <Music className="mr-2 h-4 w-4" />
-                        セットリスト管理へ
+                        セットリスト管理
                       </Button>
                     </Link>
                   )}
