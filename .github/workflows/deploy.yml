@@ -30,7 +30,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/web
-          command: pages deploy .open-next/assets --project-name ${{ vars.CF_PAGES_PROJECT_NAME }}
+          command: pages deploy .open-next/assets --project-name ${{ vars.CF_PAGES_PROJECT_NAME }} --functions .open-next/functions
 
   deploy_workers:
     name: Deploy Backend (Workers)
