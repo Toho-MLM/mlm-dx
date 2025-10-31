@@ -9,9 +9,7 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "lint": "next lint",
-    "type-check": "tsc --noEmit",
-    "_legacy:preview": "wrangler dev .open-next/worker",
-    "_legacy:deploy": "npm run build:open && wrangler deploy .open-next/worker"
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
