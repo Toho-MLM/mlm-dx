@@ -1,0 +1,52 @@
+name: Deploy Frontend to Cloudflare Pages and Backend to Workers
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy_pages:
+    name: Deploy Frontend (Pages)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Build OpenNext for Cloudflare
+        run: npm run build:open --workspace=apps/web
+      - name: Deploy to Cloudflare Pages with Wrangler
+        uses: cloudflare/wrangler-action@v3.14.1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          command: pages deploy .open-next/output --project-name ${{ secrets.CF_PAGES_PROJECT_NAME }}
+
+  deploy_workers:
+    name: Deploy Backend (Workers)
+    runs-on: ubuntu-latest
+    env:
+      D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Deploy to Cloudflare Workers with Wrangler
+        uses: cloudflare/wrangler-action@v3.14.1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/worker
+          command: deploy

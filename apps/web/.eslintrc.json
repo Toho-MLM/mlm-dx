@@ -1,19 +1,23 @@
 {
   "extends": [
-    "eslint:recommended"
+    "next/core-web-vitals"
   ],
   "parser": "@typescript-eslint/parser",
   "plugins": ["@typescript-eslint"],
   "parserOptions": {
     "ecmaVersion": 2022,
-    "sourceType": "module"
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
   },
   "rules": {
     "@typescript-eslint/no-unused-vars": "error",
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/explicit-function-return-type": "off",
     "@typescript-eslint/explicit-module-boundary-types": "off",
-    "@typescript-eslint/no-inferrable-types": "off"
+    "@typescript-eslint/no-inferrable-types": "off",
+    "react-hooks/exhaustive-deps": "warn"
   },
   "env": {
     "browser": true,
