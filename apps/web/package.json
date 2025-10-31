@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy --platform=pages --project-name=$CF_PAGES_PROJECT_NAME",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
   },
