@@ -25,15 +25,15 @@ jobs:
         uses: cloudflare/wrangler-action@v3.14.1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/web
-          command: pages deploy .open-next/output --project-name ${{ secrets.CF_PAGES_PROJECT_NAME }}
+          command: pages deploy .open-next/output --project-name ${{ vars.CF_PAGES_PROJECT_NAME }}
 
   deploy_workers:
     name: Deploy Backend (Workers)
     runs-on: ubuntu-latest
     env:
-      D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+      D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,6 +47,6 @@ jobs:
         uses: cloudflare/wrangler-action@v3.14.1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/worker
           command: deploy
