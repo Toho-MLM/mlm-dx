@@ -4,7 +4,6 @@ import { requireAdmin } from '../utils/admin';
 import type { Bindings, Variables } from '../index';
 import { z } from 'zod';
 
-// 安全なJSON解析関数
 function safeJsonParse<T>(json: string, fallback: T): T {
   try {
     return JSON.parse(json);
@@ -293,12 +292,12 @@ memberRoutes.get('/select', async (c) => {
     const members = await c.env.DB.prepare(`
       SELECT 
         u.id,
-        u.name,
+        COALESCE(u.nickname, u.name) as name,
         u.nickname,
         u.instruments
       FROM users u
       WHERE u.name IS NOT NULL
-      ORDER BY u.name ASC
+      ORDER BY COALESCE(u.nickname, u.name) ASC
     `).all();
 
     const processedMembers = members.results.map((member: any) => {

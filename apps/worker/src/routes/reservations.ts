@@ -45,7 +45,7 @@ reservationRoutes.get('/', async (c) => {
     
     const reservations = await c.env.DB.prepare(`
       SELECT r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
-             u.name as user_name,
+             COALESCE(u.nickname, u.name) as user_name,
              ug.name as group_name,
              CASE 
                WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0

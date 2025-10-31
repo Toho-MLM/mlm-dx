@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS events (
   setlist_deadline DATETIME NOT NULL,
   is_setlist_accepting BOOLEAN NOT NULL DEFAULT TRUE,
   group_limit INTEGER NOT NULL DEFAULT 2,
-  song_limit INTEGER NOT NULL DEFAULT 10,
+  song_limit INTEGER NOT NULL DEFAULT 2,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL
 );
@@ -85,7 +85,11 @@ CREATE TABLE IF NOT EXISTS entries (
   event_id TEXT NOT NULL,
   group_id TEXT NOT NULL,
   note TEXT,
+  position INTEGER,
+  start_time DATETIME,
+  end_time DATETIME,
   created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
   FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
   FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
   UNIQUE(event_id, group_id)

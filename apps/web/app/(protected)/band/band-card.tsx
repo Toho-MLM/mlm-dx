@@ -96,7 +96,6 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, isA
                     <span className="flex-grow font-medium"><Skeleton className="h-4 w-32" /></span>
                     <div className="flex items-center space-x-1">
                       <Skeleton className="h-6 w-16 rounded" />
-                      <Skeleton className="h-6 w-16 rounded" />
                     </div>
                   </div>
                 ))

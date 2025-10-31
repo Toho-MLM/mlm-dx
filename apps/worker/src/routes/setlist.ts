@@ -4,7 +4,7 @@ import type { Bindings, Variables } from '../index';
 import { getUserGroupIds } from './groups';
 import { requireAdmin } from '../utils/admin';
 import { z } from 'zod';
-import { SetlistItemSchema, CreateSetlistItemRequestSchema, UpdateSetlistItemRequestSchema } from '@shared-schemas';
+import { CreateSetlistItemRequestSchema, ReplaceSetlistItemsRequestSchema } from '@shared-schemas';
 
 const setlistRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -39,6 +39,27 @@ setlistRoutes.post('/', async (c) => {
       }
     }
 
+    const acceptRow = await c.env.DB.prepare(`
+      SELECT ev.is_setlist_accepting, ev.setlist_deadline
+      FROM entries e JOIN events ev ON ev.id = e.event_id
+      WHERE e.id = ?
+    `).bind(requestData.entry_id).first();
+
+    if (!acceptRow) {
+      return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
+    }
+
+    const isSetlistAccepting = Boolean((acceptRow as any).is_setlist_accepting);
+    const setlistDeadline = new Date((acceptRow as any).setlist_deadline);
+    const nowTime = new Date();
+
+    if (!isSetlistAccepting) {
+      return c.json({ success: false, error: 'SETLIST_NOT_ACCEPTING' }, 400);
+    }
+    if (nowTime >= setlistDeadline) {
+      return c.json({ success: false, error: 'SETLIST_DEADLINE_PASSED' }, 400);
+    }
+
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
 
@@ -65,25 +86,7 @@ setlistRoutes.post('/', async (c) => {
   }
 });
 
-setlistRoutes.get('/entry/:entryId', async (c) => {
-  try {
-    const entryId = c.req.param('entryId');
-
-    const items = await c.env.DB.prepare(`
-      SELECT id, entry_id, position, title, artist, created_at, updated_at
-      FROM setlist_items
-      WHERE entry_id = ?
-      ORDER BY position ASC
-    `).bind(entryId).all();
-
-    const validatedItems = items.results.map(item => SetlistItemSchema.parse(item));
-
-    return c.json({ success: true, data: validatedItems });
-  } catch (error) {
-    console.error('Error fetching setlist items:', error);
-    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
-  }
-});
+ 
 
 setlistRoutes.get('/event/:eventId', async (c) => {
   try {
@@ -95,14 +98,10 @@ setlistRoutes.get('/event/:eventId', async (c) => {
         e.event_id as entry_event_id,
         e.group_id as entry_group_id,
         e.note as entry_note,
-        e.created_at as entry_created_at,
         g.name as group_name,
-        s.id as item_id,
         s.position as item_position,
         s.title as item_title,
-        s.artist as item_artist,
-        s.created_at as item_created_at,
-        s.updated_at as item_updated_at
+        s.artist as item_artist
       FROM entries e
       LEFT JOIN groups g ON g.id = e.group_id
       LEFT JOIN setlist_items s ON s.entry_id = e.id
@@ -119,57 +118,54 @@ setlistRoutes.get('/event/:eventId', async (c) => {
             event_id: r.entry_event_id,
             group_id: r.entry_group_id,
             note: r.entry_note,
-            created_at: r.entry_created_at,
           },
           group_name: r.group_name || '不明なグループ',
-          setlist_items: [] as Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>,
+          setlist_items: [] as Array<{ position: number; title: string; artist: string }>,
         });
       }
-      if (r.item_id) {
+      if (r.item_position !== null && r.item_position !== undefined) {
         map.get(r.entry_id).setlist_items.push({
-          id: r.item_id,
-          entry_id: r.entry_id,
           position: r.item_position,
           title: r.item_title,
           artist: r.item_artist || '',
-          created_at: r.item_created_at,
-          updated_at: r.item_updated_at,
         });
       }
     }
 
-    return c.json({ success: true, data: Array.from(map.values()) });
+    const data = Array.from(map.values()).map((v: any) => ({
+      ...v,
+      setlist_items: v.setlist_items.sort((a: any, b: any) => a.position - b.position),
+    }));
+
+    return c.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching event setlist bundle:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
-setlistRoutes.put('/:id', async (c) => {
+// 一括置換: エントリのセットリストを丸ごと上書き
+setlistRoutes.put('/', async (c) => {
   try {
     const user = c.get('user');
-    const itemId = c.req.param('id');
+    const entryId = c.req.query('entryId');
 
-    const item = await c.env.DB.prepare(`
-      SELECT entry_id FROM setlist_items WHERE id = ?
-    `).bind(itemId).first();
-
-    if (!item) {
-      return c.json({ success: false, error: 'SETLIST_ITEM_NOT_FOUND' }, 404);
+    if (!entryId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     }
 
     const entry = await c.env.DB.prepare(`
       SELECT group_id FROM entries WHERE id = ?
-    `).bind((item as any).entry_id).first();
+    `).bind(entryId).first();
 
     if (!entry) {
       return c.json({ success: false, error: 'ENTRY_NOT_FOUND' }, 404);
     }
 
-    const requestData = UpdateSetlistItemRequestSchema.parse(await c.req.json());
-    
-    const isAdminMode = requestData.admin === true;
-    
+    const body = await c.req.json();
+    const reqData = ReplaceSetlistItemsRequestSchema.parse(body);
+
+    const isAdminMode = reqData.admin === true;
     if (isAdminMode) {
       try {
         requireAdmin(user.role);
@@ -178,7 +174,6 @@ setlistRoutes.put('/:id', async (c) => {
       }
     } else {
       const userGroupIds = await getUserGroupIds(c.env, user.id);
-
       if (!userGroupIds.includes((entry as any).group_id)) {
         return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
       }
@@ -186,38 +181,110 @@ setlistRoutes.put('/:id', async (c) => {
 
     const now = new Date().toISOString();
 
-    const updates: string[] = [];
-    const values: any[] = [];
+    const eventRow = await c.env.DB.prepare(`
+      SELECT e.event_id, ev.song_limit, ev.is_setlist_accepting, ev.setlist_deadline
+      FROM entries e JOIN events ev ON ev.id = e.event_id WHERE e.id = ?
+    `).bind(entryId).first();
+    if (!eventRow) {
+      return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
+    }
+    const songLimit = (eventRow as any).song_limit as number;
 
-    if (requestData.position !== undefined) {
-      updates.push('position = ?');
-      values.push(requestData.position);
-    }
-    if (requestData.title !== undefined) {
-      updates.push('title = ?');
-      values.push(requestData.title);
-    }
-    if (requestData.artist !== undefined) {
-      updates.push('artist = ?');
-      values.push(requestData.artist);
-    }
-    updates.push('updated_at = ?');
-    values.push(now);
-    values.push(itemId);
+    const isSetlistAccepting = Boolean((eventRow as any).is_setlist_accepting);
+    const setlistDeadline = new Date((eventRow as any).setlist_deadline);
+    const nowTime = new Date();
 
-    if (updates.length === 1) {
-      return c.json({ success: true });
+    if (!isSetlistAccepting) {
+      return c.json({ success: false, error: 'SETLIST_NOT_ACCEPTING' }, 400);
+    }
+    if (nowTime >= setlistDeadline) {
+      return c.json({ success: false, error: 'SETLIST_DEADLINE_PASSED' }, 400);
+    }
+    const songsOnly = reqData.hasSE ? reqData.items.slice(1) : reqData.items;
+    if (songsOnly.length > songLimit) {
+      return c.json({ success: false, error: 'SONG_LIMIT_EXCEEDED' }, 400);
     }
 
-    await c.env.DB.prepare(`
-      UPDATE setlist_items
-      SET ${updates.join(', ')}
-      WHERE id = ?
-    `).bind(...values).run();
+    if (reqData.hasSE) {
+      const se = reqData.items[0];
+      if (!se) {
+        return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+      }
+      const existingEntrance = await c.env.DB.prepare(`
+        SELECT id FROM setlist_items WHERE entry_id = ? AND position = 0
+      `).bind(entryId).first();
+      if (existingEntrance) {
+        await c.env.DB.prepare(`
+          UPDATE setlist_items SET title = ?, artist = ?, updated_at = ? WHERE id = ?
+        `).bind(se.title, se.artist || '', now, (existingEntrance as any).id).run();
+      } else {
+        await c.env.DB.prepare(`
+          INSERT INTO setlist_items (id, entry_id, position, title, artist, created_at, updated_at)
+          VALUES (?, ?, 0, ?, ?, ?, ?)
+        `).bind(crypto.randomUUID(), entryId, se.title, se.artist || '', now, now).run();
+      }
+    } else {
+      await c.env.DB.prepare(`DELETE FROM setlist_items WHERE entry_id = ? AND position = 0`).bind(entryId).run();
+    }
+
+    const itemsSorted = songsOnly.map((it, idx) => ({
+      title: it.title,
+      artist: it.artist || '',
+      position: idx + 1,
+    }));
+
+    const existing = await c.env.DB.prepare(`
+      SELECT id, position FROM setlist_items WHERE entry_id = ? AND position > 0 ORDER BY position ASC
+    `).bind(entryId).all();
+
+    const existingItems = (existing.results as any[]).map(r => ({ id: r.id as string, position: r.position as number }));
+
+    const updatesCount = Math.min(existingItems.length, itemsSorted.length);
+
+    const statements = [] as any[];
+
+    for (let i = 0; i < updatesCount; i++) {
+      const target = existingItems[i];
+      const src = itemsSorted[i];
+      statements.push(
+        c.env.DB.prepare(`
+          UPDATE setlist_items
+          SET title = ?, artist = ?, updated_at = ?
+          WHERE id = ?
+        `).bind(src.title, src.artist, now, target.id)
+      );
+    }
+
+    if (existingItems.length > itemsSorted.length) {
+      for (let i = itemsSorted.length; i < existingItems.length; i++) {
+        const target = existingItems[i];
+        statements.push(
+          c.env.DB.prepare(`
+            DELETE FROM setlist_items WHERE id = ?
+          `).bind(target.id)
+        );
+      }
+    }
+
+    if (itemsSorted.length > existingItems.length) {
+      for (let i = existingItems.length; i < itemsSorted.length; i++) {
+        const src = itemsSorted[i];
+        statements.push(
+          c.env.DB.prepare(`
+            INSERT INTO setlist_items (id, entry_id, position, title, artist, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).bind(crypto.randomUUID(), entryId, src.position, src.title, src.artist, now, now)
+        );
+      }
+    }
+
+    if (statements.length > 0) {
+      await c.env.DB.batch(statements);
+    }
 
     return c.json({ success: true });
   } catch (error) {
-    console.error('Error updating setlist item:', error);
+    console.error('Error replacing setlist items:', error);
     if (error instanceof z.ZodError) {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     }
@@ -225,54 +292,9 @@ setlistRoutes.put('/:id', async (c) => {
   }
 });
 
-setlistRoutes.delete('/:id', async (c) => {
-  try {
-    const user = c.get('user');
-    const itemId = c.req.param('id');
-    
-    const adminParam = c.req.query('admin');
-    const isAdminMode = adminParam === 'true';
+ 
 
-    const item = await c.env.DB.prepare(`
-      SELECT entry_id FROM setlist_items WHERE id = ?
-    `).bind(itemId).first();
-
-    if (!item) {
-      return c.json({ success: false, error: 'SETLIST_ITEM_NOT_FOUND' }, 404);
-    }
-
-    const entry = await c.env.DB.prepare(`
-      SELECT group_id FROM entries WHERE id = ?
-    `).bind((item as any).entry_id).first();
-
-    if (!entry) {
-      return c.json({ success: false, error: 'ENTRY_NOT_FOUND' }, 404);
-    }
-
-    if (isAdminMode) {
-      try {
-        requireAdmin(user.role);
-      } catch (error) {
-        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
-      }
-    } else {
-      const userGroupIds = await getUserGroupIds(c.env, user.id);
-
-      if (!userGroupIds.includes((entry as any).group_id)) {
-        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
-      }
-    }
-
-    await c.env.DB.prepare(`
-      DELETE FROM setlist_items WHERE id = ?
-    `).bind(itemId).run();
-
-    return c.json({ success: true, message: 'Setlist item deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting setlist item:', error);
-    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
-  }
-});
+ 
 
 export { setlistRoutes };
 

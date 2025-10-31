@@ -18,7 +18,6 @@ export function BandList() {
   const [bands, setBands] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
   const [memberOptions, setMemberOptions] = useState<{ id: string; name: string; instruments: string[] }[]>([])
-  const router = useRouter()
   const { user } = useAuth()
   const isUserAdmin = user && isAdmin(user.role)
   const placeholderMain: Group = { id: 'placeholder-main', name: '', isMain: true, isActive: true, assignments: [] }

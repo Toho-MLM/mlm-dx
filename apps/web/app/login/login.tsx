@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from '@/app/context/AuthContext'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { httpClient } from '@/lib/http-client'
 import { toast } from 'sonner'
@@ -14,6 +14,7 @@ function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, loading } = useAuth()
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   useEffect(() => {
     const error = searchParams.get('error')
     if (error) {
@@ -26,7 +27,11 @@ function LoginContent() {
         access_denied: 'このメールアドレスは利用できません。管理者にお問い合わせください。',
         authentication_failed: 'ログインに失敗しました。もう一度お試しください。'
       }
-      toast.error(translateError(errorMessages[error] || 'ログイン中に問題が発生しました。もう一度お試しください。'))
+      const message = translateError(errorMessages[error] || 'ログイン中に問題が発生しました。もう一度お試しください。')
+      setErrorMessage(message)
+      toast.error(message)
+    } else {
+      setErrorMessage(null)
     }
   }, [searchParams])
 
@@ -55,11 +60,21 @@ function LoginContent() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-center">MLM DX ログイン</CardTitle>
+      <Card className="w-full max-w-md overflow-hidden">
+        <CardHeader className="bg-gray-800 text-white pb-4">
+          <CardTitle className="text-center text-2xl font-bold">MLM DX ログイン</CardTitle>
+          <div className="mx-auto mt-1 w-full">
+            <div className="text-gray-300 text-sm text-center">
+              大学から付与されたアカウントを使用してください。
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="p-4">
+          {errorMessage && (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {errorMessage}
+            </div>
+          )}
           {isLoading ? (
             <div className="space-y-3">
               <Skeleton className="h-10 w-full" />
@@ -67,6 +82,7 @@ function LoginContent() {
           ) : (
             <Button
               onClick={handleGoogleSignIn}
+              size="lg"
               className="w-full bg-white hover:bg-gray-50 text-gray-900 border border-gray-300"
             >
               <div className="flex items-center justify-center w-full">
@@ -80,7 +96,6 @@ function LoginContent() {
                   </svg>
                 </div>
                 <span>Googleでログイン</span>
-                <span style={{ display: 'none' }}>Sign in with Google</span>
               </div>
             </Button>
           )}

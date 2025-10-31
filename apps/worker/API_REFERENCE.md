@@ -1,6 +1,6 @@
 # Worker API リファレンス
 
-最終更新日: 2025-01-28
+最終更新日: 2025-10-31
 
 ## 概要
 
@@ -121,6 +121,20 @@ Worker は以下の `Bindings` を前提としています。
 - `nickname` 変更時は新しい JWT が再発行され Cookie にセットされます。
 - レスポンス: `{ "success": true }` のみ。
 
+#### GET `/me/groups/select`
+- 認証必須。
+- ログインユーザーが所属する有効 (`is_active = true`) なグループを軽量形式で返却します。
+- レスポンス例:
+```json
+{
+  "success": true,
+  "data": [
+    { "id": "group-uuid", "name": "Band A", "is_main": true }
+  ]
+}
+```
+- 主に予約ダイアログでの名義選択に利用されます。
+
 ### Groups
 
 #### POST `/groups`
@@ -141,16 +155,8 @@ Worker は以下の `Bindings` を前提としています。
 
 #### GET `/groups`
 - 認証必須。
-- クエリ `admin=true` を付けると全グループ取得 (管理者権限が必要)。付けない場合は所属グループのみ。
-- 返却データは各グループに `assignments` 配列が付き、要素は `{ "id": "<user-id>", "instruments": ["VO","GT"] }`。
-
-#### GET `/me/groups/select`
-- 認証必須。
-- ログインユーザーが所属する有効なグループの `id`, `name`, `is_main` を返却。予約ダイアログ向け。
-
-#### GET `/members/select`
-- 認証必須。
-- 全ユーザーの軽量一覧。各要素は `{ "id": "<user-id>", "name": "<nickname||name>", "instruments": ["VO", ...] }`。
+- クエリ `admin=true` を付けると全グループ取得 (管理者権限が必要)。付けない場合はログインユーザーが所属するグループのみ。
+- 応答は `is_main`, `is_active` などテーブルの生データに加え、`assignments` 配列（`{ "id": "<user-id>", "instruments": ["VO","GT"] }`）を含みます。
 
 #### PUT `/groups/:id`
 - 認証必須。
@@ -176,31 +182,39 @@ Worker は以下の `Bindings` を前提としています。
 | `POST /members` | 管理者のみ | リクエスト: `{ "name": "...", "email": "...", "grade": 1-6 }`。新規ユーザーを `role: MBR` で登録。レスポンス: `{ "success": true }` |
 | `PUT /members/:id` | 管理者のみ | リクエスト: `{ "nickname": string, "grade": number, "instruments": string[], "role": enum }`。レスポンス: `{ "success": true }` |
 | `DELETE /members/:id` | 管理者のみ | ユーザー削除。存在しない場合は `404 MEMBER_NOT_FOUND`。 |
+| `POST /members/bulk` | 管理者のみ | 複数ユーザーを一括登録。重複メールは `failed` 配列にエラーとして返却。レスポンス: `{ "success": true, "data": { "created": string[], "failed": [{ "email": string, "error": string }] } }` |
+| `GET /members/select` | 必須 | 予約・エントリー用の軽量リスト。要素は `{ "id": string, "name": string, "instruments": string[] }`。 |
+
+`POST /members/bulk` は入力内の重複メールを `DUPLICATE_IN_INPUT`、既存ユーザーを `EMAIL_ALREADY_EXISTS` として `failed` 配列にまとめて返却します。
 
 ### Reservations
 
 #### GET `/reservations`
 - 認証必須。
-- 取得範囲: 作成時点から過去 14 日間を除いたデータ。`PENDING` / `CONFIRMED` は常に、その他は本人または所属グループのもの。
-- レスポンスオブジェクト: `cancellable` は `0/1` の数値フラグ。
+- 取得対象は「開始時刻が現在から14日以内」かつ以下条件のいずれかを満たす予約。
+  - `state` が `PENDING` または `CONFIRMED`
+  - 予約者本人 (`user_id`) と一致
+  - ログインユーザーが所属するグループの予約
+- 各要素には `user_name`, `group_name`, `cancellable`（0/1 フラグ）が含まれます。`cancellable=1` の場合のみキャンセル API が実行可能です。
 
 #### POST `/reservations`
 - 認証必須。
-- ボディ (`CreateReservationRequestSchema`): 当日内で最短 10 分・最長 4 時間・06:00〜23:00 の範囲に制限。
-```json
-{
-  "start_time": "2025-11-01T09:00:00.000Z",
-  "end_time": "2025-11-01T11:00:00.000Z",
-  "group_id": "group-uuid?"
-}
-```
-- レスポンス: `{ "success": true }` のみ。
-- 備考: 当日予約は内部的に即時判定を行いますが、レスポンスでは詳細を返しません。必要に応じて取得系 API を再読込して最新状態を反映してください。
+- リクエスト (`CreateReservationRequestSchema`):
+  - 日付をまたがないこと
+  - 利用時間は最短10分 / 最長4時間
+  - 利用時間帯は 06:00〜23:00（JST 基準）
+  - `group_id` を指定した場合は、そのグループが `is_active = true` であり、ログインユーザーが所属している必要があります
+- 同日内の予約は送信直後に `processReservationState` が実行され、空きがあれば `CONFIRMED`、部分的な空きは時間帯を調整したうえで `CONFIRMED`、空きがなければ `DECLINED` で保存されます。未来日の予約は `PENDING` で登録され、予約日の午前0時（JST）のバッチで判定されます。
+- 正常時のレスポンスは `{ "success": true }`。主なエラー:
+  - `INVALID_RESERVATION_TIME`: 時刻バリデーション違反
+  - `GROUP_NOT_FOUND`: `group_id` が存在しない／非アクティブ
+  - `NOT_GROUP_MEMBER`: グループ所属権限が無い
+  - `RESERVATION_CONFLICT`: ユニーク制約違反（既存レコードと完全重複）
 
 #### POST `/reservations/:id/cancel`
 - 認証必須。
-- 本人または所属グループの代表者が `PENDING` / `CONFIRMED` の予約をキャンセル可能。
-- レスポンス: `{ "success": true }` のみ。
+- `PENDING` または `CONFIRMED` の予約のみキャンセル可能。予約者本人か、同じグループに所属しているユーザーが実行できます。
+- 制限に抵触する場合は `403 RESERVATION_CANNOT_BE_CANCELLED` を返します。
 
 ### Entries
 
@@ -213,8 +227,10 @@ Worker は以下の `Bindings` を前提としています。
   "group_ids": ["group-a", "group-b"]
 }
 ```
-- ログインユーザーが所属するグループのみ登録対象。重複エラー (`UNIQUE constraint`) は無視されます。
-- レスポンス: `{ "success": true }` のみ。
+- ログインユーザーが所属するグループのみ登録対象。イベントがエントリー受付中 (`is_entry_accepting = true`) で、締切 `entry_deadline` を過ぎていないことを確認します。
+- `group_limit` が設定されているイベントでは、同一メンバーが許容上限を超えてエントリーしないかを検証し、超過するメンバー名を `members` 配列としてエラーレスポンスに含めます。
+- 既に同じエントリーが存在している場合はユニーク制約で弾かれますが、処理内で握り潰され成功レスポンスになります。
+- 正常時のレスポンスは `{ "success": true }`。
 
 #### GET `/entries`
 - 認証必須。
@@ -226,16 +242,20 @@ Worker は以下の `Bindings` を前提としています。
 
 ### Setlist
 
-| メソッド/パス | 認証 | 備考 |
+| メソッド/パス | 認証 | 説明 |
 | --- | --- | --- |
-| `POST /setlist` | 必須 | ボディ: `{ "entry_id": "...", "position": number, "title": "...", "artist": "...", "admin"?: true }`。`admin:true` は管理者権限チェックを実行。レスポンス: `{ "success": true }` |
-| `GET /setlist/entry/:entryId` | 必須 | 指定エントリーの曲順を `position` 昇順で返却。 |
-| `PUT /setlist/:id` | 必須 | 任意のフィールドを更新。`admin:true` を含めると管理者モード。 |
-| `DELETE /setlist/:id` | 必須 | クエリ `admin=true` で管理者削除。未指定なら所属グループチェック。 |
+| `POST /setlist` | 必須 | ボディ: `{ "entry_id": string, "position": number, "title": string, "artist": string, "admin"?: true }`。`admin:true` を指定すると管理者権限を要求。イベントがセットリスト受付中 (`is_setlist_accepting`) かつ締切前であることを確認します。 |
+| `PUT /setlist?entryId=<id>` | 必須 | ボディ: `{ "items": [{ "title": string, "artist"?: string }], "hasSE": boolean, "admin"?: true }`。エントリーのセットリストを丸ごと置換し、`hasSE=true` の場合は位置0にSE曲を保存します。`song_limit` を超えると `400 SONG_LIMIT_EXCEEDED`。 |
+| `GET /setlist/event/:eventId` | 必須 | エントリーごとのセットリストをまとめて返却。各要素に `entry`, `group_name`, `setlist_items` を含みます。 |
 
-作成・更新のレスポンスはいずれも `{ "success": true }` のみ。
+`POST` / `PUT` 成功時のレスポンスはいずれも `{ "success": true }`。利用者モードではエントリーが自身の所属グループに紐づいている必要があります。
 
-`position` は前後関係維持用の数値です。`title` と `artist` は必須、`artist` は更新時のみ省略可。
+### Timeline
+
+| メソッド/パス | 認証 | 説明 |
+| --- | --- | --- |
+| `GET /timeline/event/:eventId` | 必須 | 指定イベントの進行表を `configured`（位置が設定済み）と `unconfigured` に分けて返却します。要素は `entry_id`, `group_id`, `group_name`, `start_time`, `end_time`, `position` などを含みます。 |
+| `PUT /timeline/event/:eventId` | 管理者のみ | ボディ: `{ "items": [{ "entry_id": string, "position": number|null, "start_time"?: string|null, "end_time"?: string|null }] }` を想定。重複ポジションや欠番、終了時刻≦開始時刻は `400`。存在しないエントリー指定時は `404 ENTRY_NOT_FOUND`。 |
 
 ### Archive
 
@@ -263,12 +283,12 @@ Worker は以下の `Bindings` を前提としています。
 
 ## 予約バッチ処理
 
-Worker には `0 15 * * *` (UTC 15:00 実行) の Cron トリガーが登録されており、`processDailyReservations` が以下を行います。
+Worker は Cron トリガーを利用した自動処理を実装しています。
 
-- 当日 `PENDING` 状態の予約を取得。
-- `processReservationState` で空き時間を算出し、重複がなければ `CONFIRMED`、空きが無ければ `DECLINED`、一部空きのみの場合は時間帯を調整して更新。
+- `0 15 * * *`（UTC 15:00 = JST 00:00）: `processDailyReservations` が当日分の `PENDING` 予約を取得し、`processReservationState` により重複検出・部分調整を実施したうえで `CONFIRMED` / `DECLINED` を更新します。
+- `0 16 * * *`（UTC 16:00 = JST 01:00、トリガー登録時）: `deleteExpiredEvents` が開催から2日経過したイベントを削除し、紐づくバンドを `is_active = false` に更新します。
 
-当日手動で作成された予約も同じロジックで即時判定されます。
+同日の予約は作成時に即時判定されるため、Cron 処理では未来日から当日に切り替わった予約のみが評価対象となります。
 
 ## 付録: 主要スキーマと列挙値
 

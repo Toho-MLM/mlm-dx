@@ -13,9 +13,11 @@ import { archiveRoutes } from './routes/archive';
 import { eventRoutes } from './routes/events';
 import { entriesRoutes } from './routes/entries';
 import { setlistRoutes } from './routes/setlist';
+import { timelineRoutes } from './routes/timeline';
 import type { User } from './types';
 import { UserSchema } from './schemas';
 import { processDailyReservations } from './utils/reservation-processor';
+import { deleteExpiredEvents } from './utils/event-processor';
 
 export type Bindings = {
   DB: D1Database;
@@ -291,6 +293,7 @@ app.route('/archive', archiveRoutes);
 app.route('/events', eventRoutes);
 app.route('/entries', entriesRoutes);
 app.route('/setlist', setlistRoutes);
+app.route('/timeline', timelineRoutes);
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
@@ -301,6 +304,9 @@ export default {
     switch (event.cron) {
       case "0 15 * * *":
         await processDailyReservations(env);
+        break;
+      case "0 16 * * *":
+        await deleteExpiredEvents(env);
         break;
     }
   }

@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { apiClient } from '@/lib/api'
+import { EventProvider } from './event-context'
 
 export function EventClient() {
   const [events, setEvents] = useState<Event[]>([])
@@ -151,15 +152,13 @@ export function EventClient() {
           onRefresh={handleRefresh}
         />
         <div className="p-5">
-          <div className="space-y-5">
-            <EventCard
-              event={placeholder}
-              groupOptions={[]}
-              userEntries={[]}
-              loading={true}
-              onEntriesChanged={handleEntriesChanged}
-            />
-          </div>
+          <EventProvider value={{ groupOptions: [], userEntries: [], loadingEntries: true, onEntriesChanged: handleEntriesChanged }}>
+            <div className="space-y-5">
+              <EventCard
+                event={placeholder}
+              />
+            </div>
+          </EventProvider>
         </div>
       </>
     )
@@ -172,20 +171,16 @@ export function EventClient() {
         onRefresh={handleRefresh}
       />
       <div className="p-5">
-      <div className="space-y-5">
-        {events.map((event) => (
-          <EventCard
-            key={event.id}
-            event={event}
-            groupOptions={groupOptions}
-            userEntries={entries}
-            loading={loadingEntries}
-            onEntriesChanged={handleEntriesChanged}
-            onEdit={isUserAdmin ? handleEdit : undefined}
-            onDelete={isUserAdmin ? handleDeleteClick : undefined}
-          />
-        ))}
-      </div>
+      <EventProvider value={{ groupOptions, userEntries: entries, loadingEntries, onEntriesChanged: handleEntriesChanged, onEdit: isUserAdmin ? handleEdit : undefined, onDelete: isUserAdmin ? handleDeleteClick : undefined }}>
+        <div className="space-y-5">
+          {events.map((event) => (
+            <EventCard
+              key={event.id}
+              event={event}
+            />
+          ))}
+        </div>
+      </EventProvider>
       {isUserAdmin && (
         <EventForm
           event={editingEvent}

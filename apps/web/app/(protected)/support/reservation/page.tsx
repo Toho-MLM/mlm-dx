@@ -30,69 +30,69 @@ const AboutPage = () => {
             予約には以下の6つの状態があります。
           <ul className="list-disc ml-5">
             <li><Badge className={reservationStateColors[ReservationState.PENDING]}>保留中</Badge>
-              <br />予約がまだ確定されていない状態です。
+              <br />予約が登録された状態です。予約日になるまではこの状態で待機します。
             </li>
             <li><Badge className={reservationStateColors[ReservationState.WITHDRAWN]}>取り下げ</Badge>
-              <br />保留中の予約が取り消されるとこの状態になります。
+              <br />保留中の予約をユーザーが取り消した場合に表示されます。
             </li>
             <li><Badge className={reservationStateColors[ReservationState.DECLINED]}>却下</Badge>
-              <br />予約が却下された状態です。指定した時間帯が他の予約で埋まっているか、抽選期間に抽選に外れた場合に発生します。
+              <br />予約時間が利用可能枠を確保できなかった場合に設定されます（利用可能時間外・重複・全枠埋まりなど）。
             </li>
             <li><Badge className={reservationStateColors[ReservationState.CONFIRMED]}>確定</Badge>
-              <br />予約が確定した状態です。ホールをご利用いただけます。
+              <br />予約が成立しています。同一日に空き時間が重なっていた場合は、利用可能な範囲に自動調整されたうえで確定します。
             </li>
             <li><Badge className={reservationStateColors[ReservationState.CANCELLED]}>キャンセル</Badge>
-              <br />確定した予約をユーザーが取り消すとこの状態になります。
+              <br />確定済みまたは保留中の予約をユーザーがキャンセルした状態です。
             </li>
             <li><Badge className={reservationStateColors[ReservationState.COMPLETED]}>完了</Badge>
-              <br />利用が終了するとこの状態になります。
+              <br />利用が終了し、運営側で完了として記録された状態です。
             </li>
           </ul>
           </div>
           <h3 className="mt-4 text-lg font-semibold">予約の作成</h3>
           <ol className="list-decimal list-inside ml-2">
             <li>予約表ページを開く</li>
-            <li>右下の <CalendarPlusIcon className="inline-block h-5 w-5 relative left-[-2px] top-[-3px]" />を押す</li>
-            <li>必要情報を入力する</li>
-            <li>予約の送信</li>
+            <li>右下の <CalendarPlusIcon className="inline-block h-5 w-5 relative left-[-2px] top-[-3px]" /> を押す</li>
+            <li>利用者（個人 or 所属バンド）、日付、開始・終了時刻を入力する</li>
+            <li>内容を確認して送信する</li>
           </ol>
           <p className="ml-2">
-            予約が正常に送信されると、カレンダーに追加されます。
+            予約は日をまたがず、朝6時から夜11時の間で最短10分・最長4時間まで、かつ2週間先まで登録できます。所属バンド名義で予約する場合は、事前にバンドメンバーとして登録されている必要があります。
+          </p>
+          <h4 className="text-md font-semibold ml-2 mt-4">当日の予約</h4>
+          <p className="ml-2">
+            予約日が当日の場合は送信直後に自動判定が行われ、空きがあれば即時 <Badge className={reservationStateColors[ReservationState.CONFIRMED]}>確定</Badge>、空きがなければ <Badge className={reservationStateColors[ReservationState.DECLINED]}>却下</Badge> されます。部分的に空きがある場合は、利用可能な範囲に時間が自動調整されます。
+          </p>
+          <h4 className="text-md font-semibold ml-2 mt-4">翌日以降の予約</h4>
+          <p className="ml-2">
+            未来日の予約は一旦 <Badge className={reservationStateColors[ReservationState.PENDING]}>保留中</Badge> として登録され、予約日の午前0時（JST）に実行されるバッチ処理で空き状況を判定します。
           </p>
           <h3 className="mt-4 text-lg font-semibold">予約のキャンセル</h3>
           <ol className="list-decimal list-inside ml-2">
             <li>予約表ページを開く</li>
             <li>キャンセルしたい予約を選択</li>
-            <li>右下の <CalendarX2 className="inline-block h-5 w-5 relative left-[-2px] top-[-3px]" />を押す</li>
-            <li>内容を確認してキャンセル</li>
+            <li>右下の <CalendarX2 className="inline-block h-5 w-5 relative left-[-2px] top-[-3px]" /> を押す</li>
+            <li>内容を確認してキャンセルする</li>
           </ol>
-          <h3 className="mt-4 text-lg font-semibold">予約の処理</h3>
           <p className="ml-2">
-            予約は毎日午前0〜1時の間に処理されます。これにより、前日の予約が完了としてマークされ、当日の予約が処理されます。
+            キャンセルできるのは <Badge className={reservationStateColors[ReservationState.PENDING]}>保留中</Badge> と <Badge className={reservationStateColors[ReservationState.CONFIRMED]}>確定</Badge> の予約のみです。予約者本人に加えて、同じバンドのメンバーもキャンセルできます。
           </p>
-          <h4 className="text-md font-semibold ml-2">処理の内容</h4>
+          <h3 className="mt-4 text-lg font-semibold">自動処理の流れ</h3>
+          <p className="ml-2">
+            毎日午前0時（JST）に以下の処理が実行されます。
+          </p>
           <ul className="list-disc ml-6">
-            <li>予約に重複がない場合、予約が確定します。</li>
-            <li>予約が重複している場合、早く予約された方が優先されます。</li>
-            <li>予約が部分的に重複している場合、予約の時間帯内で最大限の時間が確保できるように調整されます。</li>
+            <li>当日分の <Badge className={reservationStateColors[ReservationState.PENDING]}>保留中</Badge> 予約を取得し、空き状況を確認します。</li>
+            <li>空きがあれば <Badge className={reservationStateColors[ReservationState.CONFIRMED]}>確定</Badge>、空きがなければ <Badge className={reservationStateColors[ReservationState.DECLINED]}>却下</Badge> に更新します。</li>
+            <li>空き時間が一部のみの場合は、利用可能な時間帯に自動で短縮したうえで <Badge className={reservationStateColors[ReservationState.CONFIRMED]}>確定</Badge> します。</li>
           </ul>
-          <Alert>
+          <Alert className="mt-4">
             <AlertCircleIcon className="h-4 w-4" />
             <AlertTitle>注意</AlertTitle>
             <AlertDescription>
-              予約の処理は午前0〜1時の間に行われるため、その時間帯に予約をした場合、その予約は翌日以降になります。
+              予約が <Badge className={reservationStateColors[ReservationState.DECLINED]}>却下</Badge> された場合、時間帯を変更して再度予約してください。自動調整により開始・終了時刻が変更された場合は、予約詳細で更新後の時間を確認できます。
             </AlertDescription>
           </Alert>
-          <h4 className="text-md font-semibold ml-2">当日の予約について</h4>
-          <p className="ml-2">
-            午前1時以降に予約をした場合、その予約は即時確定します。既存の予約と重複している場合は、却下されてしまうのでご注意ください。
-          </p>
-          <h3 className="mt-4 text-lg font-semibold">今後実装予定の機能</h3>
-          <ul className="list-disc ml-6">
-            <li>抽選期間の追加</li>
-            <li>団体予約の実装</li>
-            <li>予約確定のメールでの通知</li>
-          </ul>
         </CardContent>
       </Card>
       </div>

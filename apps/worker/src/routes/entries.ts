@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { z } from 'zod';
 import { getUserGroupIds } from './groups';
-import { EntrySchema, CreateEntryRequestSchema } from '@shared-schemas';
+import { EntrySchema, CreateEntryRequestSchema, UpdateEntryRequestSchema } from '@shared-schemas';
 
 const entriesRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -93,6 +93,25 @@ entriesRoutes.post('/', async (c) => {
       return c.json({ success: false, error: 'NO_VALID_GROUPS' }, 400);
     }
 
+    const eventRow = await c.env.DB.prepare(`
+      SELECT is_entry_accepting, entry_deadline FROM events WHERE id = ?
+    `).bind(requestData.event_id).first();
+
+    if (!eventRow) {
+      return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
+    }
+
+    const isEntryAccepting = Boolean((eventRow as any).is_entry_accepting);
+    const entryDeadline = new Date((eventRow as any).entry_deadline);
+    const nowTime = new Date();
+
+    if (!isEntryAccepting) {
+      return c.json({ success: false, error: 'ENTRY_NOT_ACCEPTING' }, 400);
+    }
+    if (nowTime >= entryDeadline) {
+      return c.json({ success: false, error: 'ENTRY_DEADLINE_PASSED' }, 400);
+    }
+
     const validation = await validateGroupLimit(c.env, requestData.event_id, validGroupIds);
     if (!validation.isValid) {
       if (validation.members && validation.members.length > 0) {
@@ -108,13 +127,19 @@ entriesRoutes.post('/', async (c) => {
     const now = new Date().toISOString();
     const createdEntries = [];
 
+    const maxRow = await c.env.DB.prepare(`
+      SELECT MAX(position) as maxpos FROM entries WHERE event_id = ?
+    `).bind(requestData.event_id).first();
+    let nextPosition = ((maxRow as any)?.maxpos || 0) + 1;
+
     for (const groupId of validGroupIds) {
       try {
         const newId = crypto.randomUUID();
         await c.env.DB.prepare(`
-          INSERT INTO entries (id, event_id, group_id, created_at)
-          VALUES (?, ?, ?, ?)
-        `).bind(newId, requestData.event_id, groupId, now).run();
+          INSERT INTO entries (id, event_id, group_id, position, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(newId, requestData.event_id, groupId, nextPosition, now, now).run();
+        nextPosition += 1;
         
         createdEntries.push({ id: newId, group_id: groupId });
       } catch (error: any) {
@@ -209,6 +234,39 @@ entriesRoutes.delete('/:id', async (c) => {
     return c.json({ success: true, message: 'Entry deleted successfully' });
   } catch (error) {
     console.error('Error deleting entry:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+entriesRoutes.put('/:id', async (c) => {
+  try {
+    const user = c.get('user');
+    const entryId = c.req.param('id');
+    const body = await c.req.json();
+    const { note } = UpdateEntryRequestSchema.parse(body);
+
+    const entry = await c.env.DB.prepare(`
+      SELECT group_id FROM entries WHERE id = ?
+    `).bind(entryId).first();
+
+    if (!entry) {
+      return c.json({ success: false, error: 'ENTRY_NOT_FOUND' }, 404);
+    }
+
+    const userGroupIds = await getUserGroupIds(c.env, user.id);
+    if (!userGroupIds.includes((entry as any).group_id)) {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE entries SET note = ? WHERE id = ?
+    `).bind(note, entryId).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
