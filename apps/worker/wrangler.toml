@@ -11,7 +11,7 @@ name = "mlm-dx-worker-dev"
 [env.production]
 name = "mlm-dx-worker"
 
-[[d1_databases]]
+[[env.production.d1_databases]]
 binding = "DB"
 database_name = "mlm-dx-db"
 database_id = "${D1_DATABASE_ID}"
