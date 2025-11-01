@@ -40,9 +40,16 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci
-      - name: Update wrangler.toml with D1_DATABASE_ID
+      - name: Update wrangler.toml with environment variables
         working-directory: apps/worker
         run: |
+          sed -i "s|NODE_ENV = \"\"|NODE_ENV = \"${{ vars.NODE_ENV }}\"|" wrangler.toml
+          sed -i "s|AUTH_URL = \"\"|AUTH_URL = \"${{ vars.AUTH_URL }}\"|" wrangler.toml
+          sed -i "s|AUTH_SECRET = \"\"|AUTH_SECRET = \"${{ secrets.AUTH_SECRET }}\"|" wrangler.toml
+          sed -i "s|GOOGLE_CLIENT_ID = \"\"|GOOGLE_CLIENT_ID = \"${{ secrets.GOOGLE_CLIENT_ID }}\"|" wrangler.toml
+          sed -i "s|GOOGLE_CLIENT_SECRET = \"\"|GOOGLE_CLIENT_SECRET = \"${{ secrets.GOOGLE_CLIENT_SECRET }}\"|" wrangler.toml
+          sed -i "s|CORS_ORIGIN = \"\"|CORS_ORIGIN = \"${{ vars.CORS_ORIGIN }}\"|" wrangler.toml
+          sed -i "s|FRONTEND_URL = \"\"|FRONTEND_URL = \"${{ vars.FRONTEND_URL }}\"|" wrangler.toml
           sed -i "s|database_id = \"\"|database_id = \"${{ vars.D1_DATABASE_ID }}\"|" wrangler.toml
       - name: Deploy to Cloudflare Workers with Wrangler
         uses: cloudflare/wrangler-action@v3.14.1
@@ -50,12 +57,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/worker
-          command: >
-            deploy --env production
-            --var NODE_ENV="${{ vars.NODE_ENV }}"
-            --var AUTH_URL="${{ vars.AUTH_URL }}"
-            --var AUTH_SECRET="${{ secrets.AUTH_SECRET }}"
-            --var GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}"
-            --var GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
-            --var CORS_ORIGIN="${{ vars.CORS_ORIGIN }}"
-            --var FRONTEND_URL="${{ vars.FRONTEND_URL }}"
+          command: deploy --env production
