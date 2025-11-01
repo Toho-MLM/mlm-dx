@@ -162,7 +162,7 @@ export default function UnavailablePeriodsPage() {
         <PageHeader rightActions={
           <Button disabled>追加</Button>
         } />
-        <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+        <div className="p-4 pt-0 mx-auto space-y-4">
           <Card>
             <CardContent className="p-4">
               <div className="space-y-2">
@@ -180,7 +180,7 @@ export default function UnavailablePeriodsPage() {
       <PageHeader rightActions={
         <Button onClick={() => setIsFormOpen(true)}>追加</Button>
       } />
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      <div className="p-4 pt-0 mx-auto space-y-4">
         <Card>
           <CardContent className="p-4">
             {periods.length === 0 ? (

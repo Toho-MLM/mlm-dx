@@ -35,7 +35,7 @@ memberRoutes.get('/', async (c) => {
       LEFT JOIN group_member_instruments gmi ON u.id = gmi.user_id
       LEFT JOIN groups g ON gmi.group_id = g.id AND g.is_active = TRUE
       GROUP BY u.id
-      ORDER BY u.name ASC
+      ORDER BY u.grade DESC, UPPER(SUBSTR(u.email, 1, 6)) ASC
     `).all();
 
     // Process the results to format groups and roles
@@ -289,16 +289,24 @@ memberRoutes.delete('/:id', async (c) => {
 // GET /members/select - メンバー選択用の軽量リスト
 memberRoutes.get('/select', async (c) => {
   try {
+    const user = c.get('user');
+    const currentUserId = user.id;
+
     const members = await c.env.DB.prepare(`
       SELECT 
         u.id,
         COALESCE(u.nickname, u.name) as name,
         u.nickname,
-        u.instruments
+        u.instruments,
+        u.grade,
+        UPPER(SUBSTR(u.email, 1, 6)) as student_number
       FROM users u
       WHERE u.name IS NOT NULL
-      ORDER BY COALESCE(u.nickname, u.name) ASC
-    `).all();
+      ORDER BY 
+        CASE WHEN u.id = ? THEN 0 ELSE 1 END,
+        u.grade DESC,
+        UPPER(SUBSTR(u.email, 1, 6)) ASC
+    `).bind(currentUserId).all();
 
     const processedMembers = members.results.map((member: any) => {
       const displayName = member.nickname || member.name;

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircleIcon, CalendarPlusIcon, CalendarX2 } from 'lucide-react';
 import { ReservationState, reservationStateColors } from '@/app/types';
@@ -16,13 +16,13 @@ const AboutPage = () => {
   }, []);
 
   if (!isClient) {
-    return null; // クライアントサイドでのみレンダリング
+    return null;
   }
 
   return (
     <>
       <PageHeader />
-      <div className="p-4 mx-auto">
+      <div className="p-4 pt-0 mx-auto">
       <Card className="pt-4">
         <CardContent>
           <h3 className="text-lg font-semibold">予約の状態について</h3>
