@@ -331,7 +331,6 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
             <Input
               type="number"
               min="1"
-              placeholder="10"
               value={songLimit}
               onChange={(e) => setSongLimit(e.target.value)}
             />
