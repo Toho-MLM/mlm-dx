@@ -131,7 +131,14 @@ class ApiClient {
 
   async createReservation(data: CreateReservationRequest): Promise<{ success: boolean; error?: string }> {
     SharedSchemas.CreateReservationRequestSchema.parse(data)
-    return httpClient.post<{ success: boolean; error?: string }>('/reservations', data)
+    try {
+      return await httpClient.post<{ success: boolean; error?: string }>('/reservations', data)
+    } catch (error) {
+      if (error instanceof Error) {
+        return { success: false, error: error.message }
+      }
+      return { success: false, error: 'UNKNOWN_ERROR' }
+    }
   }
 
   async cancelReservation(reservationId: string, admin: boolean = false): Promise<ApiResponse<void>> {

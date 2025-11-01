@@ -407,7 +407,9 @@ export default function Page() {
     endDate.setHours(hour, minute)
     const minEndTime = addMinutes(startDate, 10)
     const maxEndTime = addHours(startDate, 4)
-    return isBefore(endDate, minEndTime) || endDate.getTime() > maxEndTime.getTime()
+    if (isBefore(endDate, minEndTime)) return true
+    if (endDate.getTime() > maxEndTime.getTime()) return true
+    return false
   }
 
   const isReservationButtonDisabled = () => {
@@ -925,7 +927,20 @@ export default function Page() {
                     </SelectTrigger>
                     <SelectContent className="max-h-[200px]">
                       <ScrollArea>
-                        {generateHourOptions().filter(hour => !isEndTimeDisabled(hour + 1, 0)).map((hour) => (
+                        {generateHourOptions().filter(hour => {
+                          if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return false
+                          const startDate = new Date(reservationDraft.date)
+                          startDate.setHours(reservationDraft.startHour, reservationDraft.startMinute)
+                          const minEndTime = addMinutes(startDate, 10)
+                          const maxEndTime = addHours(startDate, 4)
+                          const endDateAt0 = new Date(reservationDraft.date)
+                          endDateAt0.setHours(hour, 0)
+                          const endDateAt55 = new Date(reservationDraft.date)
+                          endDateAt55.setHours(hour, 55)
+                          const hasValidMinute = (!isBefore(endDateAt0, minEndTime) && endDateAt0.getTime() <= maxEndTime.getTime()) ||
+                                                 (!isBefore(endDateAt55, minEndTime) && endDateAt55.getTime() <= maxEndTime.getTime())
+                          return hasValidMinute
+                        }).map((hour) => (
                           <SelectItem key={hour} value={hour.toString()}>
                             {hour.toString().padStart(2, '0')}
                           </SelectItem>

@@ -8,6 +8,11 @@ crons = ["0 15 * * *"]
 [env.development]
 name = "mlm-dx-worker-dev"
 
+[[env.development.d1_databases]]
+binding = "DB"
+database_name = "mlm-dx-db"
+database_id = ""
+
 [env.production]
 name = "mlm-dx-worker"
 
@@ -24,3 +29,18 @@ FRONTEND_URL = ""
 binding = "DB"
 database_name = "mlm-dx-db"
 database_id = ""
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
