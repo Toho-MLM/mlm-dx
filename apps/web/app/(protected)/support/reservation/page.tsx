@@ -75,7 +75,7 @@ const AboutPage = () => {
             <li>内容を確認してキャンセルする</li>
           </ol>
           <p className="ml-2">
-            キャンセルできるのは <Badge className={reservationStateColors[ReservationState.PENDING]}>保留中</Badge> と <Badge className={reservationStateColors[ReservationState.CONFIRMED]}>確定</Badge> の予約のみです。予約者本人に加えて、同じバンドのメンバーもキャンセルできます。
+            キャンセルできるのは <Badge className={reservationStateColors[ReservationState.PENDING]}>保留中</Badge> と <Badge className={reservationStateColors[ReservationState.CONFIRMED]}>確定</Badge> の予約のみです。団体予約の場合は、同じバンドのメンバーもキャンセルできます。
           </p>
           <h3 className="mt-4 text-lg font-semibold">自動処理の流れ</h3>
           <p className="ml-2">

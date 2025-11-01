@@ -4,6 +4,7 @@ import type { Context } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { z } from 'zod';
 import { generateState, generateNonce, generateCodeVerifier, generateCodeChallenge, createGoogleAuthUrl, exchangeCodeForToken, getGoogleUserInfo, verifyGoogleIdToken, generateJWT, verifyJWT } from './auth';
 import { userRoutes } from './routes/users';
 import { groupRoutes } from './routes/groups';
@@ -282,6 +283,82 @@ app.post('/auth/signout', async (c) => {
   } catch (error) {
     console.error('Signout error:', error);
     return c.json({ success: false, error: 'SIGNOUT_FAILED' }, 500);
+  }
+});
+
+app.get('/auth/check-first-user', async (c) => {
+  try {
+    const userCount = await c.env.DB.prepare(
+      'SELECT COUNT(*) as count FROM users'
+    ).first<{ count: number }>();
+
+    const count = userCount?.count ?? 0;
+    return c.json({ canCreate: count === 0 });
+  } catch (error) {
+    console.error('Error checking first user:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+app.post('/auth/create-first-user', async (c) => {
+  try {
+    const userCount = await c.env.DB.prepare(
+      'SELECT COUNT(*) as count FROM users'
+    ).first<{ count: number }>();
+
+    const count = userCount?.count ?? 0;
+    if (count > 0) {
+      return c.json({ success: false, error: 'USERS_ALREADY_EXIST' }, 403);
+    }
+
+    const requestData = z.object({
+      name: z.string().min(1),
+      email: z.string().email(),
+      grade: z.number().min(1).max(6),
+    }).parse(await c.req.json());
+
+    const normalizedEmail = requestData.email.trim().toLowerCase();
+
+    const existing = await c.env.DB.prepare(
+      'SELECT id FROM users WHERE lower(email) = lower(?)'
+    ).bind(normalizedEmail).first();
+    if (existing) {
+      return c.json({ success: false, error: 'EMAIL_ALREADY_EXISTS' }, 409);
+    }
+
+    const now = new Date().toISOString();
+    const newId = crypto.randomUUID();
+    
+    await c.env.DB.prepare(`
+      INSERT INTO users (id, name, nickname, email, grade, instruments, role, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      newId,
+      requestData.name,
+      null,
+      normalizedEmail,
+      requestData.grade,
+      JSON.stringify([]),
+      'ADM',
+      now,
+      now
+    ).run();
+    
+    return c.json({ success: true });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ success: false, error: 'INVALID_REQUEST_DATA' }, 400);
+    }
+    
+    if (error && typeof error === 'object' && 'message' in error) {
+      const errorMessage = String(error.message);
+      if (errorMessage.includes('UNIQUE constraint failed') || errorMessage.includes('email')) {
+        return c.json({ success: false, error: 'EMAIL_ALREADY_EXISTS' }, 409);
+      }
+    }
+    
+    console.error('Error creating first user:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
