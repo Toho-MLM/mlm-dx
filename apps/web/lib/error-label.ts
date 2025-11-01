@@ -18,6 +18,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   // グループ・メンバー関連エラー
   'INVALID_PARAMETERS': '無効なパラメータです。',
   'EMAIL_ALREADY_EXISTS': 'このメールアドレスは既に登録されています。',
+  'USERS_ALREADY_EXIST': '既にユーザーが存在します。',
   'MEMBER_NOT_FOUND': 'メンバーが見つかりません。',
   'NO_VALID_GROUPS': '有効なグループがありません。',
   

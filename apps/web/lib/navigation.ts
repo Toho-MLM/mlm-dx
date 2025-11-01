@@ -2,6 +2,7 @@ export interface NavigationItem {
   href: string;
   title: string;
   iconName: string;
+  adminOnly?: boolean;
 }
 
 export interface NavigationGroup {
@@ -14,7 +15,8 @@ export const navigationConfig: NavigationGroup[] = [
     label: "ホール予約",
     items: [
       { iconName: "CalendarIcon", href: "/reservation", title: "予約表" },
-      { iconName: "HelpCircleIcon", href: "/support/reservation", title: "予約の使い方" }
+      { iconName: "HelpCircleIcon", href: "/support/reservation", title: "予約の使い方" },
+      { iconName: "BanIcon", href: "/admin/unavailable-periods", title: "予約不可期間設定", adminOnly: true }
     ]
   },
   {
@@ -48,6 +50,7 @@ export const additionalPages: Record<string, string> = {
   '/event': 'イベント管理',
   '/event/setlist': 'セットリスト管理',
   '/event/timeline': 'タイムライン',
+  '/admin/unavailable-periods': '予約不可期間設定',
 };
 
 export const getPageTitle = (pathname: string): string => {

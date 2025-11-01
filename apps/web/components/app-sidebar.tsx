@@ -3,9 +3,10 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from "@/app/context/AuthContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarFooter, useSidebar } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { LogOutIcon, CalendarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, HelpCircleIcon, ListMusicIcon, SpotlightIcon, ListIcon } from "lucide-react"
+import { LogOutIcon, CalendarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, HelpCircleIcon, ListMusicIcon, SpotlightIcon, ListIcon, BanIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { navigationConfig } from "@/lib/navigation";
+import { isAdmin } from "@shared-schemas";
 
 const iconMap = {
   CalendarIcon,
@@ -16,6 +17,7 @@ const iconMap = {
   ListMusicIcon,
   SpotlightIcon,
   ListIcon,
+  BanIcon,
 } as const;
 
 export function AppSidebar() {
@@ -43,6 +45,9 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item, idx) => {
+                  if (item.adminOnly && (!user || !isAdmin(user.role))) {
+                    return null;
+                  }
                   const IconComponent = iconMap[item.iconName as keyof typeof iconMap];
                   return (
                     <Link key={idx} href={item.href}>

@@ -25,9 +25,23 @@ type TimelineItem = SharedSchemas.TimelineItem
 type GetTimelineResponse = SharedSchemas.GetTimelineResponse
 type UpdateTimelineRequest = SharedSchemas.UpdateTimelineRequest
 type CreateEntryRequest = SharedSchemas.CreateEntryRequest
+type UnavailablePeriod = SharedSchemas.UnavailablePeriod
+type CreateUnavailablePeriodRequest = SharedSchemas.CreateUnavailablePeriodRequest
 type ApiResponse<T> = SharedSchemas.ApiResponse<T>
 
 class ApiClient {
+
+  async checkFirstUser(): Promise<{ canCreate: boolean }> {
+    return httpClient.get<{ canCreate: boolean }>('/auth/check-first-user')
+  }
+
+  async createFirstUser(data: {
+    name: string;
+    email: string;
+    grade: number;
+  }): Promise<ApiResponse<void>> {
+    return httpClient.post<ApiResponse<void>>('/auth/create-first-user', data)
+  }
 
   // ユーザー関連
   async getCurrentUserData(): Promise<ApiResponse<User>> {
@@ -120,8 +134,22 @@ class ApiClient {
     return httpClient.post<{ success: boolean; error?: string }>('/reservations', data)
   }
 
-  async cancelReservation(reservationId: string): Promise<ApiResponse<void>> {
-    return httpClient.post<ApiResponse<void>>(`/reservations/${reservationId}/cancel`)
+  async cancelReservation(reservationId: string, admin: boolean = false): Promise<ApiResponse<void>> {
+    const params = admin ? '?admin=true' : '';
+    return httpClient.post<ApiResponse<void>>(`/reservations/${reservationId}/cancel${params}`)
+  }
+
+  async getUnavailablePeriods(): Promise<ApiResponse<UnavailablePeriod[]>> {
+    return httpClient.get<ApiResponse<UnavailablePeriod[]>>('/reservations/unavailable')
+  }
+
+  async createUnavailablePeriod(data: CreateUnavailablePeriodRequest): Promise<ApiResponse<void>> {
+    SharedSchemas.CreateUnavailablePeriodRequestSchema.parse(data)
+    return httpClient.post<ApiResponse<void>>('/reservations/unavailable', data)
+  }
+
+  async deleteUnavailablePeriod(id: string): Promise<ApiResponse<void>> {
+    return httpClient.delete<ApiResponse<void>>(`/reservations/unavailable/${id}`)
   }
 
   // アーカイブ関連

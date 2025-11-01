@@ -15,16 +15,7 @@ export default function AdminManualPage() {
   return (
     <>
       <PageHeader />
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>管理者ガイド</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-gray-700">
-            <p>最終更新日: 2025-10-31</p>
-          </CardContent>
-        </Card>
-
+      <div className="max-w-4xl mx-auto p-4 pt-0 space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>はじめに</CardTitle>
