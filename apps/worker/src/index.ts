@@ -39,9 +39,12 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use('*', logger());
 app.use('*', cors({
-  origin: (origin: string, c: Context) => {
-    const allowedOrigins = c.env.CORS_ORIGIN.split(',');
-    return allowedOrigins.includes(origin) ? origin : '';
+  origin: (origin: string | undefined, c: Context) => {
+    if (!origin) {
+      return null;
+    }
+    const allowedOrigins = c.env.CORS_ORIGIN.split(',').map((o: string) => o.trim());
+    return allowedOrigins.includes(origin) ? origin : null;
   },
   allowHeaders: ['Content-Type', 'Authorization'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
