@@ -2,8 +2,9 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { isUserInGroup, getUserGroupIds } from './groups';
-import { CreateReservationRequestSchema, validateReservationTime } from '../../../../lib/shared-schemas';
+import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema } from '../../../../lib/shared-schemas';
 import { processReservationState } from '../utils/reservation-processor';
+import { requireAdmin } from '../utils/admin';
 
 const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -119,6 +120,19 @@ reservationRoutes.post('/', async (c) => {
       }
     }
 
+    const unavailablePeriods = await c.env.DB.prepare(`
+      SELECT start_datetime, end_datetime
+      FROM unavailable_periods
+      WHERE start_datetime < ? AND end_datetime > ?
+    `).bind(end_time, start_time).all();
+
+    if (unavailablePeriods.results.length > 0) {
+      return c.json({
+        success: false,
+        error: 'BLOCKED_PERIOD_CONFLICT'
+      }, 400);
+    }
+
     const now = new Date().toISOString();
     const reservationId = crypto.randomUUID();
 
@@ -170,11 +184,118 @@ reservationRoutes.post('/', async (c) => {
   }
 });
 
+reservationRoutes.get('/unavailable', async (c) => {
+  try {
+    const unavailablePeriods = await c.env.DB.prepare(`
+      SELECT id, start_datetime, end_datetime, reason, created_at, updated_at
+      FROM unavailable_periods
+      ORDER BY start_datetime ASC
+    `).all();
+
+    const validatedPeriods = unavailablePeriods.results.map(period => 
+      UnavailablePeriodSchema.parse(period)
+    );
+
+    return c.json({ success: true, data: validatedPeriods });
+  } catch (error) {
+    console.error('Error fetching unavailable periods:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+reservationRoutes.post('/unavailable', async (c) => {
+  try {
+    const user = c.get('user');
+    requireAdmin(user.role);
+
+    const requestData = await c.req.json();
+    const validatedData = CreateUnavailablePeriodRequestSchema.parse(requestData);
+    const { start_datetime, end_datetime, reason } = validatedData;
+
+    const conflictingReservations = await c.env.DB.prepare(`
+      SELECT id, start_time, end_time
+      FROM reservations
+      WHERE state IN ('PENDING', 'CONFIRMED')
+        AND start_time < ? AND end_time > ?
+    `).bind(end_datetime, start_datetime).all();
+
+    if (conflictingReservations.results.length > 0) {
+      return c.json({
+        success: false,
+        error: 'RESERVATION_CONFLICT'
+      }, 400);
+    }
+
+    const now = new Date().toISOString();
+    const periodId = crypto.randomUUID();
+
+    await c.env.DB.prepare(`
+      INSERT INTO unavailable_periods (id, start_datetime, end_datetime, reason, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(periodId, start_datetime, end_datetime, reason || null, now, now).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error creating unavailable period:', error);
+    
+    if (error instanceof Error) {
+      if (error.message === 'INSUFFICIENT_PERMISSIONS') {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
+    
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+reservationRoutes.delete('/unavailable/:id', async (c) => {
+  try {
+    const user = c.get('user');
+    requireAdmin(user.role);
+
+    const periodId = c.req.param('id');
+
+    const period = await c.env.DB.prepare(
+      'SELECT id FROM unavailable_periods WHERE id = ?'
+    ).bind(periodId).first();
+
+    if (!period) {
+      return c.json({ success: false, error: 'UNAVAILABLE_PERIOD_NOT_FOUND' }, 404);
+    }
+
+    await c.env.DB.prepare(
+      'DELETE FROM unavailable_periods WHERE id = ?'
+    ).bind(periodId).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting unavailable period:', error);
+    
+    if (error instanceof Error) {
+      if (error.message === 'INSUFFICIENT_PERMISSIONS') {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
+    
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
 // cancel_reservation - Cancel a reservation
 reservationRoutes.post('/:id/cancel', async (c) => {
   try {
     const user = c.get('user');
     const reservationId = c.req.param('id');
+    const adminParam = c.req.query('admin');
+    const isAdminMode = adminParam === 'true';
+
+    if (isAdminMode) {
+      try {
+        requireAdmin(user.role);
+      } catch (error) {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
 
     const reservation = await c.env.DB.prepare(
       'SELECT * FROM reservations WHERE id = ?'
@@ -184,21 +305,39 @@ reservationRoutes.post('/:id/cancel', async (c) => {
       return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     }
 
-    // Check if reservation is cancellable by this user
-    const cancellable = await isReservationCancellable(c.env, user.id, reservation as any);
-    if (!cancellable) {
-      return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_CANCELLED' }, 403);
+    if (isAdminMode) {
+      if (!['PENDING', 'CONFIRMED'].includes(reservation.state as string)) {
+        return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_CANCELLED' }, 400);
+      }
+
+      const now = new Date().toISOString();
+
+      await c.env.DB.prepare(
+        'UPDATE reservations SET state = ?, updated_at = ? WHERE id = ?'
+      ).bind('DECLINED', now, reservationId).run();
+
+      return c.json({ success: true });
+    } else {
+      const cancellable = await isReservationCancellable(c.env, user.id, reservation as any);
+      if (!cancellable) {
+        return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_CANCELLED' }, 403);
+      }
+
+      const now = new Date().toISOString();
+
+      await c.env.DB.prepare(
+        'UPDATE reservations SET state = ?, updated_at = ? WHERE id = ?'
+      ).bind('CANCELLED', now, reservationId).run();
+
+      return c.json({ success: true });
     }
-
-    const now = new Date().toISOString();
-
-    await c.env.DB.prepare(
-      'UPDATE reservations SET state = ?, updated_at = ? WHERE id = ?'
-    ).bind('CANCELLED', now, reservationId).run();
-
-    return c.json({ success: true });
   } catch (error) {
     console.error('Error cancelling reservation:', error);
+    
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+    
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });

@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge"
 import { Music, Users, FileText } from 'lucide-react'
 import { apiClient } from '@/lib/api'
 import { Entry } from '@/app/types'
-import Link from 'next/link'
 import { toast } from 'sonner'
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -19,8 +18,6 @@ interface EntriesListProps {
 export function EntriesList({ eventId, eventTitle }: EntriesListProps) {
   const [entries, setEntries] = useState<Entry[]>([])
   const [loading, setLoading] = useState(true)
-  const [isSetlistDialogOpen, setIsSetlistDialogOpen] = useState(false)
-  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const [groups, setGroups] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {

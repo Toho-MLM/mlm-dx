@@ -142,7 +142,6 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
 
   const availableMembers = useMemo(() => {
     return memberOptions
-      .sort((a, b) => a.name.localeCompare(b.name))
       .filter(m => !bandMembers.some(bm => bm.id === m.id))
       .filter(m => m.id != null);
   }, [memberOptions, bandMembers]);

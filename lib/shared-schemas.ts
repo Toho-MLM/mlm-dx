@@ -98,6 +98,15 @@ export const EventSchema = z.object({
   updated_at: z.string(),
 });
 
+export const UnavailablePeriodSchema = z.object({
+  id: z.string(),
+  start_datetime: z.string(),
+  end_datetime: z.string(),
+  reason: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
 // リクエストスキーマ
 export const AssignmentMapSchema = z.record(z.string(), z.string());
 
@@ -266,6 +275,18 @@ export const UpdateEventRequestSchema = z.object({
   song_limit: z.number().min(0),
 });
 
+export const CreateUnavailablePeriodRequestSchema = z.object({
+  start_datetime: z.string(),
+  end_datetime: z.string(),
+  reason: z.string().optional(),
+}).refine((data) => {
+  const start = new Date(data.start_datetime);
+  const end = new Date(data.end_datetime);
+  return end > start;
+}, {
+  message: "終了日時は開始日時より後である必要があります。"
+});
+
 export const EntrySchema = z.object({
   id: z.string(),
   event_id: z.string(),
@@ -402,6 +423,8 @@ export type UpdateArchiveRequest = z.infer<typeof UpdateArchiveRequestSchema>;
 export type Event = z.infer<typeof EventSchema>;
 export type CreateEventRequest = z.infer<typeof CreateEventRequestSchema>;
 export type UpdateEventRequest = z.infer<typeof UpdateEventRequestSchema>;
+export type UnavailablePeriod = z.infer<typeof UnavailablePeriodSchema>;
+export type CreateUnavailablePeriodRequest = z.infer<typeof CreateUnavailablePeriodRequestSchema>;
 export type Entry = z.infer<typeof EntrySchema>;
 export type CreateEntryRequest = z.infer<typeof CreateEntryRequestSchema>;
 export type UpdateEntryRequest = z.infer<typeof UpdateEntryRequestSchema>;
