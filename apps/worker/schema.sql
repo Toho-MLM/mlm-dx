@@ -2,6 +2,7 @@
 -- Unified schema for Cloudflare D1 (SQLite)
 
 -- Drop existing tables (for reset functionality)
+DROP TABLE IF EXISTS unavailable_periods;
 DROP TABLE IF EXISTS archives;
 DROP TABLE IF EXISTS setlist_items;
 DROP TABLE IF EXISTS entries;
@@ -104,4 +105,14 @@ CREATE TABLE IF NOT EXISTS setlist_items (
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS unavailable_periods (
+  id TEXT PRIMARY KEY,
+  start_datetime DATETIME NOT NULL,
+  end_datetime DATETIME NOT NULL,
+  reason TEXT,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  CHECK (end_datetime > start_datetime)
 );

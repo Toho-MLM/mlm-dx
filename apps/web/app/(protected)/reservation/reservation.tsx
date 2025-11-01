@@ -30,6 +30,25 @@ type GroupOption = {
   id: string;
   name: string;
 }
+
+type CalendarEvent = {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  allDay: boolean;
+  resource: {
+    type: 'reservation' | 'event' | 'unavailable';
+    reservationId?: string;
+    eventId?: string;
+    periodId?: string;
+    reason?: string | null;
+    user_name?: string;
+    group_name?: string;
+    state?: ReservationState;
+    cancellable?: number;
+  };
+}
 import { apiClient } from '@/lib/api'
 import TimeGrid from 'react-big-calendar/lib/TimeGrid'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -132,8 +151,7 @@ export function ReservationPage() {
     endMinute: null as number | null,
   })
   const [isReservationFormOpen, setIsReservationFormOpen] = useState(false)
-  const [isCancelFormOpen, setIsCancelFormOpen] = useState(false)
-  const [selectedReservation, setSelectedReservation] = useState<ReservationData | null>(null)
+  const [selectedReservation, setSelectedReservation] = useState<CalendarEvent | null>(null)
   const [openPicker, setOpenPicker] = useState<string | null>(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
@@ -141,11 +159,12 @@ export function ReservationPage() {
   const [isSending, setIsSending] = useState(false)
   const [currentView, setCurrentView] = useState<View>(Views.WEEK)
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
-  const [popoverPosition, setPopoverPosition] = useState<{ y: number; x: number } | null>(null)
-  const [reservationData, setReservationData] = useState<ReservationData[]>([])
+  const [reservationData, setReservationData] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [myGroups, setMyGroups] = useState<GroupOption[]>([])
   const [isGroupsLoading, setIsGroupsLoading] = useState(false)
+  const [events, setEvents] = useState<any[]>([])
+  const [unavailablePeriods, setUnavailablePeriods] = useState<any[]>([])
   const { user, loading: authLoading } = useAuth();
   const router = useRouter()
 
@@ -161,14 +180,72 @@ export function ReservationPage() {
         return
       }
       try {
-        const reservationsResponse = await apiClient.getReservations();
+        const [reservationsResponse, eventsResponse, unavailablePeriodsResponse] = await Promise.all([
+          apiClient.getReservations(),
+          apiClient.getEvents(),
+          apiClient.getUnavailablePeriods()
+        ]);
+        
         if (reservationsResponse.success && reservationsResponse.data) {
-          const formattedData: ReservationData[] = (reservationsResponse.data as any[]).map((item: any) => ({
-            ...item,
+          const formattedData: CalendarEvent[] = (reservationsResponse.data as any[]).map((item: any) => ({
+            id: item.id,
+            title: item.group_name || item.user_name || '予約',
             start: new Date(item.start_time),
             end: new Date(item.end_time),
+            allDay: false,
+            resource: {
+              type: 'reservation',
+              reservationId: item.id,
+              user_name: item.user_name,
+              group_name: item.group_name,
+              state: item.state,
+              cancellable: item.cancellable,
+            },
           }));
           setReservationData(formattedData);
+        }
+
+        if (eventsResponse.success && eventsResponse.data) {
+          const eventItems: CalendarEvent[] = (eventsResponse.data as any[]).map((event: any) => {
+            const eventDate = new Date(event.event_date);
+            const startDate = startOfDay(eventDate);
+            const endDate = new Date(startDate);
+            endDate.setHours(23, 59, 59, 999);
+            
+            return {
+              id: `event-${event.id}`,
+              title: event.title,
+              start: startDate,
+              end: endDate,
+              allDay: true,
+              resource: {
+                type: 'event',
+                eventId: event.id,
+              },
+            };
+          });
+          setEvents(eventItems);
+        }
+
+        if (unavailablePeriodsResponse.success && unavailablePeriodsResponse.data) {
+          const periodItems: CalendarEvent[] = (unavailablePeriodsResponse.data as any[]).map((period: any) => {
+            const start = new Date(period.start_datetime);
+            const end = new Date(period.end_datetime);
+            
+            return {
+                id: `unavailable-${period.id}`,
+              title: `予約不可`,
+                start: start,
+                end: end,
+                allDay: false,
+              resource: {
+                type: 'unavailable',
+                periodId: period.id,
+                reason: period.reason,
+              },
+            };
+          });
+          setUnavailablePeriods(periodItems);
         }
       } finally {
         setLoading(false)
@@ -282,20 +359,21 @@ export function ReservationPage() {
   const handleCancel = async (id: string) => {
     setIsSending(true)
     try {
-      const response = await apiClient.cancelReservation(id);
+      const response = await apiClient.cancelReservation(id, isAdminMode);
       
       if (response.success) {
         console.log('Reservation cancelled successfully')
+        setIsEventDetailOpen(false)
         setSelectedReservation(null)
-        setIsCancelFormOpen(false)
         await fetchReservations()
+        toast.success('予約をキャンセルしました')
       } else {
         toast.error('データの送信中にエラーが発生しました', {
           description: translateError(response.error || 'UNKNOWN_ERROR')
         })
       }
     } catch (err) {
-      toast.error('予約の作成中にエラーが発生しました', {
+      toast.error('予約のキャンセル中にエラーが発生しました', {
         description: translateError((err as Error).message)
       })
     } finally {
@@ -303,16 +381,9 @@ export function ReservationPage() {
     }
   }
 
-  const handleSelectEvent = (event: ReservationData, e: React.SyntheticEvent<HTMLElement>) => {
-    if (calendarRef.current) {
-      const calendarRect = calendarRef.current.getBoundingClientRect()
-      const mouseEvent = e.nativeEvent as MouseEvent
-      const relativeX = mouseEvent.clientX - calendarRect.left
-      const relativeY = mouseEvent.clientY - calendarRect.top
-      setPopoverPosition({ y: relativeY, x: relativeX })
-    }
-    setIsEventDetailOpen(true)
+  const handleSelectEvent = (event: CalendarEvent, e: React.SyntheticEvent<HTMLElement>) => {
     setSelectedReservation(event)
+    setIsEventDetailOpen(true)
   }
 
   const generateHourOptions = () => {
@@ -377,15 +448,9 @@ export function ReservationPage() {
     setCurrentView(view)
   }
 
-  const closePopover = () => {
-    setIsEventDetailOpen(false)
-    setSelectedReservation(null)
-    setPopoverPosition(null)
-  }
-
   const handleRangeChange = () => {
     setIsEventDetailOpen(false)
-    setPopoverPosition(null)
+    setSelectedReservation(null)
   }
 
   const fetchMyGroups = async () => {
@@ -407,15 +472,72 @@ export function ReservationPage() {
 
   const fetchReservations = async () => {
     try {
-      const reservationsResponse = await apiClient.getReservations();
-
+      const [reservationsResponse, eventsResponse, unavailablePeriodsResponse] = await Promise.all([
+        apiClient.getReservations(),
+        apiClient.getEvents(),
+        apiClient.getUnavailablePeriods()
+      ]);
+      
       if (reservationsResponse.success && reservationsResponse.data) {
-        const formattedData: ReservationData[] = (reservationsResponse.data as any[]).map((item: any) => ({
-          ...item,
+        const formattedData: CalendarEvent[] = (reservationsResponse.data as any[]).map((item: any) => ({
+          id: item.id,
+          title: item.group_name || item.user_name || '予約',
           start: new Date(item.start_time),
           end: new Date(item.end_time),
+          allDay: false,
+          resource: {
+            type: 'reservation',
+            reservationId: item.id,
+            user_name: item.user_name,
+            group_name: item.group_name,
+            state: item.state,
+            cancellable: item.cancellable,
+          },
         }));
         setReservationData(formattedData);
+      }
+
+      if (eventsResponse.success && eventsResponse.data) {
+        const eventItems: CalendarEvent[] = (eventsResponse.data as any[]).map((event: any) => {
+          const eventDate = new Date(event.event_date);
+          const startDate = startOfDay(eventDate);
+          const endDate = new Date(startDate);
+          endDate.setHours(23, 59, 59, 999);
+          
+          return {
+            id: `event-${event.id}`,
+            title: event.title,
+            start: startDate,
+            end: endDate,
+            allDay: true,
+            resource: {
+              type: 'event',
+              eventId: event.id,
+            },
+          };
+        });
+        setEvents(eventItems);
+      }
+
+      if (unavailablePeriodsResponse.success && unavailablePeriodsResponse.data) {
+        const periodItems: CalendarEvent[] = (unavailablePeriodsResponse.data as any[]).map((period: any) => {
+          const start = new Date(period.start_datetime);
+          const end = new Date(period.end_datetime);
+          
+          return {
+              id: `unavailable-${period.id}`,
+              title: `予約不可${period.reason ? ': ' + period.reason : ''}`,
+              start: start,
+              end: end,
+              allDay: false,
+            resource: {
+              type: 'unavailable',
+              periodId: period.id,
+              reason: period.reason,
+            },
+          };
+        });
+        setUnavailablePeriods(periodItems);
       }
     } catch (err) {
       console.error('Failed to refetch reservation data:', err);
@@ -447,18 +569,11 @@ export function ReservationPage() {
     await fetchReservations()
   }
 
-  const handleCancelReservation = () => {
-    setIsCancelFormOpen(true)
-  }
-
-  
-
   return (
     <>
       <ReservationPageHeader 
         onAddReservation={handleAddReservation}
         onRefresh={handleRefresh}
-        onCancelReservation={handleCancelReservation}
         onAdminToggle={handleAdminToggle}
       />
       <div className="h-[calc(100vh-4rem)] flex flex-col" ref={calendarRef} style={{ position: 'relative' }}>
@@ -518,10 +633,11 @@ export function ReservationPage() {
             ) : (
               <BigCalendar
                 localizer={localizer}
-                events={reservationData}
-                 titleAccessor={(event) => event.group_name || event.user_name || '予約'}
-                 startAccessor={(event) => event.start}
-                 endAccessor={(event) => event.end}
+                events={[...reservationData, ...events, ...unavailablePeriods]}
+                 titleAccessor={(event: CalendarEvent) => event.title}
+                 startAccessor={(event: any) => event.start}
+                 endAccessor={(event: any) => event.end}
+                 allDayAccessor={(event: any) => event.allDay || false}
                 onSelectEvent={handleSelectEvent}
                 views={customViews}
                 messages={messages}
@@ -539,62 +655,119 @@ export function ReservationPage() {
                   dayRangeHeaderFormat: (dates) => format(dates.start, 'yyyy年M月d日', { locale: jaLocale }) + ' 〜 ' + format(dates.end, 'M月d日', { locale: jaLocale }),
                   eventTimeRangeFormat: (event) => format(event.start, 'H:mm', { locale: jaLocale }) + ' 〜 ' + format(event.end, 'H:mm', { locale: jaLocale })
                 }}
-                eventPropGetter={(event) => ({
-                  style: {
-                    backgroundColor: (() => {
-                      switch (event.state) {
-                        case ReservationState.PENDING:
-                          return '#FFE599';
-                        case ReservationState.DECLINED:
-                          return '#F9C6C0';
-                        case ReservationState.CONFIRMED:
-                          return '#C8E6CD';
-                        default:
-                          return '#D5D8DC';
+                eventPropGetter={(event: CalendarEvent) => {
+                  if (event.resource.type === 'event') {
+                    return {
+                      style: {
+                        backgroundColor: '#4A90E2',
+                        color: 'white',
+                        border: '2px solid #357ABD'
                       }
-                    })(),
-                    color: 'black',
-                    border: '2px solid ' + (() => {
-                      switch (event.state) {
-                        case ReservationState.PENDING:
-                          return '#F1C40F';
-                        case ReservationState.DECLINED:
-                          return '#E74C3C';
-                        case ReservationState.CONFIRMED:
-                          return '#2ECC71';
-                        default:
-                          return '#BDC3C7';
-                      }
-                    })()
+                    };
                   }
-                })}
+                  if (event.resource.type === 'unavailable') {
+                    return {
+                      style: {
+                        backgroundColor: '#FF6B6B',
+                        color: 'white',
+                        border: '2px solid #CC5555'
+                      }
+                    };
+                  }
+                  return {
+                    style: {
+                      backgroundColor: (() => {
+                        switch (event.resource.state) {
+                          case ReservationState.PENDING:
+                            return '#FFE599';
+                          case ReservationState.DECLINED:
+                            return '#F9C6C0';
+                          case ReservationState.CONFIRMED:
+                            return '#C8E6CD';
+                          default:
+                            return '#D5D8DC';
+                        }
+                      })(),
+                      color: 'black',
+                      border: '2px solid ' + (() => {
+                        switch (event.resource.state) {
+                          case ReservationState.PENDING:
+                            return '#F1C40F';
+                          case ReservationState.DECLINED:
+                            return '#E74C3C';
+                          case ReservationState.CONFIRMED:
+                            return '#2ECC71';
+                          default:
+                            return '#BDC3C7';
+                        }
+                      })()
+                    }
+                  };
+                }}
                 onRangeChange={handleRangeChange}
               />
             )}
           </CardContent>
         </Card>
       </div>
-      {isEventDetailOpen && selectedReservation && popoverPosition && (
-        <div
-          className="absolute bg-white border rounded-lg shadow-lg p-4 max-w-xs"
-          style={{
-            top: popoverPosition.y,
-            left: popoverPosition.x,
-            transform: 'translate(-50%, 0%)',
-            zIndex: 10
-          }}
-        >
-          <div>
+      <Dialog open={isEventDetailOpen && selectedReservation !== null} onOpenChange={(open) => {
+        setIsEventDetailOpen(open)
+        if (!open) {
+          setSelectedReservation(null)
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedReservation?.resource.type === 'unavailable' ? '予約禁止詳細' : 
+               selectedReservation?.resource.type === 'event' ? 'イベント詳細' : 
+               '予約詳細'}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedReservation && (
+            <div className="space-y-4">
+              {selectedReservation.resource.type === 'unavailable' ? (
+                <div className="space-y-2">
+                  <p><strong>時間</strong> {format(selectedReservation.start, 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'M月d日 H:mm', { locale: jaLocale })}</p>
+                  {selectedReservation.resource.reason && (
+                    <p><strong>理由</strong> {selectedReservation.resource.reason}</p>
+                  )}
+                </div>
+              ) : selectedReservation.resource.type === 'event' ? (
+                <div className="space-y-2">
+                  <p><strong>タイトル</strong> {selectedReservation.title}</p>
+                  <p><strong>日付</strong> {format(selectedReservation.start, 'yyyy年M月d日', { locale: jaLocale })}</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
             <p><strong>時間</strong> {format(selectedReservation.start, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'H:mm', { locale: jaLocale })}</p>
-            <p><strong>予約者</strong> {selectedReservation.user_name}</p>
-            {selectedReservation.group_name && <p><strong>グループ</strong> {selectedReservation.group_name}</p>}
-            <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
-            <Button onClick={closePopover} variant="outline" className="mt-2 w-full">
-              閉じる
-            </Button>
-          </div>
+                    <p><strong>予約者</strong> {selectedReservation.resource.user_name}</p>
+                    {selectedReservation.resource.group_name && <p><strong>グループ</strong> {selectedReservation.resource.group_name}</p>}
+                    {selectedReservation.resource.state && (
+                      <p><strong>ステータス</strong> {eventStateNames[selectedReservation.resource.state]}</p>
+                    )}
+                  </div>
+                  {selectedReservation.resource.cancellable === 1 && (
+                    <LoadingButton 
+                      onClick={() => {
+                        if (selectedReservation.resource.reservationId) {
+                          handleCancel(selectedReservation.resource.reservationId)
+                        }
+                      }}
+                      variant="destructive" 
+                      className="w-full" 
+                      isLoading={isSending}
+                    >
+                      キャンセル
+                    </LoadingButton>
+                  )}
+                </>
+              )}
         </div>
       )}
+        </DialogContent>
+      </Dialog>
       <Dialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen}>
           <DialogContent>
             <DialogTitle className="text-xl font-semibold">新規予約</DialogTitle>
@@ -801,38 +974,6 @@ export function ReservationPage() {
                 予約
               </LoadingButton>
             </form>
-          </DialogContent>
-        </Dialog>
-        <Dialog open={isCancelFormOpen} onOpenChange={setIsCancelFormOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">予約のキャンセル</DialogTitle>
-            </DialogHeader>
-            {selectedReservation ? (
-              selectedReservation.cancellable === 1 ? (
-                  <div className="space-y-4">
-                    <p className="text-sm text-gray-600 dark:text-gray-300">以下の予約をキャンセルしますか？</p>
-                    <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
-                      <p><strong>時間</strong> {format(selectedReservation.start, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'H:mm', { locale: jaLocale })}</p>
-                      <p><strong>予約者</strong> {selectedReservation.user_name}</p>
-                      {selectedReservation.group_name && <p><strong>グループ</strong> {selectedReservation.group_name}</p>}
-                      <p><strong>ステータス</strong> {eventStateNames[selectedReservation.state]}</p>
-                    </div>
-                    <LoadingButton 
-                      onClick={() => handleCancel(selectedReservation.id)} 
-                      variant="destructive" 
-                      className="w-full" 
-                      isLoading={isSending}
-                    >
-                      キャンセル
-                    </LoadingButton>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-600 dark:text-gray-300">この予約はキャンセルできません。</p>
-                )
-            ) : (
-              <p className="text-sm text-gray-600 dark:text-gray-300">キャンセルしたい予約を選択してください。</p>
-            )}
           </DialogContent>
         </Dialog>
       </div>
