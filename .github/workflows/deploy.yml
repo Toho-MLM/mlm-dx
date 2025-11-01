@@ -31,8 +31,6 @@ jobs:
   deploy_backend:
     name: Deploy Backend
     runs-on: ubuntu-latest
-    env:
-      D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,10 +40,22 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci
+      - name: Update wrangler.toml with D1_DATABASE_ID
+        working-directory: apps/worker
+        run: |
+          sed -i "s|database_id = \"\"|database_id = \"${{ vars.D1_DATABASE_ID }}\"|" wrangler.toml
       - name: Deploy to Cloudflare Workers with Wrangler
         uses: cloudflare/wrangler-action@v3.14.1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/worker
-          command: deploy --env production
+          command: >
+            deploy --env production
+            --var NODE_ENV=${{ vars.NODE_ENV }}
+            --var AUTH_URL=${{ vars.AUTH_URL }}
+            --var AUTH_SECRET=${{ secrets.AUTH_SECRET }}
+            --var GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            --var GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            --var CORS_ORIGIN=${{ vars.CORS_ORIGIN }}
+            --var FRONTEND_URL=${{ vars.FRONTEND_URL }}
