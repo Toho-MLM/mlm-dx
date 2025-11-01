@@ -24,9 +24,9 @@ jobs:
         run: npm run deploy
         env:
           NODE_ENV: production
-          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          NEXT_PUBLIC_API_URL: "${{ vars.NEXT_PUBLIC_API_URL }}"
+          CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+          CLOUDFLARE_ACCOUNT_ID: "${{ vars.CLOUDFLARE_ACCOUNT_ID }}"
 
   deploy_backend:
     name: Deploy Backend
@@ -52,10 +52,10 @@ jobs:
           workingDirectory: apps/worker
           command: >
             deploy --env production
-            --var NODE_ENV=${{ vars.NODE_ENV }}
-            --var AUTH_URL=${{ vars.AUTH_URL }}
-            --var AUTH_SECRET=${{ secrets.AUTH_SECRET }}
-            --var GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            --var GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-            --var CORS_ORIGIN=${{ vars.CORS_ORIGIN }}
-            --var FRONTEND_URL=${{ vars.FRONTEND_URL }}
+            --var NODE_ENV="${{ vars.NODE_ENV }}"
+            --var AUTH_URL="${{ vars.AUTH_URL }}"
+            --var AUTH_SECRET="${{ secrets.AUTH_SECRET }}"
+            --var GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}"
+            --var GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
+            --var CORS_ORIGIN="${{ vars.CORS_ORIGIN }}"
+            --var FRONTEND_URL="${{ vars.FRONTEND_URL }}"
