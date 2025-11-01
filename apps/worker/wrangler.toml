@@ -11,16 +11,7 @@ name = "mlm-dx-worker-dev"
 [env.production]
 name = "mlm-dx-worker"
 
-[env.production.vars]
-NODE_ENV = "${NODE_ENV}"
-AUTH_URL = "${AUTH_URL}"
-AUTH_SECRET = "${AUTH_SECRET}"
-GOOGLE_CLIENT_ID = "${GOOGLE_CLIENT_ID}"
-GOOGLE_CLIENT_SECRET = "${GOOGLE_CLIENT_SECRET}"
-CORS_ORIGIN = "${CORS_ORIGIN}"
-FRONTEND_URL = "${FRONTEND_URL}"
-
 [[d1_databases]]
 binding = "DB"
 database_name = "mlm-dx-db"
-database_id = "${D1_DATABASE_ID}"
+database_id = ""
