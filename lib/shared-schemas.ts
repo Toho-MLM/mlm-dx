@@ -1,6 +1,30 @@
 import { z } from 'zod';
 import { addMinutes, addHours, isBefore, startOfDay, addDays } from 'date-fns';
 
+const JAPAN_TIME_OFFSET_HOURS = 9;
+const JAPAN_TIME_OFFSET_MS = JAPAN_TIME_OFFSET_HOURS * 60 * 60 * 1000;
+
+const getJSTHours = (date: Date): number => {
+  const utcMs = date.getTime();
+  const jstMs = utcMs + JAPAN_TIME_OFFSET_MS;
+  const jstDate = new Date(jstMs);
+  return jstDate.getUTCHours();
+};
+
+const getJSTMinutes = (date: Date): number => {
+  const utcMs = date.getTime();
+  const jstMs = utcMs + JAPAN_TIME_OFFSET_MS;
+  const jstDate = new Date(jstMs);
+  return jstDate.getUTCMinutes();
+};
+
+const getJSTDateString = (date: Date): string => {
+  const utcMs = date.getTime();
+  const jstMs = utcMs + JAPAN_TIME_OFFSET_MS;
+  const jstDate = new Date(jstMs);
+  return jstDate.toISOString().split('T')[0];
+};
+
 // 共有APIスキーマ - フロントエンドとバックエンドで使用
 
 // 基本エンティティスキーマ
@@ -138,39 +162,8 @@ export const CreateReservationRequestSchema = z.object({
   start_time: z.string(),
   end_time: z.string(),
   group_id: z.string().optional(),
-}).refine((data) => {
-  const start = new Date(data.start_time);
-  const end = new Date(data.end_time);
-  
-  // 日をまたがないかチェック
-  if (start.toDateString() !== end.toDateString()) {
-    return false;
-  }
-  
-  // 開始時刻が終了時刻より前かチェック
-  if (start >= end) {
-    return false;
-  }
-  
-  // 最短10分、最長4時間のチェック
-  const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-  if (durationMinutes < 10 || durationMinutes > 240) {
-    return false;
-  }
-  
-  // 利用時間帯のチェック（6:00-23:00）
-  const startHour = start.getHours();
-  const endHour = end.getHours();
-  if (startHour < 6 || endHour > 23 || (endHour === 23 && end.getMinutes() > 0)) {
-    return false;
-  }
-  
-  return true;
-}, {
-  message: "予約時間が無効です。日をまたがず、最短10分から最長4時間、6:00-23:00の範囲で予約してください。"
 });
 
-// 管理者権限判定関数
 export function isAdmin(role: string | undefined): boolean {
   if (!role) {
     return false;
@@ -184,23 +177,25 @@ export function requireAdmin(role: string | undefined): void {
   }
 }
 
-// 予約バリデーション関数
 export const validateReservationTime = (startTime: string, endTime: string): { isValid: boolean; error?: string } => {
   try {
     const start = new Date(startTime);
     const end = new Date(endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return { isValid: false, error: "無効な日時形式です。" };
+    }
     
-    // 日をまたがないかチェック
-    if (start.toDateString() !== end.toDateString()) {
+    const startJSTDate = getJSTDateString(start);
+    const endJSTDate = getJSTDateString(end);
+    
+    if (startJSTDate !== endJSTDate) {
       return { isValid: false, error: "日をまたいで予約することはできません。" };
     }
     
-    // 開始時刻が終了時刻より前かチェック
     if (start >= end) {
       return { isValid: false, error: "終了時刻は開始時刻より後である必要があります。" };
     }
     
-    // 最短10分、最長4時間のチェック
     const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
     if (durationMinutes < 10) {
       return { isValid: false, error: "利用時間は最短10分です。" };
@@ -209,13 +204,13 @@ export const validateReservationTime = (startTime: string, endTime: string): { i
       return { isValid: false, error: "利用時間は最長4時間です。" };
     }
     
-    // 利用時間帯のチェック（6:00-23:00）
-    const startHour = start.getHours();
-    const endHour = end.getHours();
+    const startHour = getJSTHours(start);
+    const endHour = getJSTHours(end);
+    const endMinute = getJSTMinutes(end);
     if (startHour < 6) {
       return { isValid: false, error: "利用時間は朝6時からです。" };
     }
-    if (endHour > 23 || (endHour === 23 && end.getMinutes() > 0)) {
+    if (endHour > 23 || (endHour === 23 && endMinute > 0)) {
       return { isValid: false, error: "利用時間は夜11時までです。" };
     }
     
