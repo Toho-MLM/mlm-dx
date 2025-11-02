@@ -57,10 +57,13 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
       try {
         const assignments = bandMembers.reduce((acc, bm) => {
           bm.instruments.forEach(instrument => {
-            acc[instrument] = bm.id;
+            if (!acc[instrument]) {
+              acc[instrument] = [];
+            }
+            acc[instrument].push(bm.id);
           });
           return acc;
-        }, {} as Record<string, string>);
+        }, {} as Record<string, string[]>);
 
         const isMainBand = isMain === 'main'
         let response;

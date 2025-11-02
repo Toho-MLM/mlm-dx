@@ -40,7 +40,7 @@ export default function Page() {
     try {
       setLoadingEntries(true)
       const [groupsRes, entriesRes] = await Promise.all([
-        apiClient.getGroupOptions(),
+        apiClient.getGroupOptions(!!isUserAdmin),
         apiClient.getEntries(),
       ])
       if (groupsRes.success && groupsRes.data) setGroupOptions(groupsRes.data)

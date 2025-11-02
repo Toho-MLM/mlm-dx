@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { UserWithInstrumentsSchema, UpdateUserRequestSchema, GroupSchema } from '../schemas';
+import { requireAdmin } from '../utils/admin';
 import { z } from 'zod';
 
 const userRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -46,13 +47,40 @@ userRoutes.get('/groups/select', async (c) => {
     const user = c.get('user');
     const userId = user.id;
 
-    const groups = await c.env.DB.prepare(`
-      SELECT DISTINCT g.id, g.name, g.is_main
-      FROM groups g
-      JOIN group_member_instruments gmi ON g.id = gmi.group_id
-      WHERE gmi.user_id = ? AND g.is_active = TRUE
-      ORDER BY g.is_main DESC, g.created_at DESC
-    `).bind(userId).all();
+    const adminParam = c.req.query('admin');
+    const isAdminMode = adminParam === 'true';
+
+    if (isAdminMode) {
+      try {
+        requireAdmin(user.role);
+      } catch (error) {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
+
+    let query: string;
+    let params: any[];
+
+    if (isAdminMode) {
+      query = `
+        SELECT DISTINCT g.id, g.name, g.is_main
+        FROM groups g
+        WHERE g.is_active = TRUE
+        ORDER BY g.is_main DESC, g.created_at DESC
+      `;
+      params = [];
+    } else {
+      query = `
+        SELECT DISTINCT g.id, g.name, g.is_main
+        FROM groups g
+        JOIN group_member_instruments gmi ON g.id = gmi.group_id
+        WHERE gmi.user_id = ? AND g.is_active = TRUE
+        ORDER BY g.is_main DESC, g.created_at DESC
+      `;
+      params = [userId];
+    }
+
+    const groups = await c.env.DB.prepare(query).bind(...params).all();
 
     return c.json({ success: true, data: groups.results });
   } catch (error) {
