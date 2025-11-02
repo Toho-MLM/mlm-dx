@@ -50,7 +50,7 @@ jobs:
           sed -i "s|GOOGLE_CLIENT_SECRET = \"\"|GOOGLE_CLIENT_SECRET = \"${{ secrets.GOOGLE_CLIENT_SECRET }}\"|" wrangler.toml
           sed -i "s|CORS_ORIGIN = \"\"|CORS_ORIGIN = \"${{ vars.CORS_ORIGIN }}\"|" wrangler.toml
           sed -i "s|FRONTEND_URL = \"\"|FRONTEND_URL = \"${{ vars.FRONTEND_URL }}\"|" wrangler.toml
-          sed -i "s|database_id = \"\"|database_id = \"${{ vars.D1_DATABASE_ID }}\"|" wrangler.toml
+          sed -i "/^\[\[d1_databases\]\]/,/^\[/{s|database_id = \"\"|database_id = \"${{ vars.D1_DATABASE_ID }}\"|}" wrangler.toml
       - name: Deploy to Cloudflare Workers with Wrangler
         uses: cloudflare/wrangler-action@v3.14.1
         with:

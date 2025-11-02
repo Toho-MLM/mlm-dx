@@ -58,8 +58,9 @@ class ApiClient {
     return httpClient.get<ApiResponse<Group[]>>(`/groups${params}`)
   }
 
-  async getGroupOptions(): Promise<ApiResponse<{ id: string; name: string; is_main: boolean }[]>> {
-    return httpClient.get<ApiResponse<{ id: string; name: string; is_main: boolean }[]>>('/me/groups/select')
+  async getGroupOptions(admin: boolean = false): Promise<ApiResponse<{ id: string; name: string; is_main: boolean }[]>> {
+    const params = admin ? '?admin=true' : '';
+    return httpClient.get<ApiResponse<{ id: string; name: string; is_main: boolean }[]>>(`/me/groups/select${params}`)
   }
 
   async getMemberOptions(): Promise<ApiResponse<{ id: string; name: string; instruments: string[] }[]>> {
