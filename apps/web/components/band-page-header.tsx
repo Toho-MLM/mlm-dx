@@ -12,10 +12,11 @@ interface BandPageHeaderProps {
   onAddBand?: () => void;
   onRefresh?: () => void;
   onAdminToggle?: (isAdminMode: boolean) => void;
+  isAdminMode?: boolean;
   className?: string;
 }
 
-export function BandPageHeader({ onAddBand, onRefresh, onAdminToggle, className }: BandPageHeaderProps) {
+export function BandPageHeader({ onAddBand, onRefresh, onAdminToggle, isAdminMode = false, className }: BandPageHeaderProps) {
   const { user } = useAuth();
   const isUserAdmin = user && isAdmin(user.role);
 
@@ -33,7 +34,7 @@ export function BandPageHeader({ onAddBand, onRefresh, onAdminToggle, className 
       {isUserAdmin && (
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-600">管理者モード</span>
-          <Switch onCheckedChange={handleAdminToggle} />
+          <Switch checked={isAdminMode} onCheckedChange={handleAdminToggle} />
         </div>
       )}
       {onAddBand && (

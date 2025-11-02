@@ -38,7 +38,7 @@ export const navigationConfig: NavigationGroup[] = [
     items: [
       { iconName: "SquarePlayIcon", href: "/archive", title: "ライブアーカイブ" },
       { iconName: "FileUserIcon", href: "/member", title: "部員名簿" },
-      { iconName: "HelpCircleIcon", href: "/support/admin", title: "管理者マニュアル" }
+      { iconName: "HelpCircleIcon", href: "/support/admin", title: "管理者マニュアル", adminOnly: true }
     ]
   },
 ];

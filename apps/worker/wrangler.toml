@@ -8,11 +8,6 @@ crons = ["0 15 * * *"]
 [env.development]
 name = "mlm-dx-worker-dev"
 
-[[env.development.d1_databases]]
-binding = "DB"
-database_name = "mlm-dx-db"
-database_id = ""
-
 [env.production]
 name = "mlm-dx-worker"
 
@@ -31,7 +26,7 @@ database_name = "mlm-dx-db"
 database_id = ""
 
 [observability]
-enabled = false
+enabled = true
 head_sampling_rate = 1
 
 [observability.logs]
