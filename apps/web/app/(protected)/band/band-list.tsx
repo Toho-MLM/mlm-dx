@@ -18,8 +18,6 @@ export function BandList() {
   const [bands, setBands] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
   const [memberOptions, setMemberOptions] = useState<{ id: string; name: string; instruments: string[] }[]>([])
-  const { user } = useAuth()
-  const isUserAdmin = user && isAdmin(user.role)
   const placeholderMain: Group = { id: 'placeholder-main', name: '', isMain: true, isActive: true, assignments: [] }
   const placeholderFree: Group = { id: 'placeholder-free', name: '', isMain: false, isActive: true, assignments: [] }
 
@@ -38,8 +36,8 @@ export function BandList() {
   }, [])
 
   useEffect(() => {
-    fetchBandsAndMembers(!!isUserAdmin)
-  }, [fetchBandsAndMembers, isUserAdmin])
+    fetchBandsAndMembers(isAdminMode)
+  }, [fetchBandsAndMembers, isAdminMode])
 
   const handleEdit = (id: string) => {
     const band = bands.find(b => b.id === id)
@@ -85,7 +83,7 @@ export function BandList() {
 
   const handleRefresh = async () => {
     try {
-      const response = await apiClient.getUserGroups(!!isUserAdmin)
+      const response = await apiClient.getUserGroups(isAdminMode)
       if (response.success) {
         setBands(formatGroups(response.data as any[]))
       }
@@ -112,6 +110,7 @@ export function BandList() {
         onAddBand={handleAdd}
         onRefresh={handleRefresh}
         onAdminToggle={handleAdminToggle}
+        isAdminMode={isAdminMode}
       />
       <div className="p-5">
       <div className="grid gap-5 md:grid-cols-2">

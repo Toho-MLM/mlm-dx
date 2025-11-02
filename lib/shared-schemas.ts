@@ -131,8 +131,7 @@ export const UnavailablePeriodSchema = z.object({
   updated_at: z.string(),
 });
 
-// リクエストスキーマ
-export const AssignmentMapSchema = z.record(z.string(), z.string());
+export const AssignmentMapSchema = z.record(z.string(), z.array(z.string()));
 
 export const CreateGroupRequestSchema = z.object({
   name: z.string().min(1),

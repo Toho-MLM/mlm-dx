@@ -48,7 +48,7 @@ groupRoutes.post('/', async (c) => {
     `).bind(newId, requestData.name, requestData.is_main, now, now).run();
     
     if (requestData.assignments) {
-      let assignments: Record<string, string>;
+      let assignments: Record<string, string[]>;
       if (typeof requestData.assignments === 'string') {
         try {
           assignments = JSON.parse(requestData.assignments);
@@ -62,11 +62,13 @@ groupRoutes.post('/', async (c) => {
         assignments = requestData.assignments;
       }
 
-      for (const [instrument, memberUserId] of Object.entries(assignments)) {
-        await c.env.DB.prepare(`
-          INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).bind(crypto.randomUUID(), newId, memberUserId, instrument, now, now).run();
+      for (const [instrument, memberUserIds] of Object.entries(assignments)) {
+        for (const memberUserId of memberUserIds) {
+          await c.env.DB.prepare(`
+            INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).bind(crypto.randomUUID(), newId, memberUserId, instrument, now, now).run();
+        }
       }
     }
     
@@ -178,7 +180,7 @@ groupRoutes.put('/:id', async (c) => {
 
     // assignmentsが提供されている場合、メンバー情報を更新
     if (requestData.assignments) {
-      let assignments: Record<string, string>;
+      let assignments: Record<string, string[]>;
       if (typeof requestData.assignments === 'string') {
         try {
           assignments = JSON.parse(requestData.assignments);
@@ -198,11 +200,13 @@ groupRoutes.put('/:id', async (c) => {
       `).bind(groupId).run();
 
       // 新しいメンバー情報を追加
-      for (const [instrument, memberUserId] of Object.entries(assignments)) {
-        await c.env.DB.prepare(`
-          INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).bind(crypto.randomUUID(), groupId, memberUserId, instrument, now, now).run();
+      for (const [instrument, memberUserIds] of Object.entries(assignments)) {
+        for (const memberUserId of memberUserIds) {
+          await c.env.DB.prepare(`
+            INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).bind(crypto.randomUUID(), groupId, memberUserId, instrument, now, now).run();
+        }
       }
     }
 
