@@ -124,8 +124,9 @@ class ApiClient {
   }
 
   // 予約関連
-  async getReservations(): Promise<ApiResponse<Reservation[]>> {
-    return httpClient.get<ApiResponse<Reservation[]>>('/reservations')
+  async getReservations(admin: boolean = false): Promise<ApiResponse<Reservation[]>> {
+    const params = admin ? '?admin=true' : '';
+    return httpClient.get<ApiResponse<Reservation[]>>(`/reservations${params}`)
   }
 
 

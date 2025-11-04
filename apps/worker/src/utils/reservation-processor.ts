@@ -11,21 +11,46 @@ export interface AvailableInterval {
   end: Date;
 }
 
+export function getJSTDateString(date: Date): string {
+  const jstDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return jstDate.toISOString().split('T')[0];
+}
+
+export function isTodayInJST(date: Date): boolean {
+  const dateJST = getJSTDateString(date);
+  const todayJST = getJSTDateString(new Date());
+  return dateJST === todayJST;
+}
+
+export function getJSTTimeRange(jstDateString: string, startHour: number, endHour: number, endMinutes: number = 0, endSeconds: number = 0, endMs: number = 0): { startUTC: Date; endUTC: Date } {
+  const jstStart = new Date(`${jstDateString}T${String(startHour).padStart(2, '0')}:00:00+09:00`);
+  const jstEnd = new Date(`${jstDateString}T${String(endHour).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}:${String(endSeconds).padStart(2, '0')}.${String(endMs).padStart(3, '0')}+09:00`);
+  return {
+    startUTC: jstStart,
+    endUTC: jstEnd
+  };
+}
+
+export function getJSTDayRange(jstDateString: string): { startUTC: Date; endUTC: Date } {
+  return getJSTTimeRange(jstDateString, 0, 23, 59, 59, 999);
+}
+
 export async function getAvailableIntervals(
   env: Bindings, 
   startTime: string, 
   endTime: string, 
-  reservationId: number
+  reservationId: number | string
 ): Promise<AvailableInterval[]> {
+  const hasReservationId = reservationId !== 0 && reservationId !== '';
   const overlappingReservations = await env.DB.prepare(`
     SELECT start_time, end_time
     FROM reservations
     WHERE state = 'CONFIRMED'
       AND start_time < ?
       AND end_time > ?
-      ${reservationId > 0 ? 'AND id != ?' : ''}
+      ${hasReservationId ? 'AND id != ?' : ''}
     ORDER BY start_time ASC
-  `).bind(endTime, startTime, ...(reservationId > 0 ? [reservationId] : [])).all();
+  `).bind(endTime, startTime, ...(hasReservationId ? [reservationId] : [])).all();
   
   
   const reservationStart = new Date(startTime);
@@ -62,34 +87,25 @@ export function selectLongestInterval(intervals: AvailableInterval[]): Available
 
 export async function processReservationState(
   env: Bindings, 
-  reservationId: number, 
+  reservationId: number | string, 
   startTime: string, 
   endTime: string
 ): Promise<ProcessResult> {
   const now = new Date();
-  const jstOffset = 9 * 60;
-  
   const reservationStart = new Date(startTime);
   const reservationEnd = new Date(endTime);
   
-  // 予約日を基準にJSTの時間範囲を設定（UTC時刻をそのまま使用）
-  const reservationDateJst = new Date(reservationStart);
-  const startOfDayJst = new Date(reservationDateJst);
-  startOfDayJst.setHours(6, 0, 0, 0);
+  const reservationDateJST = getJSTDateString(reservationStart);
+  const isTodayReservation = isTodayInJST(reservationStart);
   
-  const endOfDayJst = new Date(reservationDateJst);
-  endOfDayJst.setHours(23, 0, 0, 0);
-  
-  // 当日の予約かどうかをチェック（UTC時刻で比較）
-  const today = new Date(now);
-  const isTodayReservation = reservationDateJst.toDateString() === today.toDateString();
+  const timeRange = getJSTTimeRange(reservationDateJST, 6, 23);
+  const startOfDayJst = timeRange.startUTC;
+  const endOfDayJst = timeRange.endUTC;
   
   if (!isTodayReservation) {
     console.log(`Reservation ${reservationId} is on a different date, keeping as PENDING`);
     return { state: 'PENDING' };
   }
-  
-  // 当日の予約の場合、時間範囲をチェック（UTC時刻で比較）
   
   if (reservationStart < startOfDayJst || reservationEnd > endOfDayJst) {
     console.log(`Reservation ${reservationId} is outside allowed time range, setting to DECLINED`);
@@ -125,19 +141,13 @@ export async function processReservationState(
 
 export async function processDailyReservations(env: Bindings): Promise<void> {
   const now = new Date();
+  const todayJST = getJSTDateString(now);
   
-  // 今日の日付範囲を設定（UTC時刻で）
-  const today = new Date(now);
-  const startOfDay = new Date(today);
-  startOfDay.setHours(0, 0, 0, 0);
+  const dayRange = getJSTDayRange(todayJST);
+  const startOfDayIso = dayRange.startUTC.toISOString();
+  const endOfDayIso = dayRange.endUTC.toISOString();
   
-  const endOfDay = new Date(today);
-  endOfDay.setHours(23, 59, 59, 999);
-  
-  const startOfDayIso = startOfDay.toISOString();
-  const endOfDayIso = endOfDay.toISOString();
-  
-  console.log(`Processing daily reservations for ${today.toDateString()}`);
+  console.log(`Processing daily reservations for JST ${todayJST}`);
   
   const pendingReservations = await env.DB.prepare(`
     SELECT id, start_time, end_time, state

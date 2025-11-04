@@ -20,7 +20,7 @@ GOOGLE_CLIENT_SECRET = ""
 CORS_ORIGIN = ""
 FRONTEND_URL = ""
 
-[[d1_databases]]
+[[env.production.d1_databases]]
 binding = "DB"
 database_name = "mlm-dx-db"
 database_id = ""

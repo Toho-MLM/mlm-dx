@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { isUserInGroup, getUserGroupIds } from './groups';
 import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema } from '../../../../lib/shared-schemas';
-import { processReservationState } from '../utils/reservation-processor';
+import { processReservationState, isTodayInJST } from '../utils/reservation-processor';
 import { requireAdmin } from '../utils/admin';
 
 const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -39,40 +39,74 @@ reservationRoutes.use('*', requireAuth);
 reservationRoutes.get('/', async (c) => {
   try {
     const user = c.get('user');
-    
+    const adminParam = c.req.query('admin');
+    const isAdminMode = adminParam === 'true';
+
+    if (isAdminMode) {
+      try {
+        requireAdmin(user.role);
+      } catch (error) {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
+
     const twoWeeksAgo = new Date();
     twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
     const twoWeeksAgoIso = twoWeeksAgo.toISOString();
-    
-    const reservations = await c.env.DB.prepare(`
-      SELECT r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
-             COALESCE(u.nickname, u.name) as user_name,
-             ug.name as group_name,
-             CASE 
-               WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0
-               WHEN r.user_id = ? THEN 1
-               WHEN r.group_id IS NOT NULL AND EXISTS (
-                 SELECT 1 FROM group_member_instruments gm 
-                 WHERE gm.group_id = r.group_id AND gm.user_id = ?
-               ) THEN 1
-               ELSE 0
-             END as cancellable
-      FROM reservations r
-      LEFT JOIN users u ON r.user_id = u.id
-      LEFT JOIN groups ug ON r.group_id = ug.id
-      WHERE (r.state IN ('PENDING', 'CONFIRMED')
-         OR r.user_id = ?
-         OR (r.group_id IS NOT NULL AND EXISTS (
-           SELECT 1 FROM group_member_instruments gm 
-           WHERE gm.group_id = r.group_id AND gm.user_id = ?
-         )))
-         AND r.start_time >= ?
-      ORDER BY r.start_time ASC
-    `).bind(user.id, user.id, user.id, user.id, twoWeeksAgoIso).all();
 
-    return c.json({ success: true, data: reservations.results });
+    if (isAdminMode) {
+      const reservations = await c.env.DB.prepare(`
+        SELECT r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
+               COALESCE(u.nickname, u.name) as user_name,
+               ug.name as group_name,
+               CASE 
+                 WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0
+                 ELSE 1
+               END as cancellable
+        FROM reservations r
+        LEFT JOIN users u ON r.user_id = u.id
+        LEFT JOIN groups ug ON r.group_id = ug.id
+        WHERE r.start_time >= ?
+        ORDER BY r.start_time ASC
+      `).bind(twoWeeksAgoIso).all();
+
+      return c.json({ success: true, data: reservations.results });
+    } else {
+      const reservations = await c.env.DB.prepare(`
+        SELECT r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
+               COALESCE(u.nickname, u.name) as user_name,
+               ug.name as group_name,
+               CASE 
+                 WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0
+                 WHEN r.user_id = ? THEN 1
+                 WHEN r.group_id IS NOT NULL AND EXISTS (
+                   SELECT 1 FROM group_member_instruments gm 
+                   WHERE gm.group_id = r.group_id AND gm.user_id = ?
+                 ) THEN 1
+                 ELSE 0
+               END as cancellable
+        FROM reservations r
+        LEFT JOIN users u ON r.user_id = u.id
+        LEFT JOIN groups ug ON r.group_id = ug.id
+        WHERE (r.state IN ('PENDING', 'CONFIRMED')
+           OR r.user_id = ?
+           OR (r.group_id IS NOT NULL AND EXISTS (
+             SELECT 1 FROM group_member_instruments gm 
+             WHERE gm.group_id = r.group_id AND gm.user_id = ?
+           )))
+           AND r.start_time >= ?
+        ORDER BY r.start_time ASC
+      `).bind(user.id, user.id, user.id, user.id, twoWeeksAgoIso).all();
+
+      return c.json({ success: true, data: reservations.results });
+    }
   } catch (error) {
     console.error('Error fetching reservations:', error);
+    
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+    
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
@@ -140,31 +174,40 @@ reservationRoutes.post('/', async (c) => {
     const userId = user.id;
     const groupId = group_id || null;
 
-    // 当日予約かどうかをチェック
-    const isSameDay = new Date(start_time).toDateString() === new Date().toDateString();
-
-    // 当日予約の場合は重複チェックを先に実行してから挿入
-    let finalState = 'PENDING';
-    let adjustedStartTime = start_time;
-    let adjustedEndTime = end_time;
-    let processResult = null;
-
-    if (isSameDay) {
-      // 仮のIDで重複チェックを実行（実際の挿入前）
-      processResult = await processReservationState(c.env, 0, start_time, end_time);
-      finalState = processResult.state;
-      
-      if (processResult.adjustedStartTime && processResult.adjustedEndTime) {
-        adjustedStartTime = processResult.adjustedStartTime;
-        adjustedEndTime = processResult.adjustedEndTime;
-      }
-    }
-
-    // 1回の書き込みで予約を作成（最終的な状態で）
     await c.env.DB.prepare(`
       INSERT INTO reservations (id, user_id, group_id, start_time, end_time, state, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(reservationId, userId, groupId, adjustedStartTime, adjustedEndTime, finalState, now, now).run();
+    `).bind(reservationId, userId, groupId, start_time, end_time, 'PENDING', now, now).run();
+
+    const isSameDay = isTodayInJST(new Date(start_time));
+
+    if (isSameDay) {
+      const processResult = await processReservationState(c.env, reservationId, start_time, end_time);
+      
+      if (processResult.state !== 'PENDING') {
+        const updateTime = new Date().toISOString();
+        
+        if (processResult.adjustedStartTime && processResult.adjustedEndTime) {
+          await c.env.DB.prepare(`
+            UPDATE reservations 
+            SET state = ?, start_time = ?, end_time = ?, updated_at = ?
+            WHERE id = ?
+          `).bind(
+            processResult.state, 
+            processResult.adjustedStartTime, 
+            processResult.adjustedEndTime, 
+            updateTime, 
+            reservationId
+          ).run();
+        } else {
+          await c.env.DB.prepare(`
+            UPDATE reservations 
+            SET state = ?, updated_at = ?
+            WHERE id = ?
+          `).bind(processResult.state, updateTime, reservationId).run();
+        }
+      }
+    }
 
     return c.json({ success: true });
   } catch (error) {
