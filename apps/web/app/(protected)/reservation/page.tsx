@@ -181,7 +181,7 @@ export default function Page() {
       }
       try {
         const [reservationsResponse, eventsResponse, unavailablePeriodsResponse] = await Promise.all([
-          apiClient.getReservations(),
+          apiClient.getReservations(isAdminMode),
           apiClient.getEvents(),
           apiClient.getUnavailablePeriods()
         ]);
@@ -252,7 +252,7 @@ export default function Page() {
       }
     }
     init()
-  }, [authLoading, user, router])
+  }, [authLoading, user, router, isAdminMode])
 
   useEffect(() => {
     const checkMobile = () => {
@@ -474,7 +474,7 @@ export default function Page() {
   const fetchReservations = async () => {
     try {
       const [reservationsResponse, eventsResponse, unavailablePeriodsResponse] = await Promise.all([
-        apiClient.getReservations(),
+        apiClient.getReservations(isAdminMode),
         apiClient.getEvents(),
         apiClient.getUnavailablePeriods()
       ]);

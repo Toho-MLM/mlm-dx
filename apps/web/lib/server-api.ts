@@ -62,8 +62,9 @@ export const requireAuth = cache(async (): Promise<SessionResponse['user']> => {
   return user
 })
 
-export async function getServerReservations(): Promise<ApiResponse<Reservation[]>> {
-  return serverRequest('/reservations')
+export async function getServerReservations(admin: boolean = false): Promise<ApiResponse<Reservation[]>> {
+  const params = admin ? '?admin=true' : '';
+  return serverRequest(`/reservations${params}`)
 }
 
 export async function getServerUserGroups(admin: boolean = false): Promise<ApiResponse<GroupWithMemberRole[]>> {
