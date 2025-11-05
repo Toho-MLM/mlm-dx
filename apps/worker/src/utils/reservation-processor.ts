@@ -139,7 +139,7 @@ export async function processReservationState(
   }
 }
 
-export async function processDailyReservations(env: Bindings): Promise<void> {
+export async function processTodayReservations(env: Bindings): Promise<void> {
   const now = new Date();
   const todayJST = getJSTDateString(now);
   
@@ -202,4 +202,35 @@ export async function processDailyReservations(env: Bindings): Promise<void> {
   }
   
   console.log('Daily reservation processing completed');
+}
+
+export async function processYesterdayReservations(env: Bindings): Promise<void> {
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const ymd = getJSTDateString(yesterday);
+  const range = getJSTDayRange(ymd);
+  const startIso = range.startUTC.toISOString();
+  const endIso = range.endUTC.toISOString();
+  const confirmed = await env.DB.prepare(`
+    SELECT id FROM reservations
+    WHERE state = 'CONFIRMED'
+      AND start_time >= ?
+      AND start_time <= ?
+  `).bind(startIso, endIso).all();
+  const updateTime = new Date().toISOString();
+  for (const r of confirmed.results as any[]) {
+    await env.DB.prepare(`
+      UPDATE reservations SET state = 'COMPLETED', updated_at = ? WHERE id = ?
+    `).bind(updateTime, r.id).run();
+  }
+}
+
+export async function deleteOldReservations(env: Bindings): Promise<void> {
+  const now = new Date();
+  now.setUTCHours(15, 0, 0, 0);
+  const cutoff = new Date(now);
+  cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);
+  await env.DB.prepare(`
+    DELETE FROM reservations WHERE end_time < ?
+  `).bind(cutoff.toISOString()).run();
 }
