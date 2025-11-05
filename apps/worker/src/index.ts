@@ -17,7 +17,7 @@ import { setlistRoutes } from './routes/setlist';
 import { timelineRoutes } from './routes/timeline';
 import type { User } from './types';
 import { UserSchema } from './schemas';
-import { processDailyReservations } from './utils/reservation-processor';
+import { processTodayReservations, processYesterdayReservations, deleteOldReservations } from './utils/reservation-processor';
 import { deleteExpiredEvents } from './utils/event-processor';
 
 export type Bindings = {
@@ -383,10 +383,10 @@ export default {
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     switch (event.cron) {
       case "0 15 * * *":
-        await processDailyReservations(env);
-        break;
-      case "0 16 * * *":
+        await processYesterdayReservations(env);
+        await processTodayReservations(env);
         await deleteExpiredEvents(env);
+        await deleteOldReservations(env);
         break;
     }
   }
