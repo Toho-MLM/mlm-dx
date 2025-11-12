@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import type { Bindings, Variables } from '../index';
+import type { Bindings, Variables, UserRow } from '../index';
 import type { User } from '../types';
 import { getCookie } from 'hono/cookie';
 import { verifyJWT } from '../auth';
@@ -18,18 +18,19 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
     }
 
     const fullUser = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?')
-      .bind(payload.sub).first() as any;
+      .bind(payload.sub).first<UserRow>();
 
     if (!fullUser) {
       return c.json({ success: false, error: 'USER_NOT_FOUND' }, 401);
     }
 
+    const avatarUrl = fullUser.avatar || payload.picture || undefined;
     const userData: User = {
       id: fullUser.id,
       name: fullUser.name,
       nickname: payload.nickname,
       email: fullUser.email,
-      picture: payload.picture,
+      picture: avatarUrl,
       instruments: safeJsonParse(fullUser.instruments, []),
       grade: Number(fullUser.grade),
       role: fullUser.role,
@@ -40,7 +41,7 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
     // Add student_number as computed field
     const userWithStudentNumber = {
       ...userData,
-      student_number: (fullUser.email as string).substring(0, 6).toUpperCase()
+      student_number: fullUser.email.substring(0, 6).toUpperCase()
     };
 
     c.set('user', userWithStudentNumber);

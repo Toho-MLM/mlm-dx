@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { MemberListItemSchema } from './schemas'
 import * as SharedSchemas from '../../../lib/shared-schemas'
 import { httpClient } from './http-client'
+import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/types'
 
 type User = SharedSchemas.User
 type Group = SharedSchemas.Group
@@ -28,6 +29,18 @@ type CreateEntryRequest = SharedSchemas.CreateEntryRequest
 type UnavailablePeriod = SharedSchemas.UnavailablePeriod
 type CreateUnavailablePeriodRequest = SharedSchemas.CreateUnavailablePeriodRequest
 type ApiResponse<T> = SharedSchemas.ApiResponse<T>
+export type PasskeyCredential = {
+  id: string
+  credential_id: string
+  device_type: string | null
+  backed_up: boolean
+  transports: string[]
+  attestation_format: string | null
+  created_at: string
+  updated_at: string
+}
+type PasskeyRegistrationStartResponse = { challengeId: string; options: PublicKeyCredentialCreationOptionsJSON }
+type PasskeyLoginStartResponse = { success: true; challengeId: string; options: PublicKeyCredentialRequestOptionsJSON } | { success: false }
 
 class ApiClient {
 
@@ -43,6 +56,34 @@ class ApiClient {
     return httpClient.post<ApiResponse<void>>('/auth/create-first-user', data)
   }
 
+  async getPasskeyStatus(): Promise<{ success: boolean; registered: boolean }> {
+    return httpClient.get<{ success: boolean; registered: boolean }>('/auth/passkey/status')
+  }
+
+  async startPasskeyRegistration(): Promise<PasskeyRegistrationStartResponse> {
+    return httpClient.post<PasskeyRegistrationStartResponse>('/auth/passkey/register/start')
+  }
+
+  async finishPasskeyRegistration(challengeId: string, response: any): Promise<{ success: boolean }> {
+    return httpClient.post<{ success: boolean }>('/auth/passkey/register/finish', { challengeId, response })
+  }
+
+  async startPasskeyLogin(): Promise<PasskeyLoginStartResponse> {
+    return httpClient.post<PasskeyLoginStartResponse>('/auth/passkey/login/options')
+  }
+
+  async finishPasskeyLogin(challengeId: string, response: any): Promise<{ success: boolean }> {
+    return httpClient.post<{ success: boolean }>('/auth/passkey/login/finish', { challengeId, response })
+  }
+
+  async getPasskeyCredentials(): Promise<{ success: boolean; passkeys: PasskeyCredential[] }> {
+    return httpClient.get<{ success: boolean; passkeys: PasskeyCredential[] }>('/auth/passkey/credentials')
+  }
+
+  async deletePasskeyCredential(id: string): Promise<{ success: boolean }> {
+    return httpClient.delete<{ success: boolean }>(`/auth/passkey/credentials/${id}`)
+  }
+
   // ユーザー関連
   async getCurrentUserData(): Promise<ApiResponse<User>> {
     return httpClient.get<ApiResponse<User>>(`/me`)
@@ -51,6 +92,10 @@ class ApiClient {
   async updateUserData(data: UpdateUserRequest): Promise<ApiResponse<void>> {
     SharedSchemas.UpdateUserRequestSchema.parse(data)
     return httpClient.put<ApiResponse<void>>('/me', data)
+  }
+
+  async resetAvatar(): Promise<ApiResponse<void>> {
+    return httpClient.post<ApiResponse<void>>('/me/avatar/reset')
   }
 
   async getUserGroups(admin: boolean = false): Promise<ApiResponse<Group[]>> {

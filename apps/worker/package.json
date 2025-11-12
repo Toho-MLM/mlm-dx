@@ -17,16 +17,17 @@
     "db:migrate": "wrangler d1 migrations apply mlm-dx-db",
     "db:migrate:local": "wrangler d1 migrations apply mlm-dx-db-local --local",
     "db:migrate:prod": "wrangler d1 migrations apply mlm-dx-db",
-    "db:seed": "echo 'Use npm run seed from root directory instead'",
-    "db:seed:local": "echo 'Use npm run seed --local from root directory instead'",
-    "db:seed:prod": "echo 'Use npm run seed from root directory instead'",
-    "db:setup": "npm run db:migrate && npm run db:seed",
-    "db:setup:local": "npm run db:migrate:local && npm run db:seed:local",
-    "db:setup:prod": "npm run db:migrate:prod && npm run db:seed:prod",
+    "db:seed": "echo 'Use pnpm run seed from root directory instead'",
+    "db:seed:local": "echo 'Use pnpm run seed --local from root directory instead'",
+    "db:seed:prod": "echo 'Use pnpm run seed from root directory instead'",
+    "db:setup": "pnpm run db:migrate && pnpm run db:seed",
+    "db:setup:local": "pnpm run db:migrate:local && pnpm run db:seed:local",
+    "db:setup:prod": "pnpm run db:migrate:prod && pnpm run db:seed:prod",
     "lint": "eslint src --ext .ts,.tsx",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^11.0.0",
     "hono": "^4.0.0",
     "zod": "^4.1.12",
     "date-fns": "^3.6.0"
@@ -40,7 +41,7 @@
     "wrangler": "^4.43.0"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=8.0.0"
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
   }
 }
