@@ -27,7 +27,7 @@ mlm-dx/
 ### 1. 依存関係のインストール
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### 2. Cloudflare D1データベースのセットアップ
@@ -36,28 +36,28 @@ npm install
 ```bash
 # ローカルD1データベースは自動的に作成されます（wrangler dev実行時）
 # マイグレーションを実行
-npm run db:migrate:local
+pnpm run db:migrate:local
 
 # サンプルデータを投入（オプション）
-npm run db:seed:local
+pnpm run db:seed:local
 
 # または一括でセットアップ
-npm run db:setup:local
+pnpm run db:setup:local
 ```
 
 #### 本番環境（クラウド）
 ```bash
 # 本番環境D1データベースを作成
-npm run db:create:prod
+pnpm run db:create:prod
 
 # マイグレーションを実行
-npm run db:migrate:prod
+pnpm run db:migrate:prod
 
 # サンプルデータを投入（オプション）
-npm run db:seed:prod
+pnpm run db:seed:prod
 
 # または一括でセットアップ
-npm run db:setup:prod
+pnpm run db:setup:prod
 ```
 
 ### 3. Google OAuth設定
@@ -256,14 +256,14 @@ GOOGLE_CLIENT_SECRET=your-dev-google-client-secret
 #### ローカル開発（推奨）
 ```bash
 # フルスタック開発環境を起動（全てローカル）
-npm run dev
+pnpm run dev
 
 # または明示的にローカル環境を指定
-npm run dev:local
+pnpm run dev:local
 
 # 個別に実行
-npm run dev:web           # フロントエンド（Next.js）
-npm run dev:worker:local  # バックエンド（Wrangler ローカル）
+pnpm run dev:web           # フロントエンド（Next.js）
+pnpm run dev:worker:local  # バックエンド（Wrangler ローカル）
 ```
 
 ## デプロイ
@@ -273,20 +273,20 @@ npm run dev:worker:local  # バックエンド（Wrangler ローカル）
 #### フルスタックデプロイ
 ```bash
 # 本番環境にフルスタックデプロイ
-npm run deploy:all:prod
+pnpm run deploy:all:prod
 ```
 #### 個別デプロイ
 
 **Cloudflare Workers:**
 ```bash
 # 本番環境
-npm run deploy:worker:prod
+pnpm run deploy:worker:prod
 ```
 
 **Next.js（Cloudflare Pages）:**
 ```bash
 # 本番環境
-npm run deploy:web:prod
+pnpm run deploy:web:prod
 ```
 
 ### ビルド
@@ -294,11 +294,11 @@ npm run deploy:web:prod
 #### ローカルビルド（開発用）
 ```bash
 # ローカル用ビルド
-npm run build:local
+pnpm run build:local
 
 # 個別ビルド
-npm run build:web
-npm run build:worker:local
+pnpm run build:web
+pnpm run build:worker:local
 ```
 
 ### データベース管理
@@ -306,27 +306,27 @@ npm run build:worker:local
 #### ローカル環境
 ```bash
 # ローカルDB設定（マイグレーション + シード）
-npm run db:setup:local
+pnpm run db:setup:local
 
 # 個別実行
-npm run db:migrate:local
-npm run db:seed:local
+pnpm run db:migrate:local
+pnpm run db:seed:local
 
 # CLIツールを使用したローカルDBセットアップ
 cd apps/worker
 wrangler d1 execute mlm-dx-db --file=./schema.sql --local
 cd ../..
-npm run seed -- sample --local
+pnpm run seed -- sample --local
 ```
 
 #### 本番環境（クラウド）
 ```bash
 # 本番環境DB設定
-npm run db:setup:prod
+pnpm run db:setup:prod
 
 # 個別実行
-npm run db:migrate:prod
-npm run db:seed:prod
+pnpm run db:migrate:prod
+pnpm run db:seed:prod
 ```
 
 ### バッチ処理
@@ -341,13 +341,13 @@ npm run db:seed:prod
 
 **基本的な使用方法:**
 ```bash
-# npm runを使用する場合（推奨）
-npm run seed -- user add --email="tanaka@example.com" --grade=3
-npm run seed -- user remove --email="tanaka@example.com"
-npm run seed -- user list
-npm run seed -- user reset
-npm run seed -- reservation reset
-npm run seed -- group reset
+# pnpm runを使用する場合（推奨）
+pnpm run seed -- user add --email="tanaka@example.com" --grade=3
+pnpm run seed -- user remove --email="tanaka@example.com"
+pnpm run seed -- user list
+pnpm run seed -- user reset
+pnpm run seed -- reservation reset
+pnpm run seed -- group reset
 
 # 直接実行する場合
 node scripts/seed.js user add --email="tanaka@example.com" --grade=3
@@ -358,11 +358,11 @@ node scripts/seed.js reservation reset
 node scripts/seed.js group reset
 
 # ヘルプを表示
-npm run seed -- --help
+pnpm run seed -- --help
 node scripts/seed.js --help
 ```
 
-**重要**: npm runを使用する場合は、`--`を使って引数を分離してください。`--`がないと引数がnpm自体のオプションとして解釈されてしまいます。
+**重要**: pnpm runを使用する場合は、`--`を使って引数を分離してください。`--`がないと引数がpnpm自体のオプションとして解釈されてしまいます。
 
 **利用可能なテーブルとアクション:**
 
@@ -392,25 +392,25 @@ node scripts/seed.js --help
 **使用例:**
 ```bash
 # ユーザー管理
-npm run seed -- user add --email="tanaka@example.com" --grade=3
-npm run seed -- user add --email="admin@example.com" --grade=4 --role="ADM"
-npm run seed -- user add --email="newbie@example.com" --grade=1 --role="NHD"
-npm run seed -- user remove --email="tanaka@example.com"
-npm run seed -- user list
-npm run seed -- user reset
+pnpm run seed -- user add --email="tanaka@example.com" --grade=3
+pnpm run seed -- user add --email="admin@example.com" --grade=4 --role="ADM"
+pnpm run seed -- user add --email="newbie@example.com" --grade=1 --role="NHD"
+pnpm run seed -- user remove --email="tanaka@example.com"
+pnpm run seed -- user list
+pnpm run seed -- user reset
 
 # 予約テーブルのリセット
-npm run seed -- reservation reset
+pnpm run seed -- reservation reset
 
 # グループテーブルのリセット
-npm run seed -- group reset
+pnpm run seed -- group reset
 
 # ローカル環境で実行（デフォルト）
-npm run seed -- user add --email="test@example.com" --grade=2
-npm run seed -- user list
-npm run seed -- user reset
-npm run seed -- reservation reset
-npm run seed -- group reset
+pnpm run seed -- user add --email="test@example.com" --grade=2
+pnpm run seed -- user list
+pnpm run seed -- user reset
+pnpm run seed -- reservation reset
+pnpm run seed -- group reset
 
 # 直接実行の例
 node scripts/seed.js user add --email="admin@example.com" --grade=4 --role="ADM"
@@ -440,12 +440,12 @@ node scripts/seed.js group reset
 
 1. **データベースのリセット**（推奨）:
    ```bash
-   npm run seed -- user reset
+   pnpm run seed -- user reset
    ```
 
 2. **テストユーザーの追加**:
    ```bash
-   npm run seed -- user add --email="test@example.com" --grade=2
+   pnpm run seed -- user add --email="test@example.com" --grade=2
    ```
 
 **手動セットアップ（上記が失敗する場合）:**
@@ -456,7 +456,7 @@ cd ../..
 ```
 
 **トラブルシューティング:**
-- `Couldn't find a D1 DB with the name or binding`エラーが発生した場合、`npm run seed -- user reset`を実行してください
+- `Couldn't find a D1 DB with the name or binding`エラーが発生した場合、`pnpm run seed -- user reset`を実行してください
 - ローカルデータベースは`.wrangler/state/v3/d1/`ディレクトリに保存されます
 - ローカルデータベースを完全にリセットしたい場合は、`.wrangler`ディレクトリを削除してください
 - `user reset`コマンドでデータベースの構造を再作成できます
@@ -666,36 +666,36 @@ INSERT INTO users (
 curl http://localhost:8787/auth/session
 ```
 
-## npmスクリプト一覧
+## pnpmスクリプト一覧
 
 ### 開発環境（ローカル）
 
 | スクリプト | 説明 |
 |-----------|------|
-| `npm run dev` | フルスタック開発環境を起動（ローカル） |
-| `npm run dev:local` | フルスタック開発環境を起動（ローカル） |
-| `npm run dev:web` | フロントエンドのみ起動 |
-| `npm run dev:worker:local` | バックエンドのみ起動（ローカル） |
-| `npm run build:local` | ローカル用ビルド |
-| `npm run db:setup:local` | ローカルDB設定 |
+| `pnpm run dev` | フルスタック開発環境を起動（ローカル） |
+| `pnpm run dev:local` | フルスタック開発環境を起動（ローカル） |
+| `pnpm run dev:web` | フロントエンドのみ起動 |
+| `pnpm run dev:worker:local` | バックエンドのみ起動（ローカル） |
+| `pnpm run build:local` | ローカル用ビルド |
+| `pnpm run db:setup:local` | ローカルDB設定 |
 
 ### 本番環境（クラウド）
 
 | スクリプト | 説明 |
 |-----------|------|
-| `npm run deploy:all:prod` | 本番環境にフルスタックデプロイ |
-| `npm run deploy:worker:prod` | 本番環境にWorkerデプロイ |
-| `npm run deploy:web:prod` | 本番環境にWebデプロイ |
-| `npm run db:setup:prod` | 本番DB設定 |
+| `pnpm run deploy:all:prod` | 本番環境にフルスタックデプロイ |
+| `pnpm run deploy:worker:prod` | 本番環境にWorkerデプロイ |
+| `pnpm run deploy:web:prod` | 本番環境にWebデプロイ |
+| `pnpm run db:setup:prod` | 本番DB設定 |
 
 ### ユーティリティ
 
 | スクリプト | 説明 |
 |-----------|------|
-| `npm run lint` | 全プロジェクトのリント |
-| `npm run lint:web` | フロントエンドのリント |
-| `npm run lint:worker` | バックエンドのリント |
-| `npm run type-check` | 型チェック |
-| `npm run clean` | 全ビルド成果物を削除 |
-| `npm run clean:local` | ローカルビルド成果物を削除 |
-| `npm run install:all` | 全依存関係をインストール |
+| `pnpm run lint` | 全プロジェクトのリント |
+| `pnpm run lint:web` | フロントエンドのリント |
+| `pnpm run lint:worker` | バックエンドのリント |
+| `pnpm run type-check` | 型チェック |
+| `pnpm run clean` | 全ビルド成果物を削除 |
+| `pnpm run clean:local` | ローカルビルド成果物を削除 |
+| `pnpm run install:all` | 全依存関係をインストール |

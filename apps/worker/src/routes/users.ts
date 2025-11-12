@@ -19,7 +19,7 @@ userRoutes.get('/', async (c) => {
     
     const userDataToValidate = {
       ...userWithoutPicture,
-      student_number: (user.email as string).substring(0, 6).toUpperCase()
+      student_number: user.email.substring(0, 6).toUpperCase()
     };
     
     const userWithStudentNumber = UserWithInstrumentsSchema.parse(userDataToValidate);
@@ -126,6 +126,22 @@ userRoutes.put('/', async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.error('Error updating user:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+userRoutes.post('/avatar/reset', async (c) => {
+  try {
+    const user = c.get('user');
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(
+      'UPDATE users SET avatar = NULL, updated_at = ? WHERE id = ?'
+    ).bind(now, user.id).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error resetting avatar:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });

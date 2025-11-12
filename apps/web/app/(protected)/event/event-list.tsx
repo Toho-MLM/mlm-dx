@@ -136,7 +136,7 @@ export function EventList({ events }: { events: Event[] }) {
               variant="destructive"
               onClick={handleDeleteConfirm}
             >
-              削除する
+              削除
             </Button>
           </DialogFooter>
         </DialogContent>

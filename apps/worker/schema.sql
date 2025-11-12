@@ -10,6 +10,8 @@ DROP TABLE IF EXISTS events;
 DROP TABLE IF EXISTS reservations;
 DROP TABLE IF EXISTS group_member_instruments;
 DROP TABLE IF EXISTS groups;
+DROP TABLE IF EXISTS passkey_challenges;
+DROP TABLE IF EXISTS passkeys;
 DROP TABLE IF EXISTS users;
 
 CREATE TABLE IF NOT EXISTS users (
@@ -17,12 +19,41 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   nickname TEXT,
   email TEXT UNIQUE NOT NULL,
+  avatar TEXT,
   instruments TEXT NOT NULL DEFAULT '[]', -- JSON array of instrument codes: ["VO","GT","KEY","DR","BA"]
   grade INTEGER NOT NULL,
   role TEXT NOT NULL DEFAULT 'MBR' CHECK (role IN ('MGR','CHF','MAC','MBR','ADM','NHD','NAC')),
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS passkeys (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  credential_id TEXT NOT NULL UNIQUE,
+  public_key TEXT NOT NULL,
+  counter INTEGER NOT NULL DEFAULT 0,
+  device_type TEXT,
+  backed_up BOOLEAN,
+  transports TEXT,
+  attestation_format TEXT,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS passkey_challenges (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  email TEXT,
+  challenge TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('register','login')),
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_passkey_challenges_user_type ON passkey_challenges(user_id, type);
+CREATE INDEX IF NOT EXISTS idx_passkey_challenges_expires_at ON passkey_challenges(expires_at);
 
 CREATE TABLE IF NOT EXISTS groups (
   id TEXT PRIMARY KEY,
