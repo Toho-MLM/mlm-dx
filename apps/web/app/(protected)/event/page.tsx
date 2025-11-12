@@ -210,7 +210,7 @@ export default function Page() {
               variant="destructive"
               onClick={handleDeleteConfirm}
             >
-              削除する
+              削除
             </Button>
           </DialogFooter>
         </DialogContent>
