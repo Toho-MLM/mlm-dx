@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { LoadingButton } from "@/components/ui/loading-button"
 import {
   Select,
   SelectContent,
@@ -217,13 +218,14 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
           >
             キャンセル
           </Button>
-          <Button
+          <LoadingButton
             type="button"
             onClick={handleSubmit}
-            disabled={selectedGroups.length === 0 || submitting || loading}
+            disabled={selectedGroups.length === 0 || loading}
+            isLoading={submitting}
           >
-            {submitting ? '作成中...' : '作成'}
-          </Button>
+            作成
+          </LoadingButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

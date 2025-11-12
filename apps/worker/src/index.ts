@@ -19,6 +19,8 @@ import type { User } from './types';
 import { UserSchema } from './schemas';
 import { processTodayReservations, processYesterdayReservations, deleteOldReservations } from './utils/reservation-processor';
 import { deleteExpiredEvents } from './utils/event-processor';
+import { requireAuth } from './middleware/auth';
+import { createRegistrationOptions, verifyRegistration, createAuthenticationOptions, verifyAuthentication, nowISO, futureISO, encodeBase64Url } from './utils/passkey';
 
 export type Bindings = {
   DB: D1Database;
@@ -36,6 +38,74 @@ export type Variables = {
 };
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+export type UserRow = {
+  id: string;
+  name: string;
+  nickname: string | null;
+  email: string;
+  avatar: string | null;
+  instruments: string;
+  grade: number;
+  role: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type PasskeyRow = {
+  id: string;
+  user_id: string;
+  credential_id: string;
+  public_key: string;
+  counter: number;
+  device_type: string | null;
+  backed_up: number | null;
+  transports: string | null;
+  attestation_format: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type PasskeyChallengeRow = {
+  id: string;
+  user_id: string | null;
+  email: string | null;
+  challenge: string;
+  type: string;
+  expires_at: string;
+  created_at: string;
+};
+
+async function fetchPasskeys(env: Bindings, userId: string): Promise<PasskeyRow[]> {
+  const rows = await env.DB.prepare('SELECT * FROM passkeys WHERE user_id = ?').bind(userId).all<PasskeyRow>();
+  return rows.results ?? [];
+}
+
+async function fetchPasskeyByCredential(env: Bindings, credentialId: string): Promise<PasskeyRow | null> {
+  const row = await env.DB.prepare('SELECT * FROM passkeys WHERE credential_id = ?').bind(credentialId).first<PasskeyRow>();
+  return row ?? null;
+}
+
+async function fetchChallenge(env: Bindings, id: string): Promise<PasskeyChallengeRow | null> {
+  const row = await env.DB.prepare('SELECT * FROM passkey_challenges WHERE id = ?').bind(id).first<PasskeyChallengeRow>();
+  return row ?? null;
+}
+
+async function deleteChallenge(env: Bindings, id: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM passkey_challenges WHERE id = ?').bind(id).run();
+}
+
+function safeParseTransports(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+  } catch {
+    return [];
+  }
+}
 
 app.use('*', logger());
 app.use('*', cors({
@@ -144,7 +214,7 @@ app.get('/auth/callback/google', async (c) => {
 
     const dbUserRaw = await c.env.DB.prepare(
       'SELECT * FROM users WHERE email = ?'
-    ).bind(googleUser.email).first();
+    ).bind(googleUser.email).first<UserRow>();
 
     if (!dbUserRaw) {
       return c.redirect(`${c.env.FRONTEND_URL}/login?error=access_denied`);
@@ -162,7 +232,7 @@ app.get('/auth/callback/google', async (c) => {
       ...dbUserRaw,
       instruments: parsedInstruments,
       grade: Number(dbUserRaw.grade),
-      student_number: (dbUserRaw.email as string).substring(0, 6).toUpperCase(),
+      student_number: dbUserRaw.email.substring(0, 6).toUpperCase(),
     });
 
     // Format name with space between family and given name
@@ -184,15 +254,37 @@ app.get('/auth/callback/google', async (c) => {
       return c.redirect(`${c.env.FRONTEND_URL}/login?error=name_formatting_failed`);
     }
     
-    if (!dbUser.name || dbUser.name !== formattedName) {
-      const now = new Date().toISOString();
-      await c.env.DB.prepare(
-        'UPDATE users SET name = ?, updated_at = ? WHERE email = ?'
-      ).bind(
-        formattedName,
-        now,
-        googleUser.email
-      ).run();
+    const now = new Date().toISOString();
+    const shouldUpdateName = !dbUser.name || dbUser.name !== formattedName;
+    const shouldUpdateAvatar = googleUser.image && (dbUserRaw?.avatar !== googleUser.image);
+    
+    if (shouldUpdateName || shouldUpdateAvatar) {
+      if (shouldUpdateName && shouldUpdateAvatar) {
+        await c.env.DB.prepare(
+          'UPDATE users SET name = ?, avatar = ?, updated_at = ? WHERE email = ?'
+        ).bind(
+          formattedName,
+          googleUser.image || null,
+          now,
+          googleUser.email
+        ).run();
+      } else if (shouldUpdateName) {
+        await c.env.DB.prepare(
+          'UPDATE users SET name = ?, updated_at = ? WHERE email = ?'
+        ).bind(
+          formattedName,
+          now,
+          googleUser.email
+        ).run();
+      } else if (shouldUpdateAvatar) {
+        await c.env.DB.prepare(
+          'UPDATE users SET avatar = ?, updated_at = ? WHERE email = ?'
+        ).bind(
+          googleUser.image || null,
+          now,
+          googleUser.email
+        ).run();
+      }
     }
 
     const jwt = await generateJWT({
@@ -232,7 +324,7 @@ app.get('/auth/session', async (c) => {
 
     const dbUserRaw = await c.env.DB.prepare(
       'SELECT * FROM users WHERE id = ?'
-    ).bind(payload.sub).first();
+    ).bind(payload.sub).first<UserRow>();
 
     if (!dbUserRaw) {
       return c.json({ user: null });
@@ -250,16 +342,17 @@ app.get('/auth/session', async (c) => {
       ...dbUserRaw,
       instruments: parsedInstruments,
       grade: Number(dbUserRaw.grade),
-      student_number: (dbUserRaw.email as string).substring(0, 6).toUpperCase(),
+      student_number: dbUserRaw.email.substring(0, 6).toUpperCase(),
     });
 
+    const avatarUrl = dbUserRaw?.avatar || payload.picture || undefined;
     return c.json({
       user: {
         id: dbUser.id,
         email: dbUser.email,
         name: dbUser.name,
         nickname: payload.nickname,
-        picture: payload.picture,
+        picture: avatarUrl,
         role: dbUser.role,
         grade: dbUser.grade,
         instruments: dbUser.instruments,
@@ -286,6 +379,321 @@ app.post('/auth/signout', async (c) => {
   } catch (error) {
     console.error('Signout error:', error);
     return c.json({ success: false, error: 'SIGNOUT_FAILED' }, 500);
+  }
+});
+
+app.post('/auth/passkey/register/start', requireAuth, async (c) => {
+  try {
+    const user = c.get('user');
+    await c.env.DB.prepare('DELETE FROM passkey_challenges WHERE expires_at < ?').bind(nowISO()).run();
+    await c.env.DB.prepare('DELETE FROM passkey_challenges WHERE user_id = ? AND type = ?').bind(user.id, 'register').run();
+    const passkeys = await fetchPasskeys(c.env, user.id);
+    const options = await createRegistrationOptions(c.env, {
+      id: user.id,
+      email: user.email,
+      name: user.name || user.email,
+    }, passkeys);
+    const challengeId = crypto.randomUUID();
+    const createdAt = nowISO();
+    const expiresAt = futureISO(10);
+    await c.env.DB.prepare(
+      'INSERT INTO passkey_challenges (id, user_id, email, challenge, type, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      challengeId,
+      user.id,
+      user.email,
+      options.challenge,
+      'register',
+      expiresAt,
+      createdAt
+    ).run();
+    return c.json({ challengeId, options });
+  } catch (error) {
+    console.error('Passkey register start error:', error);
+    return c.json({ success: false, error: 'PASSKEY_START_FAILED' }, 500);
+  }
+});
+
+app.post('/auth/passkey/register/finish', requireAuth, async (c) => {
+  try {
+    const user = c.get('user');
+    const body = await c.req.json();
+    const parsed = z.object({
+      challengeId: z.string(),
+      response: z.any(),
+    }).parse(body);
+    const challenge = await fetchChallenge(c.env, parsed.challengeId);
+    if (!challenge || challenge.type !== 'register' || challenge.user_id !== user.id) {
+      return c.json({ success: false, error: 'PASSKEY_CHALLENGE_NOT_FOUND' }, 400);
+    }
+    if (new Date(challenge.expires_at).getTime() < Date.now()) {
+      await deleteChallenge(c.env, challenge.id);
+      return c.json({ success: false, error: 'PASSKEY_CHALLENGE_EXPIRED' }, 400);
+    }
+    const verification = await verifyRegistration(c.env, challenge.challenge, parsed.response);
+    if (!verification.verified || !verification.registrationInfo) {
+      await deleteChallenge(c.env, challenge.id);
+      return c.json({ success: false, error: 'PASSKEY_VERIFICATION_FAILED' }, 400);
+    }
+    const { registrationInfo } = verification;
+    const { credential, credentialDeviceType, credentialBackedUp, fmt } = registrationInfo;
+    if (!credential || !credential.id || !credential.publicKey) {
+      console.error('[Passkey Register] Credential data missing', { 
+        hasCredential: !!credential,
+        hasId: !!credential?.id,
+        hasPublicKey: !!credential?.publicKey
+      });
+      await deleteChallenge(c.env, challenge.id);
+      return c.json({ success: false, error: 'PASSKEY_REGISTER_FAILED' }, 500);
+    }
+    const credentialId = typeof credential.id === 'string' 
+      ? credential.id 
+      : encodeBase64Url(credential.id as unknown as Uint8Array);
+    const credentialPublicKey = encodeBase64Url(credential.publicKey as unknown as Uint8Array);
+    const counter = credential.counter ?? 0;
+    const credentialTransports = credential.transports ? JSON.stringify(credential.transports) : null;
+    console.log('[Passkey Register] Credential extracted', { 
+      credentialId,
+      hasPublicKey: !!credentialPublicKey,
+      counter,
+      deviceType: credentialDeviceType,
+      backedUp: credentialBackedUp
+    });
+    const existing = await c.env.DB.prepare('SELECT id FROM passkeys WHERE credential_id = ?').bind(credentialId).first<{ id: string }>();
+    const timestamp = nowISO();
+    if (existing) {
+      await c.env.DB.prepare(
+        'UPDATE passkeys SET user_id = ?, public_key = ?, counter = ?, device_type = ?, backed_up = ?, transports = ?, attestation_format = ?, updated_at = ? WHERE credential_id = ?'
+      ).bind(
+        user.id,
+        credentialPublicKey,
+        counter,
+        credentialDeviceType ?? null,
+        credentialBackedUp ? 1 : 0,
+        credentialTransports,
+        fmt ?? null,
+        timestamp,
+        credentialId
+      ).run();
+    } else {
+      await c.env.DB.prepare(
+        'INSERT INTO passkeys (id, user_id, credential_id, public_key, counter, device_type, backed_up, transports, attestation_format, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(),
+        user.id,
+        credentialId,
+        credentialPublicKey,
+        counter,
+        credentialDeviceType ?? null,
+        credentialBackedUp ? 1 : 0,
+        credentialTransports,
+        fmt ?? null,
+        timestamp,
+        timestamp
+      ).run();
+    }
+    await deleteChallenge(c.env, challenge.id);
+    console.log('[Passkey Register] Registration successful', { 
+      credentialId,
+      userId: user.id,
+      action: existing ? 'updated' : 'created'
+    });
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('[Passkey Register] Registration error:', error);
+    if (error instanceof Error) {
+      console.error('[Passkey Register] Error details:', { 
+        message: error.message, 
+        stack: error.stack 
+      });
+    }
+    return c.json({ success: false, error: 'PASSKEY_REGISTER_FAILED' }, 500);
+  }
+});
+
+app.post('/auth/passkey/login/options', async (c) => {
+  try {
+    await c.env.DB.prepare('DELETE FROM passkey_challenges WHERE expires_at < ?').bind(nowISO()).run();
+    const options = await createAuthenticationOptions(c.env);
+    const challengeId = crypto.randomUUID();
+    const createdAt = nowISO();
+    const expiresAt = futureISO(10);
+    await c.env.DB.prepare(
+      'INSERT INTO passkey_challenges (id, user_id, email, challenge, type, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      challengeId,
+      null,
+      null,
+      options.challenge,
+      'login',
+      expiresAt,
+      createdAt
+    ).run();
+    return c.json({ success: true, challengeId, options });
+  } catch (error) {
+    console.error('Passkey login options error:', error);
+    return c.json({ success: false });
+  }
+});
+
+app.post('/auth/passkey/login/finish', async (c) => {
+  try {
+    const body = await c.req.json();
+    const parsed = z.object({
+      challengeId: z.string(),
+      response: z.any(),
+    }).parse(body);
+    console.log('[Passkey Login] Start verification', { challengeId: parsed.challengeId });
+    const challenge = await fetchChallenge(c.env, parsed.challengeId);
+    if (!challenge || challenge.type !== 'login') {
+      console.error('[Passkey Login] Challenge not found or invalid type', { 
+        challengeId: parsed.challengeId, 
+        challenge: challenge ? { id: challenge.id, type: challenge.type } : null 
+      });
+      return c.json({ success: false });
+    }
+    if (new Date(challenge.expires_at).getTime() < Date.now()) {
+      console.error('[Passkey Login] Challenge expired', { 
+        challengeId: parsed.challengeId, 
+        expiresAt: challenge.expires_at,
+        now: new Date().toISOString()
+      });
+      await deleteChallenge(c.env, challenge.id);
+      return c.json({ success: false });
+    }
+    const credentialId = typeof parsed.response?.id === 'string' ? parsed.response.id : null;
+    if (!credentialId) {
+      console.error('[Passkey Login] Credential ID missing in response', { 
+        challengeId: parsed.challengeId,
+        responseId: parsed.response?.id,
+        responseType: typeof parsed.response?.id
+      });
+      await deleteChallenge(c.env, challenge.id);
+      return c.json({ success: false });
+    }
+    console.log('[Passkey Login] Credential ID found', { credentialId });
+    const matched = await fetchPasskeyByCredential(c.env, credentialId);
+    if (!matched) {
+      console.error('[Passkey Login] Passkey not found for credential', { credentialId });
+      await deleteChallenge(c.env, challenge.id);
+      return c.json({ success: false });
+    }
+    console.log('[Passkey Login] Passkey found', { passkeyId: matched.id, userId: matched.user_id });
+    const userRow = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(matched.user_id).first<UserRow>();
+    if (!userRow) {
+      console.error('[Passkey Login] User not found', { userId: matched.user_id });
+      await deleteChallenge(c.env, challenge.id);
+      return c.json({ success: false });
+    }
+    console.log('[Passkey Login] User found', { userId: userRow.id, email: userRow.email });
+    const verification = await verifyAuthentication(c.env, challenge.challenge, parsed.response, matched);
+    if (!verification.verified || !verification.authenticationInfo) {
+      console.error('[Passkey Login] Verification failed', { 
+        verified: verification.verified,
+        hasAuthInfo: !!verification.authenticationInfo,
+        error: verification.verified === false ? 'Verification returned false' : 'No authentication info',
+        passkeyId: matched.id,
+        credentialId
+      });
+      await deleteChallenge(c.env, challenge.id);
+      return c.json({ success: false });
+    }
+    const { authenticationInfo } = verification;
+    console.log('[Passkey Login] Verification successful', { 
+      newCounter: authenticationInfo.newCounter,
+      passkeyId: matched.id
+    });
+    await c.env.DB.prepare(
+      'UPDATE passkeys SET counter = ?, updated_at = ? WHERE id = ?'
+    ).bind(
+      authenticationInfo.newCounter,
+      nowISO(),
+      matched.id
+    ).run();
+    const avatarUrl = userRow.avatar || undefined;
+    const jwt = await generateJWT({
+      id: userRow.id,
+      email: userRow.email,
+      name: userRow.name,
+      image: avatarUrl,
+    }, userRow.nickname ?? null, c.env.AUTH_SECRET);
+    setCookie(c, 'auth_token', jwt, {
+      httpOnly: true,
+      secure: c.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60,
+      path: '/',
+    });
+    await deleteChallenge(c.env, challenge.id);
+    console.log('[Passkey Login] Login successful', { userId: userRow.id, email: userRow.email });
+    return c.json({ success: true });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.error('[Passkey Login] Validation error', { issues: error.issues });
+      return c.json({ success: false });
+    }
+    console.error('[Passkey Login] Unexpected error:', error);
+    if (error instanceof Error) {
+      console.error('[Passkey Login] Error details:', { 
+        message: error.message, 
+        stack: error.stack 
+      });
+    }
+    return c.json({ success: false });
+  }
+});
+
+app.get('/auth/passkey/status', requireAuth, async (c) => {
+  try {
+    const user = c.get('user');
+    const passkeys = await fetchPasskeys(c.env, user.id);
+    return c.json({ success: true, registered: passkeys.length > 0 });
+  } catch (error) {
+    console.error('Passkey status error:', error);
+    return c.json({ success: false, error: 'PASSKEY_STATUS_FAILED' }, 500);
+  }
+});
+
+app.get('/auth/passkey/credentials', requireAuth, async (c) => {
+  try {
+    const user = c.get('user');
+    await c.env.DB.prepare('DELETE FROM passkey_challenges WHERE expires_at < ?').bind(nowISO()).run();
+    const rows = await c.env.DB.prepare(
+      'SELECT id, credential_id, device_type, backed_up, transports, attestation_format, created_at, updated_at FROM passkeys WHERE user_id = ? ORDER BY created_at DESC'
+    ).bind(user.id).all<PasskeyRow>();
+    const passkeys = (rows.results ?? []).map((row) => ({
+      id: row.id,
+      credential_id: row.credential_id,
+      device_type: row.device_type,
+      backed_up: row.backed_up === 1,
+      transports: safeParseTransports(row.transports),
+      attestation_format: row.attestation_format,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    }));
+    return c.json({ success: true, passkeys });
+  } catch (error) {
+    console.error('Passkey list error:', error);
+    return c.json({ success: false, error: 'PASSKEY_LIST_FAILED' }, 500);
+  }
+});
+
+app.delete('/auth/passkey/credentials/:id', requireAuth, async (c) => {
+  try {
+    const user = c.get('user');
+    const id = c.req.param('id');
+    if (!id) {
+      return c.json({ success: false });
+    }
+    const result = await c.env.DB.prepare('DELETE FROM passkeys WHERE id = ? AND user_id = ?').bind(id, user.id).run();
+    const changes = (result as any)?.meta?.changes ?? 0;
+    if (changes === 0) {
+      return c.json({ success: false });
+    }
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Passkey delete error:', error);
+    return c.json({ success: false });
   }
 });
 
