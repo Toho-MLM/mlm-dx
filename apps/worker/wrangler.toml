@@ -1,7 +1,6 @@
 name = "mlm-dx-worker"
 main = "src/index.ts"
 compatibility_date = "2024-12-20"
-compatibility_flags = ["nodejs_compat"]
 
 [triggers]
 crons = ["0 15 * * *"]
