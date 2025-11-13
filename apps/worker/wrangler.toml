@@ -1,6 +1,7 @@
 name = "mlm-dx-worker"
 main = "src/index.ts"
 compatibility_date = "2024-12-20"
+node_compat = true
 
 [triggers]
 crons = ["0 15 * * *"]
