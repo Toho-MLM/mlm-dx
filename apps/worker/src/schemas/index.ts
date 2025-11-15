@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import * as SharedSchemas from '../../../../lib/shared-schemas';
 
-// 共有スキーマを再エクスポート
 export const {
   UserSchema,
   UserWithInstrumentsSchema,
@@ -20,7 +19,6 @@ export const {
   ApiResponseSchema,
 } = SharedSchemas;
 
-// バックエンド専用のスキーマ
 export const GoogleUserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
@@ -70,7 +68,6 @@ export const GoogleIdTokenPayloadSchema = z.object({
   nonce: z.string().optional(),
 });
 
-// 型定義
 export type User = SharedSchemas.User;
 export type UserWithInstruments = SharedSchemas.UserWithInstruments;
 export type Group = SharedSchemas.Group;
@@ -87,7 +84,6 @@ export type CreateArchiveRequest = SharedSchemas.CreateArchiveRequest;
 export type UpdateArchiveRequest = SharedSchemas.UpdateArchiveRequest;
 export type ApiResponse<T> = SharedSchemas.ApiResponse<T>;
 
-// バックエンド専用の型
 export type GoogleUser = z.infer<typeof GoogleUserSchema>;
 export type GroupMember = z.infer<typeof GroupMemberSchema>;
 export type GoogleTokenResponse = z.infer<typeof GoogleTokenResponseSchema>;

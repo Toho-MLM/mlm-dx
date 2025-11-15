@@ -1,14 +1,13 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
-import { isUserInGroup, getUserGroupIds } from './groups';
+import { isUserInGroup } from './groups';
 import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema } from '../../../../lib/shared-schemas';
 import { processReservationState, isTodayInJST } from '../utils/reservation-processor';
 import { requireAdmin } from '../utils/admin';
 
 const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// Helper function to check if a reservation is cancellable by a user
 async function isReservationCancellable(
   env: Bindings, 
   userId: string, 
@@ -32,10 +31,8 @@ async function isReservationCancellable(
   return false;
 }
 
-// Apply authentication middleware to all routes
 reservationRoutes.use('*', requireAuth);
 
-// fetch_reservations - Get all reservations
 reservationRoutes.get('/', async (c) => {
   try {
     const user = c.get('user');
@@ -112,17 +109,14 @@ reservationRoutes.get('/', async (c) => {
 });
 
 
-// create_reservation - Create a new reservation
 reservationRoutes.post('/', async (c) => {
   try {
     const user = c.get('user');
     const requestData = await c.req.json();
     
-    // 共通スキーマでバリデーション
     const validatedData = CreateReservationRequestSchema.parse(requestData);
     const { start_time, end_time, group_id } = validatedData;
 
-    // 追加のバリデーション
     const validation = validateReservationTime(start_time, end_time);
     if (!validation.isValid) {
       return c.json({
@@ -131,7 +125,6 @@ reservationRoutes.post('/', async (c) => {
       }, 400);
     }
 
-    // グループIDのバリデーション（group_idが指定されている場合）
     if (group_id) {
       const groupExists = await c.env.DB.prepare(`
         SELECT 1 FROM groups WHERE id = ? AND is_active = TRUE
@@ -144,7 +137,6 @@ reservationRoutes.post('/', async (c) => {
         }, 400);
       }
 
-      // ユーザーがそのグループのメンバーかチェック
       const isMember = await isUserInGroup(c.env, user.id, group_id);
       if (!isMember) {
         return c.json({
@@ -170,7 +162,6 @@ reservationRoutes.post('/', async (c) => {
     const now = new Date().toISOString();
     const reservationId = crypto.randomUUID();
 
-    // Determine user_id and group_id based on group_id
     const userId = user.id;
     const groupId = group_id || null;
 
@@ -213,7 +204,6 @@ reservationRoutes.post('/', async (c) => {
   } catch (error) {
     console.error('Error creating reservation:', error);
     
-    // より具体的なエラーメッセージ
     if (error instanceof Error) {
       if (error.message.includes('UNIQUE constraint failed')) {
         return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
@@ -324,7 +314,6 @@ reservationRoutes.delete('/unavailable/:id', async (c) => {
   }
 });
 
-// cancel_reservation - Cancel a reservation
 reservationRoutes.post('/:id/cancel', async (c) => {
   try {
     const user = c.get('user');
@@ -341,15 +330,15 @@ reservationRoutes.post('/:id/cancel', async (c) => {
     }
 
     const reservation = await c.env.DB.prepare(
-      'SELECT * FROM reservations WHERE id = ?'
-    ).bind(reservationId).first();
+      'SELECT user_id, group_id, state FROM reservations WHERE id = ?'
+    ).bind(reservationId).first<{ user_id: string; group_id: string | null; state: string }>();
 
     if (!reservation) {
       return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     }
 
     if (isAdminMode) {
-      if (!['PENDING', 'CONFIRMED'].includes(reservation.state as string)) {
+      if (!['PENDING', 'CONFIRMED'].includes(reservation.state)) {
         return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_CANCELLED' }, 400);
       }
 
@@ -361,7 +350,7 @@ reservationRoutes.post('/:id/cancel', async (c) => {
 
       return c.json({ success: true });
     } else {
-      const cancellable = await isReservationCancellable(c.env, user.id, reservation as any);
+      const cancellable = await isReservationCancellable(c.env, user.id, reservation);
       if (!cancellable) {
         return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_CANCELLED' }, 403);
       }

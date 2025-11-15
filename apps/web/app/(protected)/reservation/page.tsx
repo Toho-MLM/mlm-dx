@@ -12,7 +12,7 @@ import { LoadingButton } from "@/components/ui/loading-button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, AlertTriangle, CalendarRangeIcon } from 'lucide-react'
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, CalendarRangeIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
 import {
@@ -24,8 +24,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ReservationData, ReservationState, eventStateNames } from '../../types'
-import { validateReservationTime, isReservationDateValid, isReservationTimeValid } from '@shared-schemas'
+import { ReservationState, eventStateNames, Event } from '../../types'
+import { validateReservationTime, isReservationDateValid, isReservationTimeValid, type Reservation, type UnavailablePeriod } from '@shared-schemas'
 type GroupOption = {
   id: string;
   name: string;
@@ -109,7 +109,7 @@ function ThreeDayView({
 
 ThreeDayView.range = (date: Date, { localizer }: { localizer: DateLocalizer }) => {
   const start = startOfDay(date)
-  const end = addDays(start, 2) // 三日間
+  const end = addDays(start, 2)
 
   let current = start
   const range = []
@@ -163,8 +163,8 @@ export default function Page() {
   const [loading, setLoading] = useState(true)
   const [myGroups, setMyGroups] = useState<GroupOption[]>([])
   const [isGroupsLoading, setIsGroupsLoading] = useState(false)
-  const [events, setEvents] = useState<any[]>([])
-  const [unavailablePeriods, setUnavailablePeriods] = useState<any[]>([])
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [unavailablePeriods, setUnavailablePeriods] = useState<CalendarEvent[]>([])
   const { user, loading: authLoading } = useAuth();
   const router = useRouter()
 
@@ -187,18 +187,18 @@ export default function Page() {
         ]);
         
         if (reservationsResponse.success && reservationsResponse.data) {
-          const formattedData: CalendarEvent[] = (reservationsResponse.data as any[]).map((item: any) => ({
+          const formattedData: CalendarEvent[] = (reservationsResponse.data as Reservation[]).map((item) => ({
             id: item.id,
             title: item.group_name || item.user_name || '予約',
             start: new Date(item.start_time),
             end: new Date(item.end_time),
             allDay: false,
             resource: {
-              type: 'reservation',
+              type: 'reservation' as const,
               reservationId: item.id,
-              user_name: item.user_name,
-              group_name: item.group_name,
-              state: item.state,
+              user_name: item.user_name || undefined,
+              group_name: item.group_name || undefined,
+              state: item.state as ReservationState,
               cancellable: item.cancellable,
             },
           }));
@@ -206,7 +206,7 @@ export default function Page() {
         }
 
         if (eventsResponse.success && eventsResponse.data) {
-          const eventItems: CalendarEvent[] = (eventsResponse.data as any[]).map((event: any) => {
+          const eventItems: CalendarEvent[] = (eventsResponse.data as Event[]).map((event) => {
             const eventDate = new Date(event.event_date);
             const startDate = startOfDay(eventDate);
             const endDate = new Date(startDate);
@@ -219,7 +219,7 @@ export default function Page() {
               end: endDate,
               allDay: true,
               resource: {
-                type: 'event',
+                type: 'event' as const,
                 eventId: event.id,
               },
             };
@@ -228,7 +228,7 @@ export default function Page() {
         }
 
         if (unavailablePeriodsResponse.success && unavailablePeriodsResponse.data) {
-          const periodItems: CalendarEvent[] = (unavailablePeriodsResponse.data as any[]).map((period: any) => {
+          const periodItems: CalendarEvent[] = (unavailablePeriodsResponse.data as UnavailablePeriod[]).map((period) => {
             const start = new Date(period.start_datetime);
             const end = new Date(period.end_datetime);
             
@@ -380,7 +380,7 @@ export default function Page() {
     }
   }
 
-  const handleSelectEvent = (event: CalendarEvent, e: React.SyntheticEvent<HTMLElement>) => {
+  const handleSelectEvent = (event: CalendarEvent) => {
     setSelectedReservation(event)
     setIsEventDetailOpen(true)
   }
@@ -393,7 +393,6 @@ export default function Page() {
     return Array.from({ length: 12 }, (_, i) => i * 5)
   }
 
-  const maxDate = addDays(new Date(), 14)
 
   const isStartTimeDisabled = (hour: number, minute: number) => {
     return !isReservationTimeValid(reservationDraft.date, hour, minute);
@@ -480,18 +479,18 @@ export default function Page() {
       ]);
       
       if (reservationsResponse.success && reservationsResponse.data) {
-        const formattedData: CalendarEvent[] = (reservationsResponse.data as any[]).map((item: any) => ({
+        const formattedData: CalendarEvent[] = (reservationsResponse.data as Reservation[]).map((item) => ({
           id: item.id,
           title: item.group_name || item.user_name || '予約',
           start: new Date(item.start_time),
           end: new Date(item.end_time),
           allDay: false,
           resource: {
-            type: 'reservation',
+            type: 'reservation' as const,
             reservationId: item.id,
-            user_name: item.user_name,
-            group_name: item.group_name,
-            state: item.state,
+            user_name: item.user_name || undefined,
+            group_name: item.group_name || undefined,
+            state: item.state as ReservationState,
             cancellable: item.cancellable,
           },
         }));
@@ -499,7 +498,7 @@ export default function Page() {
       }
 
       if (eventsResponse.success && eventsResponse.data) {
-        const eventItems: CalendarEvent[] = (eventsResponse.data as any[]).map((event: any) => {
+        const eventItems: CalendarEvent[] = (eventsResponse.data as Event[]).map((event) => {
           const eventDate = new Date(event.event_date);
           const startDate = startOfDay(eventDate);
           const endDate = new Date(startDate);
@@ -512,7 +511,7 @@ export default function Page() {
             end: endDate,
             allDay: true,
             resource: {
-              type: 'event',
+              type: 'event' as const,
               eventId: event.id,
             },
           };
@@ -521,7 +520,7 @@ export default function Page() {
       }
 
       if (unavailablePeriodsResponse.success && unavailablePeriodsResponse.data) {
-        const periodItems: CalendarEvent[] = (unavailablePeriodsResponse.data as any[]).map((period: any) => {
+        const periodItems: CalendarEvent[] = (unavailablePeriodsResponse.data as UnavailablePeriod[]).map((period) => {
           const start = new Date(period.start_datetime);
           const end = new Date(period.end_datetime);
           
@@ -636,9 +635,9 @@ export default function Page() {
                 localizer={localizer}
                 events={[...reservationData, ...events, ...unavailablePeriods]}
                  titleAccessor={(event: CalendarEvent) => event.title}
-                 startAccessor={(event: any) => event.start}
-                 endAccessor={(event: any) => event.end}
-                 allDayAccessor={(event: any) => event.allDay || false}
+                 startAccessor={(event: CalendarEvent) => event.start}
+                 endAccessor={(event: CalendarEvent) => event.end}
+                 allDayAccessor={(event: CalendarEvent) => event.allDay || false}
                 onSelectEvent={handleSelectEvent}
                 views={customViews}
                 messages={messages}

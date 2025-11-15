@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -60,9 +60,13 @@ export function SongTitleInput({ value, placeholder, className, disabled, onChan
         const res = await fetch(url, { signal: controller.signal, headers: { 'Accept': 'application/json' } })
         if (!res.ok) throw new Error('failed')
         const data = await res.json()
-        const list: Suggestion[] = (data?.recordings || []).map((r: any) => {
+        type Recording = {
+          title?: string;
+          'artist-credit'?: Array<{ name?: string; joinphrase?: string }>;
+        };
+        const list: Suggestion[] = ((data?.recordings as Recording[]) || []).map((r) => {
           const credit = Array.isArray(r?.['artist-credit']) ? r['artist-credit'] : []
-          const artistCredit = credit.map((c: any) => `${c?.name || ''}${c?.joinphrase || ''}`).join('')
+          const artistCredit = credit.map((c) => `${c?.name || ''}${c?.joinphrase || ''}`).join('')
           return { title: r?.title || '', artistCredit }
         }).filter((s: Suggestion) => s.title)
         setSuggestions(list)
@@ -76,7 +80,7 @@ export function SongTitleInput({ value, placeholder, className, disabled, onChan
         }
         setOffset(limit)
       } catch (e) {
-        if ((e as any)?.name === 'AbortError') return
+        if (e instanceof Error && e.name === 'AbortError') return
       } finally {
         setLoading(false)
       }
@@ -98,9 +102,13 @@ export function SongTitleInput({ value, placeholder, className, disabled, onChan
       const res = await fetch(url, { signal: controller.signal, headers: { 'Accept': 'application/json' } })
       if (!res.ok) throw new Error('failed')
       const data = await res.json()
-      const list: Suggestion[] = (data?.recordings || []).map((r: any) => {
+      type Recording = {
+        title?: string;
+        'artist-credit'?: Array<{ name?: string; joinphrase?: string }>;
+      };
+      const list: Suggestion[] = ((data?.recordings as Recording[]) || []).map((r) => {
         const credit = Array.isArray(r?.['artist-credit']) ? r['artist-credit'] : []
-        const artistCredit = credit.map((c: any) => `${c?.name || ''}${c?.joinphrase || ''}`).join('')
+        const artistCredit = credit.map((c) => `${c?.name || ''}${c?.joinphrase || ''}`).join('')
         return { title: r?.title || '', artistCredit }
       }).filter((s: Suggestion) => s.title)
       if (list.length > 0) {
@@ -125,7 +133,7 @@ export function SongTitleInput({ value, placeholder, className, disabled, onChan
         setHasMore(list.length === limit)
       }
     } catch (e) {
-      if ((e as any)?.name === 'AbortError') return
+      if (e instanceof Error && e.name === 'AbortError') return
     } finally {
       setLoadingMore(false)
     }

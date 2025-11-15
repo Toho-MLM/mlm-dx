@@ -44,9 +44,6 @@ jobs:
         run: corepack enable
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install backend deps
-        working-directory: apps/worker
-        run: pnpm install --frozen-lockfile
       - name: Update wrangler.toml with environment variables
         working-directory: apps/worker
         run: |

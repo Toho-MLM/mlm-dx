@@ -98,10 +98,10 @@ eventRoutes.put('/:id', async (c) => {
 
     const oldEvent = await c.env.DB.prepare(`
       SELECT group_limit, song_limit FROM events WHERE id = ?
-    `).bind(eventId).first();
+    `).bind(eventId).first<{ group_limit: number; song_limit: number }>();
 
-    const oldGroupLimit = oldEvent ? (oldEvent as any).group_limit : null;
-    const oldSongLimit = oldEvent ? (oldEvent as any).song_limit : null;
+    const oldGroupLimit = oldEvent?.group_limit ?? null;
+    const oldSongLimit = oldEvent?.song_limit ?? null;
     const songLimit = requestData.song_limit !== undefined ? requestData.song_limit : oldSongLimit;
 
     await c.env.DB.prepare(`
@@ -132,12 +132,12 @@ eventRoutes.put('/:id', async (c) => {
           FROM entries
           WHERE event_id = ?
           ORDER BY created_at DESC
-        `).bind(eventId).all();
+        `).bind(eventId).all<{ id: string; group_id: string; created_at: string }>();
 
         const groupCountMap = new Map<string, number>();
-        const groupEntriesMap = new Map<string, any[]>();
+        const groupEntriesMap = new Map<string, Array<{ id: string; group_id: string; created_at: string }>>();
         
-        for (const entry of entries.results as any[]) {
+        for (const entry of entries.results) {
           groupCountMap.set(entry.group_id, (groupCountMap.get(entry.group_id) || 0) + 1);
           if (!groupEntriesMap.has(entry.group_id)) {
             groupEntriesMap.set(entry.group_id, []);
@@ -168,9 +168,9 @@ eventRoutes.put('/:id', async (c) => {
       if (songLimit === 0) {
         const entries = await c.env.DB.prepare(`
           SELECT id FROM entries WHERE event_id = ?
-        `).bind(eventId).all();
+        `).bind(eventId).all<{ id: string }>();
 
-        for (const entry of entries.results as any[]) {
+        for (const entry of entries.results) {
           await c.env.DB.prepare(`
             DELETE FROM setlist_items WHERE entry_id = ?
           `).bind(entry.id).run();
@@ -178,15 +178,15 @@ eventRoutes.put('/:id', async (c) => {
       } else if (songLimit < oldSongLimit) {
         const entries = await c.env.DB.prepare(`
           SELECT id FROM entries WHERE event_id = ?
-        `).bind(eventId).all();
+        `).bind(eventId).all<{ id: string }>();
 
-        for (const entry of entries.results as any[]) {
+        for (const entry of entries.results) {
           const setlistItems = await c.env.DB.prepare(`
             SELECT id, position
             FROM setlist_items
             WHERE entry_id = ?
             ORDER BY position DESC
-          `).bind(entry.id).all();
+          `).bind(entry.id).all<{ id: string; position: number }>();
 
           const itemCount = setlistItems.results.length;
           if (itemCount > songLimit) {
@@ -194,7 +194,7 @@ eventRoutes.put('/:id', async (c) => {
             for (let i = 0; i < toDelete; i++) {
               await c.env.DB.prepare(`
                 DELETE FROM setlist_items WHERE id = ?
-              `).bind((setlistItems.results[i] as any).id).run();
+              `).bind(setlistItems.results[i].id).run();
             }
           }
         }

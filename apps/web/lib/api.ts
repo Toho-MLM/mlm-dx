@@ -1,9 +1,7 @@
 import { MemberListItem } from '@/app/types'
-import { z } from 'zod'
-import { MemberListItemSchema } from './schemas'
 import * as SharedSchemas from '../../../lib/shared-schemas'
 import { httpClient } from './http-client'
-import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/types'
+import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, AuthenticatorAttestationResponseJSON, AuthenticatorAssertionResponseJSON } from '@simplewebauthn/types'
 
 type User = SharedSchemas.User
 type Group = SharedSchemas.Group
@@ -12,7 +10,6 @@ type Archive = SharedSchemas.Archive
 type CreateGroupRequest = SharedSchemas.CreateGroupRequest
 type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest
 type UpdateUserRequest = SharedSchemas.UpdateUserRequest
-type AddMemberToGroupRequest = SharedSchemas.AddMemberToGroupRequest
 type CreateReservationRequest = SharedSchemas.CreateReservationRequest
 type CreateArchiveRequest = SharedSchemas.CreateArchiveRequest
 type UpdateArchiveRequest = SharedSchemas.UpdateArchiveRequest
@@ -22,7 +19,6 @@ type UpdateEventRequest = SharedSchemas.UpdateEventRequest
 type Entry = SharedSchemas.Entry
 type EventSetlistBundleItem = SharedSchemas.EventSetlistBundleItem
 type ReplaceSetlistItemsRequest = SharedSchemas.ReplaceSetlistItemsRequest
-type TimelineItem = SharedSchemas.TimelineItem
 type GetTimelineResponse = SharedSchemas.GetTimelineResponse
 type UpdateTimelineRequest = SharedSchemas.UpdateTimelineRequest
 type CreateEntryRequest = SharedSchemas.CreateEntryRequest
@@ -64,7 +60,7 @@ class ApiClient {
     return httpClient.post<PasskeyRegistrationStartResponse>('/auth/passkey/register/start')
   }
 
-  async finishPasskeyRegistration(challengeId: string, response: any): Promise<{ success: boolean }> {
+  async finishPasskeyRegistration(challengeId: string, response: AuthenticatorAttestationResponseJSON): Promise<{ success: boolean }> {
     return httpClient.post<{ success: boolean }>('/auth/passkey/register/finish', { challengeId, response })
   }
 
@@ -72,7 +68,7 @@ class ApiClient {
     return httpClient.post<PasskeyLoginStartResponse>('/auth/passkey/login/options')
   }
 
-  async finishPasskeyLogin(challengeId: string, response: any): Promise<{ success: boolean }> {
+  async finishPasskeyLogin(challengeId: string, response: AuthenticatorAssertionResponseJSON): Promise<{ success: boolean }> {
     return httpClient.post<{ success: boolean }>('/auth/passkey/login/finish', { challengeId, response })
   }
 
@@ -84,7 +80,6 @@ class ApiClient {
     return httpClient.delete<{ success: boolean }>(`/auth/passkey/credentials/${id}`)
   }
 
-  // ユーザー関連
   async getCurrentUserData(): Promise<ApiResponse<User>> {
     return httpClient.get<ApiResponse<User>>(`/me`)
   }
@@ -112,7 +107,6 @@ class ApiClient {
     return httpClient.get<ApiResponse<{ id: string; name: string; instruments: string[] }[]>>('/members/select')
   }
 
-  // グループ関連
   async getGroups(): Promise<ApiResponse<Group[]>> {
     return httpClient.get<ApiResponse<Group[]>>('/groups')
   }
@@ -131,7 +125,6 @@ class ApiClient {
     return httpClient.delete<ApiResponse<void>>(`/groups/${id}`)
   }
 
-  // メンバー関連
   async getMemberList(): Promise<ApiResponse<MemberListItem[]>> {
     return httpClient.get<ApiResponse<MemberListItem[]>>('/members')
   }
@@ -168,7 +161,6 @@ class ApiClient {
     return httpClient.post<ApiResponse<{ created: string[]; failed: Array<{ email: string; error: string }> }>>('/members/bulk', { members })
   }
 
-  // 予約関連
   async getReservations(admin: boolean = false): Promise<ApiResponse<Reservation[]>> {
     const params = admin ? '?admin=true' : '';
     return httpClient.get<ApiResponse<Reservation[]>>(`/reservations${params}`)
@@ -206,7 +198,6 @@ class ApiClient {
     return httpClient.delete<ApiResponse<void>>(`/reservations/unavailable/${id}`)
   }
 
-  // アーカイブ関連
   async getArchives(): Promise<ApiResponse<Archive[]>> {
     return httpClient.get<ApiResponse<Archive[]>>(`/archive`)
   }
@@ -266,8 +257,9 @@ class ApiClient {
     return httpClient.get<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>>>(`/setlist/entry/${entryId}`)
   }
 
-  async getEventSetlist(eventId: string): Promise<ApiResponse<EventSetlistBundleItem[]>> {
-    return httpClient.get<ApiResponse<EventSetlistBundleItem[]>>(`/setlist/event/${eventId}`)
+  async getEventSetlist(eventId: string, admin: boolean = false): Promise<ApiResponse<EventSetlistBundleItem[]>> {
+    const params = admin ? '?admin=true' : '';
+    return httpClient.get<ApiResponse<EventSetlistBundleItem[]>>(`/setlist/event/${eventId}${params}`)
   }
 
   async getTimeline(eventId: string): Promise<ApiResponse<GetTimelineResponse>> {

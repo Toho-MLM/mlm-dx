@@ -4,11 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { BandCard } from "./band-card"
 import { BandForm } from "./band-form"
 import { Group } from "@/app/types"
-import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api'
 import { BandPageHeader } from '@/components/band-page-header'
-import { useAuth } from '@/app/context/AuthContext'
-import { isAdmin } from '@shared-schemas'
 import { formatGroups } from '@/lib/utils'
 
 export function BandList() {
@@ -28,7 +25,7 @@ export function BandList() {
         apiClient.getUserGroups(adminFlag),
         apiClient.getMemberOptions(),
       ])
-      if (groupsRes.success) setBands(formatGroups(groupsRes.data as any[]))
+      if (groupsRes.success) setBands(formatGroups(groupsRes.data || []))
       if (membersRes.success) setMemberOptions(membersRes.data || [])
     } finally {
       setLoading(false)
@@ -85,7 +82,7 @@ export function BandList() {
     try {
       const response = await apiClient.getUserGroups(isAdminMode)
       if (response.success) {
-        setBands(formatGroups(response.data as any[]))
+        setBands(formatGroups(response.data || []))
       }
     } catch (error) {
       console.error('Failed to refresh groups:', error)
@@ -97,7 +94,7 @@ export function BandList() {
     try {
       const response = await apiClient.getUserGroups(checked)
       if (response.success) {
-        setBands(formatGroups(response.data as any[]))
+        setBands(formatGroups(response.data || []))
       }
     } catch (error) {
       console.error('Failed to refresh groups:', error)
