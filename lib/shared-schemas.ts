@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { addMinutes, addHours, isBefore, startOfDay, addDays } from 'date-fns';
+import { isBefore, startOfDay, addDays } from 'date-fns';
 
 const JAPAN_TIME_OFFSET_HOURS = 9;
 const JAPAN_TIME_OFFSET_MS = JAPAN_TIME_OFFSET_HOURS * 60 * 60 * 1000;
@@ -25,9 +25,7 @@ const getJSTDateString = (date: Date): string => {
   return jstDate.toISOString().split('T')[0];
 };
 
-// 共有APIスキーマ - フロントエンドとバックエンドで使用
 
-// 基本エンティティスキーマ
 export const UserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
@@ -219,14 +217,12 @@ export const validateReservationTime = (startTime: string, endTime: string): { i
   }
 };
 
-// 予約可能な日付かチェック（2週間以内、過去の日付でない）
 export const isReservationDateValid = (date: Date): boolean => {
   const now = new Date();
   const maxDate = addDays(now, 14);
   return !isBefore(date, startOfDay(now)) && date <= maxDate;
 };
 
-// 予約可能な時刻かチェック（過去の時刻でない、利用時間内）
 export const isReservationTimeValid = (date: Date, hour: number, minute: number): boolean => {
   const now = new Date();
   const selectedDate = new Date(date);
@@ -347,7 +343,6 @@ export const UpdateSetlistItemRequestSchema = z.object({
   admin: z.boolean().optional(),
 });
 
-// Setlist 差分更新リクエスト
 export const ReplaceSetlistItemsRequestSchema = z.object({
   items: z.array(z.object({
     title: z.string().min(1),
@@ -357,7 +352,6 @@ export const ReplaceSetlistItemsRequestSchema = z.object({
   admin: z.boolean().optional(),
 });
 
-// GET /setlist/event/:eventId レスポンス要素
 export const EventSetlistBundleItemSchema = z.object({
   entry: z.object({
     id: z.string(),
@@ -386,7 +380,6 @@ export const BulkCreateMembersRequestSchema = z.object({
   members: z.array(BulkCreateMemberRequestSchema),
 });
 
-// APIレスポンススキーマ
 export const ApiResponseSchema = <T extends z.ZodType>(dataSchema: T) =>
   z.object({
     success: z.boolean(),
@@ -395,7 +388,6 @@ export const ApiResponseSchema = <T extends z.ZodType>(dataSchema: T) =>
     message: z.string().optional(),
   });
 
-// 型定義
 export type User = z.infer<typeof UserSchema>;
 export type UserWithInstruments = z.infer<typeof UserWithInstrumentsSchema>;
 export type GroupMember = z.infer<typeof GroupMemberSchema>;

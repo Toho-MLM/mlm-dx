@@ -50,7 +50,7 @@ export async function getAvailableIntervals(
       AND end_time > ?
       ${hasReservationId ? 'AND id != ?' : ''}
     ORDER BY start_time ASC
-  `).bind(endTime, startTime, ...(hasReservationId ? [reservationId] : [])).all();
+  `).bind(endTime, startTime, ...(hasReservationId ? [reservationId] : [])).all<{ start_time: string; end_time: string }>();
   
   
   const reservationStart = new Date(startTime);
@@ -58,7 +58,7 @@ export async function getAvailableIntervals(
   const available: AvailableInterval[] = [];
   let currentStart = new Date(reservationStart);
   
-  overlappingReservations.results.forEach((res: any) => {
+  overlappingReservations.results.forEach((res) => {
     const slotStart = new Date(res.start_time);
     const slotEnd = new Date(res.end_time);
     
@@ -91,7 +91,6 @@ export async function processReservationState(
   startTime: string, 
   endTime: string
 ): Promise<ProcessResult> {
-  const now = new Date();
   const reservationStart = new Date(startTime);
   const reservationEnd = new Date(endTime);
   
@@ -112,7 +111,6 @@ export async function processReservationState(
     return { state: 'DECLINED' };
   }
   
-  // 当日の予約の場合、即座に重複チェックを実行
   console.log(`Processing same-day reservation ${reservationId} for immediate conflict check`);
   
   const availableIntervals = await getAvailableIntervals(env, startTime, endTime, reservationId);
@@ -156,11 +154,11 @@ export async function processTodayReservations(env: Bindings): Promise<void> {
       AND start_time >= ?
       AND start_time <= ?
     ORDER BY start_time ASC
-  `).bind(startOfDayIso, endOfDayIso).all();
+  `).bind(startOfDayIso, endOfDayIso).all<{ id: string | number; start_time: string; end_time: string; state: string }>();
   
   console.log(`Found ${pendingReservations.results.length} pending reservations for today`);
   
-  for (const reservation of pendingReservations.results as any[]) {
+  for (const reservation of pendingReservations.results) {
     try {
       const processResult = await processReservationState(
         env, 
@@ -216,9 +214,9 @@ export async function processYesterdayReservations(env: Bindings): Promise<void>
     WHERE state = 'CONFIRMED'
       AND start_time >= ?
       AND start_time <= ?
-  `).bind(startIso, endIso).all();
+  `).bind(startIso, endIso).all<{ id: string | number }>();
   const updateTime = new Date().toISOString();
-  for (const r of confirmed.results as any[]) {
+  for (const r of confirmed.results) {
     await env.DB.prepare(`
       UPDATE reservations SET state = 'COMPLETED', updated_at = ? WHERE id = ?
     `).bind(updateTime, r.id).run();

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -43,12 +43,6 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    if (isOpen) {
-      loadGroups()
-      loadExistingEntries()
-    }
-  }, [isOpen, event.id])
 
   const loadGroups = async () => {
     try {
@@ -65,7 +59,7 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
     }
   }
 
-  const loadExistingEntries = async () => {
+  const loadExistingEntries = useCallback(async () => {
     try {
       const response = await apiClient.getEntries(event.id)
       if (response.success && response.data) {
@@ -74,7 +68,14 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
     } catch (error) {
       console.error('Error loading entries:', error)
     }
-  }
+  }, [event.id])
+
+  useEffect(() => {
+    if (isOpen) {
+      loadGroups()
+      loadExistingEntries()
+    }
+  }, [isOpen, event.id, loadExistingEntries])
 
   const handleSelectGroup = (groupId: string) => {
     if (!groupId) return
@@ -121,7 +122,7 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
         if (response.error === 'NO_VALID_GROUPS') {
           toast.error('登録可能なグループがありません')
         } else if (response.error === 'GROUP_LIMIT_EXCEEDED') {
-          const members = (response as any).members || [];
+          const members = (response as { members?: string[] }).members || [];
           if (members.length > 0) {
             const memberNames = members.join('、');
             toast.error(`${memberNames}のバンド登録数が上限を超えています`)

@@ -131,7 +131,6 @@ Examples:
 `);
 }
 
-// Database utility functions
 function resetDatabase(isLocal = false) {
   console.log('Resetting database...');
   

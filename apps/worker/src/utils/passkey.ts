@@ -65,12 +65,12 @@ export async function createRegistrationOptions(env: Bindings, user: { id: strin
   });
 }
 
-export async function verifyRegistration(env: Bindings, expectedChallenge: string, response: any): Promise<VerifiedRegistrationResponse> {
+export async function verifyRegistration(env: Bindings, expectedChallenge: string, response: unknown): Promise<VerifiedRegistrationResponse> {
   return verifyRegistrationResponse({
     expectedChallenge,
     expectedOrigin: getOrigin(env),
     expectedRPID: getRpID(env),
-    response,
+    response: response as Parameters<typeof verifyRegistrationResponse>[0]['response'],
   });
 }
 
@@ -93,7 +93,8 @@ export async function createAuthenticationOptions(env: Bindings, passkeys: Store
   });
 }
 
-export async function verifyAuthentication(env: Bindings, expectedChallenge: string, response: any, passkey: StoredPasskey): Promise<VerifiedAuthenticationResponse> {
+export async function verifyAuthentication(env: Bindings, expectedChallenge: string, response: unknown, passkey: StoredPasskey): Promise<VerifiedAuthenticationResponse> {
+  const parsedTransports = parseTransports(passkey.transports);
   return verifyAuthenticationResponse({
     expectedChallenge,
     expectedOrigin: getOrigin(env),
@@ -102,9 +103,9 @@ export async function verifyAuthentication(env: Bindings, expectedChallenge: str
       id: passkey.credential_id,
       publicKey: decodeBase64Url(passkey.public_key),
       counter: passkey.counter,
-      transports: parseTransports(passkey.transports) as any,
+      transports: parsedTransports as ('usb' | 'nfc' | 'ble' | 'internal' | 'hybrid')[] | undefined,
     },
-    response,
+    response: response as Parameters<typeof verifyAuthenticationResponse>[0]['response'],
   });
 }
 

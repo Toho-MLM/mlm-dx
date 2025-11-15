@@ -21,6 +21,16 @@ timelineRoutes.get('/event/:eventId', async (c) => {
   try {
     const eventId = c.req.param('eventId');
 
+    type TimelineRow = {
+      entry_id: string;
+      group_id: string;
+      start_time: string | null;
+      end_time: string | null;
+      position: number | null;
+      created_at: string;
+      group_name: string | null;
+    };
+
     const rows = await c.env.DB.prepare(`
       SELECT 
         e.id as entry_id,
@@ -34,11 +44,21 @@ timelineRoutes.get('/event/:eventId', async (c) => {
       LEFT JOIN groups g ON g.id = e.group_id
       WHERE e.event_id = ?
       ORDER BY e.position IS NULL, e.position ASC, e.created_at ASC
-    `).bind(eventId).all();
+    `).bind(eventId).all<TimelineRow>();
 
-    const configured: any[] = [];
-    const unconfigured: any[] = [];
-    for (const r of rows.results as any[]) {
+    type TimelineItem = {
+      entry_id: string;
+      group_id: string;
+      group_name: string | null;
+      start_time: string | null;
+      end_time: string | null;
+      position: number | null;
+      created_at: string;
+    };
+
+    const configured: TimelineItem[] = [];
+    const unconfigured: TimelineItem[] = [];
+    for (const r of rows.results) {
       const item = {
         entry_id: r.entry_id,
         group_id: r.group_id,

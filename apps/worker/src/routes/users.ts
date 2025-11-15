@@ -1,21 +1,20 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
-import { UserWithInstrumentsSchema, UpdateUserRequestSchema, GroupSchema } from '../schemas';
+import { UserWithInstrumentsSchema, UpdateUserRequestSchema } from '../schemas';
 import { requireAdmin } from '../utils/admin';
 import { z } from 'zod';
 
 const userRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// Apply authentication middleware to all routes
 userRoutes.use('*', requireAuth);
 
-// get_me - Get current user data
 userRoutes.get('/', async (c) => {
   try {
     const user = c.get('user');
     
     const { picture, ...userWithoutPicture } = user;
+    void picture;
     
     const userDataToValidate = {
       ...userWithoutPicture,
@@ -30,7 +29,8 @@ userRoutes.get('/', async (c) => {
       console.error('Zod validation errors:');
       error.issues.forEach((issue) => {
         if ('expected' in issue && 'received' in issue) {
-          console.error(`  Path: ${JSON.stringify(issue.path)}, Expected: ${(issue as any).expected}, Received: ${(issue as any).received}`);
+          const typedIssue = issue as z.ZodIssue & { expected?: string; received?: string };
+          console.error(`  Path: ${JSON.stringify(issue.path)}, Expected: ${typedIssue.expected}, Received: ${typedIssue.received}`);
         } else {
           console.error(`  Path: ${JSON.stringify(issue.path)}, Issue: ${issue.code}`);
         }
@@ -41,7 +41,6 @@ userRoutes.get('/', async (c) => {
   }
 });
 
-// GET /me/groups/select - ログインユーザーの有効グループの軽量リスト
 userRoutes.get('/groups/select', async (c) => {
   try {
     const user = c.get('user');
@@ -59,7 +58,7 @@ userRoutes.get('/groups/select', async (c) => {
     }
 
     let query: string;
-    let params: any[];
+    let params: string[];
 
     if (isAdminMode) {
       query = `
@@ -89,7 +88,6 @@ userRoutes.get('/groups/select', async (c) => {
   }
 });
 
-// update_user - Update user data
 userRoutes.put('/', async (c) => {
   try {
     const user = c.get('user');
@@ -102,7 +100,6 @@ userRoutes.put('/', async (c) => {
       'UPDATE users SET nickname = ?, instruments = ?, updated_at = ? WHERE email = ?'
     ).bind(requestData.nickname, instrumentsJson, now, user.email).run();
 
-    // ニックネームが更新された場合はJWTを再発行
     if (requestData.nickname !== user.nickname) {
       const { generateJWT } = await import('../auth');
       const { setCookie } = await import('hono/cookie');

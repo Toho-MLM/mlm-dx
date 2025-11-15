@@ -17,7 +17,7 @@ setlistRoutes.post('/', async (c) => {
 
     const entry = await c.env.DB.prepare(`
       SELECT group_id FROM entries WHERE id = ?
-    `).bind(requestData.entry_id).first();
+    `).bind(requestData.entry_id).first<{ group_id: string }>();
 
     if (!entry) {
       return c.json({ success: false, error: 'ENTRY_NOT_FOUND' }, 404);
@@ -34,7 +34,7 @@ setlistRoutes.post('/', async (c) => {
     } else {
       const userGroupIds = await getUserGroupIds(c.env, user.id);
 
-      if (!userGroupIds.includes((entry as any).group_id)) {
+      if (!userGroupIds.includes(entry.group_id)) {
         return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
       }
     }
@@ -43,14 +43,14 @@ setlistRoutes.post('/', async (c) => {
       SELECT ev.is_setlist_accepting, ev.setlist_deadline
       FROM entries e JOIN events ev ON ev.id = e.event_id
       WHERE e.id = ?
-    `).bind(requestData.entry_id).first();
+    `).bind(requestData.entry_id).first<{ is_setlist_accepting: number | boolean; setlist_deadline: string }>();
 
     if (!acceptRow) {
       return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
 
-    const isSetlistAccepting = Boolean((acceptRow as any).is_setlist_accepting);
-    const setlistDeadline = new Date((acceptRow as any).setlist_deadline);
+    const isSetlistAccepting = Boolean(acceptRow.is_setlist_accepting);
+    const setlistDeadline = new Date(acceptRow.setlist_deadline);
     const nowTime = new Date();
 
     if (!isSetlistAccepting) {
@@ -90,27 +90,90 @@ setlistRoutes.post('/', async (c) => {
 
 setlistRoutes.get('/event/:eventId', async (c) => {
   try {
+    const user = c.get('user');
     const eventId = c.req.param('eventId');
+    const adminParam = c.req.query('admin');
+    const isAdminMode = adminParam === 'true';
 
-    const rows = await c.env.DB.prepare(`
-      SELECT 
-        e.id as entry_id,
-        e.event_id as entry_event_id,
-        e.group_id as entry_group_id,
-        e.note as entry_note,
-        g.name as group_name,
-        s.position as item_position,
-        s.title as item_title,
-        s.artist as item_artist
-      FROM entries e
-      LEFT JOIN groups g ON g.id = e.group_id
-      LEFT JOIN setlist_items s ON s.entry_id = e.id
-      WHERE e.event_id = ?
-      ORDER BY e.created_at ASC, s.position ASC
-    `).bind(eventId).all();
+    if (isAdminMode) {
+      try {
+        requireAdmin(user.role);
+      } catch (error) {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
 
-    const map = new Map<string, any>();
-    for (const r of rows.results as any[]) {
+    let query: string;
+    let params: (string | number)[];
+
+    if (isAdminMode) {
+      query = `
+        SELECT 
+          e.id as entry_id,
+          e.event_id as entry_event_id,
+          e.group_id as entry_group_id,
+          e.note as entry_note,
+          g.name as group_name,
+          s.position as item_position,
+          s.title as item_title,
+          s.artist as item_artist
+        FROM entries e
+        LEFT JOIN groups g ON g.id = e.group_id
+        LEFT JOIN setlist_items s ON s.entry_id = e.id
+        WHERE e.event_id = ?
+        ORDER BY e.created_at ASC, s.position ASC
+      `;
+      params = [eventId];
+    } else {
+      const userGroupIds = await getUserGroupIds(c.env, user.id);
+      if (userGroupIds.length === 0) {
+        return c.json({ success: true, data: [] });
+      }
+      const placeholders = userGroupIds.map(() => '?').join(',');
+      query = `
+        SELECT 
+          e.id as entry_id,
+          e.event_id as entry_event_id,
+          e.group_id as entry_group_id,
+          e.note as entry_note,
+          g.name as group_name,
+          s.position as item_position,
+          s.title as item_title,
+          s.artist as item_artist
+        FROM entries e
+        LEFT JOIN groups g ON g.id = e.group_id
+        LEFT JOIN setlist_items s ON s.entry_id = e.id
+        WHERE e.event_id = ? AND e.group_id IN (${placeholders})
+        ORDER BY e.created_at ASC, s.position ASC
+      `;
+      params = [eventId, ...userGroupIds];
+    }
+
+    type SetlistRow = {
+      entry_id: string;
+      entry_event_id: string;
+      entry_group_id: string;
+      entry_note: string | null;
+      group_name: string | null;
+      item_position: number | null;
+      item_title: string | null;
+      item_artist: string | null;
+    };
+
+    const rows = await c.env.DB.prepare(query).bind(...params).all<SetlistRow>();
+
+    const map = new Map<string, {
+      entry: {
+        id: string;
+        event_id: string;
+        group_id: string;
+        note: string | null;
+      };
+      group_name: string;
+      setlist_items: Array<{ position: number; title: string; artist: string }>;
+    }>();
+    
+    for (const r of rows.results) {
       if (!map.has(r.entry_id)) {
         map.set(r.entry_id, {
           entry: {
@@ -120,11 +183,11 @@ setlistRoutes.get('/event/:eventId', async (c) => {
             note: r.entry_note,
           },
           group_name: r.group_name || '不明なグループ',
-          setlist_items: [] as Array<{ position: number; title: string; artist: string }>,
+          setlist_items: [],
         });
       }
-      if (r.item_position !== null && r.item_position !== undefined) {
-        map.get(r.entry_id).setlist_items.push({
+      if (r.item_position !== null && r.item_position !== undefined && r.item_title !== null) {
+        map.get(r.entry_id)!.setlist_items.push({
           position: r.item_position,
           title: r.item_title,
           artist: r.item_artist || '',
@@ -132,9 +195,9 @@ setlistRoutes.get('/event/:eventId', async (c) => {
       }
     }
 
-    const data = Array.from(map.values()).map((v: any) => ({
+    const data = Array.from(map.values()).map((v) => ({
       ...v,
-      setlist_items: v.setlist_items.sort((a: any, b: any) => a.position - b.position),
+      setlist_items: v.setlist_items.sort((a, b) => a.position - b.position),
     }));
 
     return c.json({ success: true, data });
@@ -144,7 +207,6 @@ setlistRoutes.get('/event/:eventId', async (c) => {
   }
 });
 
-// 一括置換: エントリのセットリストを丸ごと上書き
 setlistRoutes.put('/', async (c) => {
   try {
     const user = c.get('user');
@@ -156,7 +218,7 @@ setlistRoutes.put('/', async (c) => {
 
     const entry = await c.env.DB.prepare(`
       SELECT group_id FROM entries WHERE id = ?
-    `).bind(entryId).first();
+    `).bind(entryId).first<{ group_id: string }>();
 
     if (!entry) {
       return c.json({ success: false, error: 'ENTRY_NOT_FOUND' }, 404);
@@ -174,7 +236,7 @@ setlistRoutes.put('/', async (c) => {
       }
     } else {
       const userGroupIds = await getUserGroupIds(c.env, user.id);
-      if (!userGroupIds.includes((entry as any).group_id)) {
+      if (!userGroupIds.includes(entry.group_id)) {
         return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
       }
     }
@@ -184,14 +246,14 @@ setlistRoutes.put('/', async (c) => {
     const eventRow = await c.env.DB.prepare(`
       SELECT e.event_id, ev.song_limit, ev.is_setlist_accepting, ev.setlist_deadline
       FROM entries e JOIN events ev ON ev.id = e.event_id WHERE e.id = ?
-    `).bind(entryId).first();
+    `).bind(entryId).first<{ event_id: string; song_limit: number; is_setlist_accepting: number | boolean; setlist_deadline: string }>();
     if (!eventRow) {
       return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
-    const songLimit = (eventRow as any).song_limit as number;
+    const songLimit = eventRow.song_limit;
 
-    const isSetlistAccepting = Boolean((eventRow as any).is_setlist_accepting);
-    const setlistDeadline = new Date((eventRow as any).setlist_deadline);
+    const isSetlistAccepting = Boolean(eventRow.is_setlist_accepting);
+    const setlistDeadline = new Date(eventRow.setlist_deadline);
     const nowTime = new Date();
 
     if (!isSetlistAccepting) {
@@ -212,11 +274,11 @@ setlistRoutes.put('/', async (c) => {
       }
       const existingEntrance = await c.env.DB.prepare(`
         SELECT id FROM setlist_items WHERE entry_id = ? AND position = 0
-      `).bind(entryId).first();
+      `).bind(entryId).first<{ id: string }>();
       if (existingEntrance) {
         await c.env.DB.prepare(`
           UPDATE setlist_items SET title = ?, artist = ?, updated_at = ? WHERE id = ?
-        `).bind(se.title, se.artist || '', now, (existingEntrance as any).id).run();
+        `).bind(se.title, se.artist || '', now, existingEntrance.id).run();
       } else {
         await c.env.DB.prepare(`
           INSERT INTO setlist_items (id, entry_id, position, title, artist, created_at, updated_at)
@@ -235,13 +297,13 @@ setlistRoutes.put('/', async (c) => {
 
     const existing = await c.env.DB.prepare(`
       SELECT id, position FROM setlist_items WHERE entry_id = ? AND position > 0 ORDER BY position ASC
-    `).bind(entryId).all();
+    `).bind(entryId).all<{ id: string; position: number }>();
 
-    const existingItems = (existing.results as any[]).map(r => ({ id: r.id as string, position: r.position as number }));
+    const existingItems = existing.results.map(r => ({ id: r.id, position: r.position }));
 
     const updatesCount = Math.min(existingItems.length, itemsSorted.length);
 
-    const statements = [] as any[];
+    const statements: ReturnType<typeof c.env.DB.prepare>[] = [];
 
     for (let i = 0; i < updatesCount; i++) {
       const target = existingItems[i];
