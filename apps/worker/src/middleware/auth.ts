@@ -38,7 +38,6 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
       updated_at: fullUser.updated_at || '',
     };
 
-    // Add student_number as computed field
     const userWithStudentNumber = {
       ...userData,
       student_number: fullUser.email.substring(0, 6).toUpperCase()

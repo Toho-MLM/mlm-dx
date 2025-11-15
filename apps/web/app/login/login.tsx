@@ -11,6 +11,7 @@ import { httpClient } from '@/lib/http-client'
 import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
 import { startAuthentication } from '@simplewebauthn/browser'
+import type { AuthenticatorAssertionResponseJSON } from '@simplewebauthn/types'
 import { apiClient } from '@/lib/api'
 
 function LoginContent() {
@@ -78,7 +79,7 @@ function LoginContent() {
       const assertion = await startAuthentication({
         optionsJSON: start.options
       })
-      const finish = await apiClient.finishPasskeyLogin(start.challengeId, assertion)
+      const finish = await apiClient.finishPasskeyLogin(start.challengeId, assertion as unknown as AuthenticatorAssertionResponseJSON)
       if (!finish.success) {
         toast.error('Passkeyでのログインに失敗しました')
         return

@@ -14,10 +14,8 @@ function safeJsonParse<T>(json: string, fallback: T): T {
 
 const memberRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// Apply authentication middleware to all routes
 memberRoutes.use('*', requireAuth);
 
-// fetch_member_list - Get member list with group information
 memberRoutes.get('/', async (c) => {
   try {
     const members = await c.env.DB.prepare(`
@@ -38,7 +36,6 @@ memberRoutes.get('/', async (c) => {
       ORDER BY u.grade DESC, UPPER(SUBSTR(u.email, 1, 6)) ASC
     `).all();
 
-    // Process the results to format groups and roles
     const processedMembers = members.results.map((member: any) => ({
       ...member,
       groups: member.groups ? member.groups.split(',') : [],
@@ -52,7 +49,6 @@ memberRoutes.get('/', async (c) => {
   }
 });
 
-// Create member - Admin only
 memberRoutes.post('/', async (c) => {
   try {
     const user = c.get('user');
@@ -265,7 +261,6 @@ memberRoutes.delete('/:id', async (c) => {
 
     const memberId = c.req.param('id');
 
-    // Check if member exists
     const existingMember = await c.env.DB.prepare(
       'SELECT id FROM users WHERE id = ?'
     ).bind(memberId).first();
@@ -274,7 +269,6 @@ memberRoutes.delete('/:id', async (c) => {
       return c.json({ success: false, error: 'MEMBER_NOT_FOUND' }, 404);
     }
 
-    // Delete member (cascade will handle group_member_instruments)
     await c.env.DB.prepare(
       'DELETE FROM users WHERE id = ?'
     ).bind(memberId).run();
@@ -286,7 +280,6 @@ memberRoutes.delete('/:id', async (c) => {
   }
 });
 
-// GET /members/select - メンバー選択用の軽量リスト
 memberRoutes.get('/select', async (c) => {
   try {
     const user = c.get('user');

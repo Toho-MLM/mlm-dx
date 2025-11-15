@@ -13,12 +13,12 @@ import { PageHeader } from '@/components/page-header'
 import { apiClient, type PasskeyCredential } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import { startRegistration } from '@simplewebauthn/browser'
+import type { AuthenticatorAttestationResponseJSON } from '@simplewebauthn/types'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { httpClient } from '@/lib/http-client'
 
 export default function Page() {
-  const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [userData, setUserData] = useState<UserData | null>(null)
@@ -61,7 +61,6 @@ export default function Page() {
         setIsPasskeyLoading(true)
         const res = await apiClient.getCurrentUserData()
         if (res.success && res.data) {
-          const anyData = res.data as any
           const ud: UserData = {
             grade: res.data.grade,
             name: res.data.name ?? '',
@@ -69,7 +68,7 @@ export default function Page() {
             email: res.data.email,
             nickname: res.data.nickname,
             instruments: res.data.instruments as Instrument[],
-            student_number: anyData?.student_number
+            student_number: (res.data as { student_number?: string })?.student_number
           }
           setUserData(ud)
           const needsSetup = !ud.nickname || (ud.instruments && ud.instruments.length === 0)
@@ -85,17 +84,6 @@ export default function Page() {
     }
     init()
   }, [authLoading, user, router, fetchPasskeys])
-  
-  const handleLogout = async () => {
-    setIsLoggingOut(true);
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('Failed to logout:', error);
-    } finally {
-      setIsLoggingOut(false);
-    }
-  };
 
   const handleResetProfile = useCallback(() => {
     setIsEditing(true)
@@ -104,7 +92,7 @@ export default function Page() {
   const handleEditComplete = useCallback((updatedData: UserData) => {
     setIsEditing(false)
     setUserData(updatedData)
-  }, [router])
+  }, [])
 
   const handlePasskeySetup = useCallback(async () => {
     if (isPasskeyProcessing) {
@@ -120,7 +108,7 @@ export default function Page() {
       const attestation = await startRegistration({
         optionsJSON: start.options
       })
-      await apiClient.finishPasskeyRegistration(start.challengeId, attestation)
+      await apiClient.finishPasskeyRegistration(start.challengeId, attestation as unknown as AuthenticatorAttestationResponseJSON)
       toast.success('Passkeyを追加しました')
       await fetchPasskeys()
     } catch (error) {

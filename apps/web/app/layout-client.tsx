@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarFooter } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
-// removed full-screen loading
 import { Skeleton } from "@/components/ui/skeleton"
 
 function Content({ children }: { children: React.ReactNode }) {

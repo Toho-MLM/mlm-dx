@@ -235,7 +235,6 @@ app.get('/auth/callback/google', async (c) => {
       student_number: dbUserRaw.email.substring(0, 6).toUpperCase(),
     });
 
-    // Format name with space between family and given name
     const formatName = (user: { family_name?: string; given_name?: string; name: string | null }): string => {
       if (user.family_name && user.given_name) {
         return `${user.family_name} ${user.given_name}`;
@@ -686,7 +685,7 @@ app.delete('/auth/passkey/credentials/:id', requireAuth, async (c) => {
       return c.json({ success: false });
     }
     const result = await c.env.DB.prepare('DELETE FROM passkeys WHERE id = ? AND user_id = ?').bind(id, user.id).run();
-    const changes = (result as any)?.meta?.changes ?? 0;
+    const changes = result.meta?.changes ?? 0;
     if (changes === 0) {
       return c.json({ success: false });
     }
@@ -789,6 +788,7 @@ export default {
   },
   
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
+    void ctx;
     switch (event.cron) {
       case "0 15 * * *":
         await processYesterdayReservations(env);
