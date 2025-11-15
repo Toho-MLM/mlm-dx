@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { Instrument, Role } from '@/app/types';
 import * as SharedSchemas from '../../../lib/shared-schemas';
 
-// 共有スキーマを再エクスポート
 export const {
   UserSchema,
   UserWithInstrumentsSchema,
@@ -23,7 +22,6 @@ export const {
   ApiResponseSchema,
 } = SharedSchemas;
 
-// フロントエンド専用のスキーマ
 export const MemberListItemSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -36,7 +34,6 @@ export const MemberListItemSchema = z.object({
   student_number: z.string(),
 });
 
-// 型定義
 export type User = SharedSchemas.User;
 export type UserWithInstruments = SharedSchemas.UserWithInstruments;
 export type Group = SharedSchemas.Group;

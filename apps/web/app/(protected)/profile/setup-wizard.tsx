@@ -9,7 +9,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Checkbox } from '@/components/ui/checkbox'
 import { motion } from 'framer-motion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { ChevronDown, ChevronUp, InfoIcon, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, InfoIcon } from 'lucide-react'
 import { UserData, Instrument, instrumentNames } from '@/app/types'
 import { apiClient } from '@/lib/api'
 import { useRouter } from 'next/navigation'
@@ -71,7 +71,6 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
   }
 
   const steps = [
-    // Step 1: 名前と学籍番号の確認
     <motion.div key="step1" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
       <CardContent className="space-y-2">
         <div className="space-y-2">
@@ -82,7 +81,7 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
           </div>
           <div className="bg-gray-50 p-3 rounded-lg">
             <p className="text-sm font-medium text-gray-500">学籍番号</p>
-            <p className="text-base font-semibold">{(userData as any).student_number}</p>
+            <p className="text-base font-semibold">{userData.student_number || ''}</p>
           </div>
           <div className="bg-gray-50 p-3 rounded-lg">
             <p className="text-sm font-medium text-gray-500">学年</p>
@@ -104,7 +103,6 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
       </CardContent>
     </motion.div>,
 
-    // Step 2: ニックネームの設定
     <motion.div key="step2" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
       <CardContent className="space-y-2">
         <div className="space-y-2">
@@ -125,7 +123,6 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
       </CardContent>
     </motion.div>,
 
-    // Step 3: 担当楽器の選択
     <motion.div key="step3" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
       <CardContent className="space-y-2 py-4">
         <div className="space-y-2">
@@ -197,14 +194,13 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
       </CardContent>
     </motion.div>,
 
-    // Step 4: 確認
     <motion.div key="step4" variants={stepVariants} initial="hidden" animate="visible" exit="hidden" transition={{ duration: 0.3 }}>
       <CardContent className="space-y-3">
         <p className="text-sm font-medium text-gray-500">変更内容を確認してください。</p>
         <div className="space-y-2">
           <div className="bg-gray-50 p-2 rounded-lg">
             <p className="text-xs font-medium text-gray-500">学籍番号</p>
-            <p className="text-sm font-semibold">{(userData as any).student_number}</p>
+            <p className="text-sm font-semibold">{userData.student_number || ''}</p>
           </div>
           <div className="bg-gray-50 p-2 rounded-lg">
             <p className="text-xs font-medium text-gray-500">氏名</p>
@@ -231,7 +227,6 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
         instruments: userData.instruments
       });
       
-      // 認証状態を更新（JWT再発行後の新しいユーザー情報を取得）
       await refreshAuth();
       
       if (onComplete) {

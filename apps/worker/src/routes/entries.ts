@@ -12,13 +12,13 @@ entriesRoutes.use('*', requireAuth);
 async function validateGroupLimit(env: Bindings, eventId: string, groupIds: string[]): Promise<{ isValid: boolean; error?: string; members?: string[] }> {
   const event = await env.DB.prepare(`
     SELECT group_limit FROM events WHERE id = ?
-  `).bind(eventId).first();
+  `).bind(eventId).first<{ group_limit: number }>();
 
   if (!event) {
     return { isValid: false, error: 'EVENT_NOT_FOUND' };
   }
 
-  const groupLimit = (event as any).group_limit;
+  const groupLimit = event.group_limit;
 
   if (groupLimit === 0) {
     return { isValid: true };
@@ -31,9 +31,9 @@ async function validateGroupLimit(env: Bindings, eventId: string, groupIds: stri
       SELECT DISTINCT user_id
       FROM group_member_instruments
       WHERE group_id = ?
-    `).bind(groupId).all();
+    `).bind(groupId).all<{ user_id: string }>();
 
-    for (const member of members.results as any[]) {
+    for (const member of members.results) {
       const currentCount = memberGroupCountMap.get(member.user_id) || 0;
       memberGroupCountMap.set(member.user_id, currentCount + 1);
     }
@@ -50,9 +50,9 @@ async function validateGroupLimit(env: Bindings, eventId: string, groupIds: stri
         FROM group_member_instruments gmi
         WHERE gmi.user_id = ?
       )
-    `).bind(eventId, memberId).first();
+    `).bind(eventId, memberId).first<{ count: number }>();
 
-    const currentCount = (existingEntryCount as any).count || 0;
+    const currentCount = existingEntryCount?.count || 0;
     const wouldHaveCount = currentCount + newEntryCount;
 
     if (wouldHaveCount > groupLimit) {
@@ -60,7 +60,7 @@ async function validateGroupLimit(env: Bindings, eventId: string, groupIds: stri
         SELECT nickname, name
         FROM users
         WHERE id = ?
-      `).bind(memberId).first() as any;
+      `).bind(memberId).first<{ nickname: string | null; name: string }>();
 
       const displayName = member ? (member.nickname || member.name) : '不明';
       exceededMembers.push(displayName);
@@ -95,14 +95,14 @@ entriesRoutes.post('/', async (c) => {
 
     const eventRow = await c.env.DB.prepare(`
       SELECT is_entry_accepting, entry_deadline FROM events WHERE id = ?
-    `).bind(requestData.event_id).first();
+    `).bind(requestData.event_id).first<{ is_entry_accepting: number | boolean; entry_deadline: string }>();
 
     if (!eventRow) {
       return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
 
-    const isEntryAccepting = Boolean((eventRow as any).is_entry_accepting);
-    const entryDeadline = new Date((eventRow as any).entry_deadline);
+    const isEntryAccepting = Boolean(eventRow.is_entry_accepting);
+    const entryDeadline = new Date(eventRow.entry_deadline);
     const nowTime = new Date();
 
     if (!isEntryAccepting) {
@@ -129,8 +129,8 @@ entriesRoutes.post('/', async (c) => {
 
     const maxRow = await c.env.DB.prepare(`
       SELECT MAX(position) as maxpos FROM entries WHERE event_id = ?
-    `).bind(requestData.event_id).first();
-    let nextPosition = ((maxRow as any)?.maxpos || 0) + 1;
+    `).bind(requestData.event_id).first<{ maxpos: number | null }>();
+    let nextPosition = (maxRow?.maxpos || 0) + 1;
 
     for (const groupId of validGroupIds) {
       try {
@@ -142,8 +142,8 @@ entriesRoutes.post('/', async (c) => {
         nextPosition += 1;
         
         createdEntries.push({ id: newId, group_id: groupId });
-      } catch (error: any) {
-        if (error?.message?.includes('UNIQUE constraint')) {
+      } catch (error) {
+        if (error instanceof Error && error.message?.includes('UNIQUE constraint')) {
           continue;
         }
         console.error('Error creating entry:', error);
@@ -166,7 +166,7 @@ entriesRoutes.get('/', async (c) => {
     const eventId = c.req.query('event_id');
 
     let query: string;
-    let params: any[];
+    let params: string[];
 
     if (eventId) {
       const userGroupIds = await getUserGroupIds(c.env, user.id);
@@ -215,7 +215,7 @@ entriesRoutes.delete('/:id', async (c) => {
 
     const entry = await c.env.DB.prepare(`
       SELECT group_id FROM entries WHERE id = ?
-    `).bind(entryId).first();
+    `).bind(entryId).first<{ group_id: string }>();
 
     if (!entry) {
       return c.json({ success: false, error: 'ENTRY_NOT_FOUND' }, 404);
@@ -223,7 +223,7 @@ entriesRoutes.delete('/:id', async (c) => {
 
     const userGroupIds = await getUserGroupIds(c.env, user.id);
 
-    if (!userGroupIds.includes((entry as any).group_id)) {
+    if (!userGroupIds.includes(entry.group_id)) {
       return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -247,14 +247,14 @@ entriesRoutes.put('/:id', async (c) => {
 
     const entry = await c.env.DB.prepare(`
       SELECT group_id FROM entries WHERE id = ?
-    `).bind(entryId).first();
+    `).bind(entryId).first<{ group_id: string }>();
 
     if (!entry) {
       return c.json({ success: false, error: 'ENTRY_NOT_FOUND' }, 404);
     }
 
     const userGroupIds = await getUserGroupIds(c.env, user.id);
-    if (!userGroupIds.includes((entry as any).group_id)) {
+    if (!userGroupIds.includes(entry.group_id)) {
       return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

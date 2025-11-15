@@ -6,7 +6,6 @@ import { requireAdmin } from '../utils/admin';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// Helper function to check if a user belongs to a specific group
 export async function isUserInGroup(env: Bindings, userId: string, groupId: string): Promise<boolean> {
   const result = await env.DB.prepare(`
     SELECT 1
@@ -19,7 +18,6 @@ export async function isUserInGroup(env: Bindings, userId: string, groupId: stri
   return !!result;
 }
 
-// Helper function to get user's group IDs
 export async function getUserGroupIds(env: Bindings, userId: string): Promise<string[]> {
   const userGroups = await env.DB.prepare(`
     SELECT DISTINCT g.id
@@ -31,10 +29,8 @@ export async function getUserGroupIds(env: Bindings, userId: string): Promise<st
   return userGroups.results.map((group: any) => group.id);
 }
 
-// Apply authentication middleware to all routes
 groupRoutes.use('*', requireAuth);
 
-// create_group - Create a new group
 groupRoutes.post('/', async (c) => {
   try {
     const requestData = CreateGroupRequestSchema.parse(await c.req.json());
@@ -79,17 +75,14 @@ groupRoutes.post('/', async (c) => {
   }
 });
 
-// Get user's groups (both active and inactive groups that user belongs to)
 groupRoutes.get('/', async (c) => {
   try {
     const user = c.get('user');
     const userId = user.id;
     
-    // Check for admin parameter
     const adminParam = c.req.query('admin');
     const isAdminMode = adminParam === 'true';
     
-    // If admin mode is requested, verify admin permissions
     if (isAdminMode) {
       try {
         requireAdmin(user.role);
@@ -102,7 +95,6 @@ groupRoutes.get('/', async (c) => {
     let params: any[];
     
     if (isAdminMode) {
-      // Admin mode: get all groups
       query = `
         SELECT DISTINCT g.*
         FROM groups g
@@ -110,7 +102,6 @@ groupRoutes.get('/', async (c) => {
       `;
       params = [];
     } else {
-      // Normal mode: get only user's groups
       query = `
         SELECT DISTINCT g.*
         FROM groups g
@@ -123,7 +114,6 @@ groupRoutes.get('/', async (c) => {
     
     const groups = await c.env.DB.prepare(query).bind(...params).all();
 
-    // Get assignments for each group
     const groupsWithAssignments = await Promise.all(
       groups.results.map(async (group: any) => {
         const assignments = await c.env.DB.prepare(`
@@ -132,7 +122,6 @@ groupRoutes.get('/', async (c) => {
           WHERE group_id = ?
         `).bind(group.id).all();
 
-        // Convert assignments to GroupMember[] format
         const memberMap: Record<string, string[]> = {};
         assignments.results.forEach((assignment: any) => {
           if (!memberMap[assignment.user_id]) {
@@ -163,7 +152,6 @@ groupRoutes.get('/', async (c) => {
 });
 
 
-// Update group
 groupRoutes.put('/:id', async (c) => {
   try {
     const groupId = c.req.param('id');
@@ -171,14 +159,12 @@ groupRoutes.put('/:id', async (c) => {
 
     const now = new Date().toISOString();
 
-    // グループ情報を更新
     await c.env.DB.prepare(`
       UPDATE groups 
       SET name = ?, is_main = ?, is_active = ?, updated_at = ?
       WHERE id = ?
     `).bind(requestData.name, requestData.is_main, requestData.is_active, now, groupId).run();
 
-    // assignmentsが提供されている場合、メンバー情報を更新
     if (requestData.assignments) {
       let assignments: Record<string, string[]>;
       if (typeof requestData.assignments === 'string') {
@@ -194,12 +180,10 @@ groupRoutes.put('/:id', async (c) => {
         assignments = requestData.assignments;
       }
 
-      // 既存のメンバー情報を削除
       await c.env.DB.prepare(`
         DELETE FROM group_member_instruments WHERE group_id = ?
       `).bind(groupId).run();
 
-      // 新しいメンバー情報を追加
       for (const [instrument, memberUserIds] of Object.entries(assignments)) {
         for (const memberUserId of memberUserIds) {
           await c.env.DB.prepare(`

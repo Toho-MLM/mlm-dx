@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, Suspense } from 'react'
+import React, { useEffect, useMemo, useState, Suspense, useCallback } from 'react'
 import { memo } from 'react'
 import { useRef } from 'react'
 import { forwardRef, useImperativeHandle } from 'react'
@@ -20,8 +20,8 @@ import { useSearchParams } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
- 
-
+import { useAuth } from '@/app/context/AuthContext'
+import { isAdmin } from '@shared-schemas'
 
 interface EntryWithSetlist {
   entry: Entry
@@ -29,15 +29,14 @@ interface EntryWithSetlist {
   setlistItems: SetlistItem[]
 }
 
-function EventSetlistSectionBase({ event, onEdit }: { event: Event, onEdit: (item: EntryWithSetlist) => void }, ref: React.Ref<{ reload: () => void }>) {
+function EventSetlistSectionBase({ event, onEdit, isAdminMode = false }: { event: Event, onEdit: (item: EntryWithSetlist) => void, isAdminMode?: boolean }, ref: React.Ref<{ reload: () => void }>) {
   const [sectionLoading, setSectionLoading] = useState(true)
-  const [sectionEditingItems, setSectionEditingItems] = useState<Map<string, SetlistItem[]>>(new Map())
   const [sectionEntriesWithSetlist, setSectionEntriesWithSetlist] = useState<EntryWithSetlist[]>([])
 
-  const loadSectionData = async () => {
+  const loadSectionData = useCallback(async () => {
     try {
       setSectionLoading(true)
-      const bundle = await apiClient.getEventSetlist(event.id)
+      const bundle = await apiClient.getEventSetlist(event.id, isAdminMode)
       if (bundle.success && bundle.data) {
         const result: EntryWithSetlist[] = bundle.data.map(b => ({
           entry: b.entry as Entry,
@@ -53,20 +52,17 @@ function EventSetlistSectionBase({ event, onEdit }: { event: Event, onEdit: (ite
           } as SetlistItem)),
         }))
         setSectionEntriesWithSetlist(result)
-        const map = new Map<string, SetlistItem[]>()
-        result.forEach(it => map.set(it.entry.id, it.setlistItems))
-        setSectionEditingItems(map)
       }
     } catch {
       toast.error('データの取得に失敗しました')
     } finally {
       setSectionLoading(false)
     }
-  }
+  }, [event.id, isAdminMode])
 
   useEffect(() => {
     loadSectionData()
-  }, [event.id])
+  }, [loadSectionData])
 
   useImperativeHandle(ref, () => ({
     reload: () => {
@@ -155,11 +151,12 @@ const EventSetlistSection = memo(forwardRef(EventSetlistSectionBase))
 
 function SetlistContent() {
   const searchParams = useSearchParams()
+  const { user } = useAuth()
+  const isUserAdmin = user && isAdmin(user.role)
+  const [isAdminMode, setIsAdminMode] = useState(false)
   const [events, setEvents] = useState<Event[]>([])
   const [eventsLoading, setEventsLoading] = useState(true)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
-  const [entriesWithSetlist, setEntriesWithSetlist] = useState<EntryWithSetlist[]>([])
-  const [loading, setLoading] = useState(false)
   const [editingItems, setEditingItems] = useState<Map<string, SetlistItem[]>>(new Map())
   const [submitting, setSubmitting] = useState<Map<string, boolean>>(new Map())
   const [editDialogEntry, setEditDialogEntry] = useState<EntryWithSetlist | null>(null)
@@ -209,16 +206,9 @@ function SetlistContent() {
     setSelectedEventId(id || null)
   }, [searchParams])
 
-  useEffect(() => {
-    if (selectedEventId && !editDialogOpenRef.current) {
-      fetchEventSetlist(selectedEventId)
-    }
-  }, [selectedEventId])
-
-  const fetchEventSetlist = async (eventId: string) => {
+  const fetchEventSetlist = useCallback(async (eventId: string) => {
     try {
-      setLoading(true)
-      const bundle = await apiClient.getEventSetlist(eventId)
+      const bundle = await apiClient.getEventSetlist(eventId, isAdminMode)
       if (bundle.success && bundle.data) {
         const entriesWithSetlists: EntryWithSetlist[] = bundle.data.map(b => ({
           entry: b.entry as Entry,
@@ -233,7 +223,6 @@ function SetlistContent() {
             updated_at: new Date().toISOString(),
           } as SetlistItem)),
         }))
-        setEntriesWithSetlist(entriesWithSetlists)
         const editingMap = new Map<string, SetlistItem[]>()
         entriesWithSetlists.forEach(item => {
           editingMap.set(item.entry.id, item.setlistItems)
@@ -242,10 +231,14 @@ function SetlistContent() {
       }
     } catch (error) {
       toast.error('データの取得に失敗しました')
-    } finally {
-      setLoading(false)
     }
-  }
+  }, [isAdminMode])
+
+  useEffect(() => {
+    if (selectedEventId && !editDialogOpenRef.current) {
+      fetchEventSetlist(selectedEventId)
+    }
+  }, [selectedEventId, fetchEventSetlist])
 
   const handleAddItem = (entryId: string) => {
     const items = editingItems.get(entryId) || []
@@ -322,11 +315,23 @@ function SetlistContent() {
     }
   }
 
+  const handleAdminToggle = (checked: boolean) => {
+    setIsAdminMode(checked)
+  }
+
   const rightActions = (
     <div className="flex items-center gap-2">
-      <Button size="sm" variant="outline" onClick={handleRefresh}>
-        更新
-      </Button>
+      {isUserAdmin && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">管理者モード</span>
+          <Switch checked={isAdminMode} onCheckedChange={handleAdminToggle} />
+        </div>
+      )}
+      {!isUserAdmin && (
+        <Button size="sm" variant="outline" onClick={handleRefresh}>
+          更新
+        </Button>
+      )}
     </div>
   )
 
@@ -344,6 +349,7 @@ function SetlistContent() {
                 }}
                 event={selectedEvent}
                 onEdit={openEditDialog}
+                isAdminMode={isAdminMode}
               />
               <div className="max-w-5xl mx-auto w-full mt-3">
                 <Button variant="outline" className="w-full" onClick={() => setSelectedEventId(null)}>
@@ -401,6 +407,7 @@ function SetlistContent() {
               }}
               event={ev}
               onEdit={openEditDialog}
+              isAdminMode={isAdminMode}
             />
             ))
           ))

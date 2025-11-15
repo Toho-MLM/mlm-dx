@@ -8,7 +8,6 @@ import { useRouter } from 'next/navigation'
 import { EventPageHeader } from '@/components/event-page-header'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
-// removed server actions usage
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -32,7 +31,6 @@ export default function Page() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
-  const router = useRouter()
   const { user } = useAuth()
   const isUserAdmin = user && isAdmin(user.role)
 
