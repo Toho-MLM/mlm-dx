@@ -8,7 +8,7 @@
     "dev": "wrangler dev",
     "dev:local": "wrangler dev --local",
     "build": "wrangler deploy --dry-run",
-    "build:local": "wrangler deploy --dry-run --local",
+    "build:local": "wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
     "deploy:prod": "wrangler deploy",
     "db:create": "wrangler d1 create mlm-dx-db",
