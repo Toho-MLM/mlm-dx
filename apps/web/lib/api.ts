@@ -239,9 +239,10 @@ class ApiClient {
     return httpClient.get<ApiResponse<Entry[]>>(`/entries${params}`)
   }
 
-  async createEntries(data: CreateEntryRequest): Promise<ApiResponse<void>> {
-    SharedSchemas.CreateEntryRequestSchema.parse(data)
-    return httpClient.post<ApiResponse<void>>(`/entries`, data)
+  async createEntries(data: CreateEntryRequest, admin?: boolean): Promise<ApiResponse<void>> {
+    const requestData = { ...data, admin: admin === true ? true : undefined }
+    SharedSchemas.CreateEntryRequestSchema.parse(requestData)
+    return httpClient.post<ApiResponse<void>>(`/entries`, requestData)
   }
 
   async deleteEntry(id: string): Promise<ApiResponse<void>> {

@@ -20,8 +20,10 @@ import { useSearchParams } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
+import { showSuccessToast } from '@/lib/utils'
 
 interface EntryWithSetlist {
   entry: Entry
@@ -29,9 +31,14 @@ interface EntryWithSetlist {
   setlistItems: SetlistItem[]
 }
 
-function EventSetlistSectionBase({ event, onEdit, isAdminMode = false }: { event: Event, onEdit: (item: EntryWithSetlist) => void, isAdminMode?: boolean }, ref: React.Ref<{ reload: () => void }>) {
+function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateEntry }: { event: Event, onEdit: (item: EntryWithSetlist) => void, isAdminMode?: boolean, onCreateEntry?: (groupId: string) => Promise<void> }, ref: React.Ref<{ reload: () => void }>) {
   const [sectionLoading, setSectionLoading] = useState(true)
   const [sectionEntriesWithSetlist, setSectionEntriesWithSetlist] = useState<EntryWithSetlist[]>([])
+  const [groupOptions, setGroupOptions] = useState<Array<{ id: string; name: string; is_main: boolean }>>([])
+  const [existingEntries, setExistingEntries] = useState<Entry[]>([])
+  const [loadingGroups, setLoadingGroups] = useState(false)
+  const [creatingEntry, setCreatingEntry] = useState(false)
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('')
 
   const loadSectionData = useCallback(async () => {
     try {
@@ -63,6 +70,72 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false }: { event
   useEffect(() => {
     loadSectionData()
   }, [loadSectionData])
+
+  useEffect(() => {
+    if (isAdminMode && onCreateEntry) {
+      const loadGroupsAndEntries = async () => {
+        try {
+          setLoadingGroups(true)
+          const [groupsRes, entriesRes] = await Promise.all([
+            apiClient.getGroupOptions(true),
+            apiClient.getEntries(event.id),
+          ])
+          if (groupsRes.success && groupsRes.data) {
+            setGroupOptions(groupsRes.data)
+          }
+          if (entriesRes.success && entriesRes.data) {
+            setExistingEntries(entriesRes.data)
+          }
+        } catch (error) {
+          console.error('Error loading groups and entries:', error)
+        } finally {
+          setLoadingGroups(false)
+        }
+      }
+      loadGroupsAndEntries()
+    }
+  }, [isAdminMode, event.id, onCreateEntry])
+
+  const availableGroups = useMemo(() => {
+    if (!isAdminMode || event.group_limit === 0) {
+      return []
+    }
+
+    const now = new Date()
+    const entryDeadline = new Date(event.entry_deadline)
+    const isEntryAccepting = event.is_entry_accepting
+    const isDeadlinePassed = now >= entryDeadline
+
+    if (!isEntryAccepting || isDeadlinePassed) {
+      return []
+    }
+
+    const existingGroupIds = new Set(existingEntries.map(e => e.group_id))
+    
+    return groupOptions.filter(group => 
+      !group.is_main &&
+      !existingGroupIds.has(group.id)
+    )
+  }, [isAdminMode, event, groupOptions, existingEntries])
+
+  const handleCreateEntry = async (groupId: string) => {
+    if (!onCreateEntry || creatingEntry || !groupId) return
+    
+    try {
+      setCreatingEntry(true)
+      setSelectedGroupId('')
+      await onCreateEntry(groupId)
+      await loadSectionData()
+      const entriesRes = await apiClient.getEntries(event.id)
+      if (entriesRes.success && entriesRes.data) {
+        setExistingEntries(entriesRes.data)
+      }
+    } catch (error) {
+      console.error('Error creating entry:', error)
+    } finally {
+      setCreatingEntry(false)
+    }
+  }
 
   useImperativeHandle(ref, () => ({
     reload: () => {
@@ -140,6 +213,27 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false }: { event
                 )
               })
             )}
+          </div>
+        )}
+
+        {isAdminMode && onCreateEntry && (
+          <div className="flex items-center justify-end">
+            <Select
+              value={selectedGroupId}
+              onValueChange={handleCreateEntry}
+              disabled={event.group_limit === 0 || availableGroups.length === 0 || creatingEntry || loadingGroups}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="エントリーを追加" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableGroups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
       </CardContent>
@@ -242,7 +336,7 @@ function SetlistContent() {
 
   const handleAddItem = (entryId: string) => {
     const items = editingItems.get(entryId) || []
-    const limit = editDialogEntry && entryId === editDialogEntry.entry.id && dialogSongLimit ? dialogSongLimit : (selectedEvent?.song_limit || 10)
+    const limit = editDialogEntry && entryId === editDialogEntry.entry.id && dialogSongLimit ? dialogSongLimit : (selectedEvent?.song_limit ?? 2)
     if (items.length >= limit) {
       toast.error(`最大${limit}曲まで登録可能です`)
       return
@@ -293,7 +387,7 @@ function SetlistContent() {
         ? [{ title: entranceSETitle.get(entryId) || '', artist: entranceSEArtist.get(entryId) || '' }, ...songsPayload]
         : songsPayload
       await apiClient.replaceSetlistItems(entryId, payload, hasSE)
-      toast.success('セットリストを保存しました')
+      showSuccessToast({ message: 'セットリストを保存しました' })
       if (selectedEventId) {
         sectionRefs.current.get(selectedEventId)?.reload()
       } else {
@@ -317,6 +411,41 @@ function SetlistContent() {
 
   const handleAdminToggle = (checked: boolean) => {
     setIsAdminMode(checked)
+  }
+
+  const handleCreateEntry = async (eventId: string, groupId: string) => {
+    try {
+      const response = await apiClient.createEntries({
+        event_id: eventId,
+        group_ids: [groupId],
+      }, true)
+
+      if (response.success) {
+        showSuccessToast({ message: 'エントリーを作成しました' })
+        if (selectedEventId) {
+          sectionRefs.current.get(selectedEventId)?.reload()
+        } else {
+          sectionRefs.current.get(eventId)?.reload()
+        }
+      } else {
+        if (response.error === 'NO_VALID_GROUPS') {
+          toast.error('登録可能なグループがありません')
+        } else if (response.error === 'GROUP_LIMIT_EXCEEDED') {
+          const members = (response as { members?: string[] }).members || [];
+          if (members.length > 0) {
+            const memberNames = members.join('、');
+            toast.error(`${memberNames}のバンド登録数が上限を超えています`)
+          } else {
+            toast.error('メンバーのバンド登録数が上限を超えています')
+          }
+        } else {
+          toast.error('エントリー作成中にエラーが発生しました')
+        }
+      }
+    } catch (error) {
+      console.error('Error creating entry:', error)
+      toast.error('エラーが発生しました')
+    }
   }
 
   const rightActions = (
@@ -350,6 +479,7 @@ function SetlistContent() {
                 event={selectedEvent}
                 onEdit={openEditDialog}
                 isAdminMode={isAdminMode}
+                onCreateEntry={isAdminMode ? (groupId: string) => handleCreateEntry(selectedEvent.id, groupId) : undefined}
               />
               <div className="max-w-5xl mx-auto w-full mt-3">
                 <Button variant="outline" className="w-full" onClick={() => setSelectedEventId(null)}>
@@ -408,6 +538,7 @@ function SetlistContent() {
               event={ev}
               onEdit={openEditDialog}
               isAdminMode={isAdminMode}
+              onCreateEntry={isAdminMode ? (groupId: string) => handleCreateEntry(ev.id, groupId) : undefined}
             />
             ))
           ))

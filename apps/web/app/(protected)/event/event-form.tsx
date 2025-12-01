@@ -8,7 +8,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { format } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import { CalendarIcon } from 'lucide-react'
-import { cn } from "@/lib/utils"
+import { cn, showSuccessToast } from "@/lib/utils"
 import { Event } from "@/app/types"
 import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
@@ -37,7 +37,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
   const [setlistDeadline, setSetlistDeadline] = useState<Date | undefined>(event?.setlist_deadline ? new Date(event.setlist_deadline) : undefined)
   const [isFreeBand, setIsFreeBand] = useState(event ? event.group_limit !== 0 : true)
   const [freeBandLimit, setFreeBandLimit] = useState(event && event.group_limit > 0 ? event.group_limit.toString() : '2')
-  const [songLimit, setSongLimit] = useState(event?.song_limit?.toString() || '10')
+  const [songLimit, setSongLimit] = useState<number>(event?.song_limit ?? 2)
   const [entryAccepting, setEntryAccepting] = useState(event?.is_entry_accepting ?? true)
   const [setlistAccepting, setSetlistAccepting] = useState(event?.is_setlist_accepting ?? true)
   const [isPending, startTransition] = useTransition()
@@ -57,7 +57,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
       setSetlistDeadline(setlistDeadlineDate)
       setIsFreeBand(event.group_limit !== 0)
       setFreeBandLimit(event.group_limit > 0 ? event.group_limit.toString() : '2')
-      setSongLimit(event.song_limit?.toString() || '10')
+      setSongLimit(event.song_limit ?? 2)
       setEntryAccepting(event.is_entry_accepting ?? true)
       setSetlistAccepting(event.is_setlist_accepting ?? true)
     } else {
@@ -67,7 +67,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
       setSetlistDeadline(undefined)
       setIsFreeBand(true)
       setFreeBandLimit('2')
-      setSongLimit('10')
+      setSongLimit(2)
       setEntryAccepting(true)
       setSetlistAccepting(true)
     }
@@ -78,16 +78,16 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
   }
 
   const validateDates = (): string | null => {
-    if (!entryDeadline || !setlistDeadline || !date) return null;
-    
-    if (entryDeadline >= setlistDeadline) {
-      return '出演締切はセットリスト締切より前である必要があります';
+    if (!entryDeadline || !setlistDeadline || !date) return null
+
+    if (entryDeadline > setlistDeadline) {
+      return '出演締切はセットリスト締切より後に設定できません'
     }
     if (setlistDeadline >= date) {
-      return 'セットリスト締切はイベント日より前である必要があります';
+      return 'セットリスト締切はイベント日より前である必要があります'
     }
-    return null;
-  };
+    return null
+  }
 
   const formatDeadlineToNextDay = (deadlineDate: Date): string => {
     const nextDay = new Date(deadlineDate)
@@ -96,20 +96,32 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
     return nextDay.toISOString()
   }
 
+  const handleSongLimitChange = (value: string) => {
+    if (value === '') {
+      setSongLimit(NaN)
+      return
+    }
+    const parsed = parseInt(value, 10)
+    if (Number.isNaN(parsed)) {
+      return
+    }
+    setSongLimit(parsed)
+  }
+
   const handleSubmit = async () => {
     if (!title.trim() || !date || !entryDeadline || !setlistDeadline) return
 
     const validationError = validateDates();
     if (validationError) {
-      toast.error(validationError);
-      return;
+      toast.error(validationError)
+      return
     }
 
     const formattedDate = date.toISOString().split('T')[0]
     const formattedEntryDeadline = formatDeadlineToNextDay(entryDeadline)
     const formattedSetlistDeadline = formatDeadlineToNextDay(setlistDeadline)
     const groupLimitNum = isFreeBand ? parseInt(freeBandLimit) || 2 : 0
-    const songLimitNum = parseInt(songLimit) || 10
+    const songLimitNum = Number.isNaN(songLimit) ? 2 : songLimit
 
     startTransition(async () => {
       try {
@@ -126,7 +138,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
           })
           
           if (response.success) {
-            toast.success('イベントを更新しました')
+            showSuccessToast({ message: 'イベントを更新しました' })
             const updatedEvent: Event = {
               ...event,
               title,
@@ -156,16 +168,15 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
           })
           
           if (response.success) {
-            toast.success('イベントを作成しました')
+            showSuccessToast({ message: 'イベントを作成しました' })
             onClose()
             onSuccess?.()
           } else {
             toast.error('イベントの作成中にエラーが発生しました')
           }
         }
-      } catch (error) {
+      } catch {
         toast.error('エラーが発生しました')
-        console.error('Error submitting event:', error)
       }
     })
   }
@@ -331,8 +342,8 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
             <Input
               type="number"
               min="1"
-              value={songLimit}
-              onChange={(e) => setSongLimit(e.target.value)}
+              value={Number.isNaN(songLimit) ? '' : songLimit}
+              onChange={(e) => handleSongLimitChange(e.target.value)}
             />
           </div>
           {event && (
@@ -353,8 +364,8 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
                 return null;
               })()}
               {(() => {
-                const newSongLimit = parseInt(songLimit) || 10;
-                const oldSongLimit = event.song_limit || 10;
+                const newSongLimit = Number.isNaN(songLimit) ? 2 : songLimit;
+                const oldSongLimit = event.song_limit ?? 2;
                 if (newSongLimit < oldSongLimit) {
                   return (
                     <Alert variant="destructive">

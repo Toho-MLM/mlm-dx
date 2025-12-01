@@ -8,6 +8,7 @@ import { Music, Users, FileText } from 'lucide-react'
 import { apiClient } from '@/lib/api'
 import { Entry } from '@/app/types'
 import { toast } from 'sonner'
+import { showSuccessToast } from '@/lib/utils'
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface EntriesListProps {
@@ -61,7 +62,7 @@ export function EntriesList({ eventId, eventTitle }: EntriesListProps) {
     
     try {
       await apiClient.deleteEntry(entryId)
-      toast.success('エントリーを削除しました')
+      showSuccessToast({ message: 'エントリーを削除しました' })
       fetchEntries()
     } catch (error) {
       console.error('Error deleting entry:', error)

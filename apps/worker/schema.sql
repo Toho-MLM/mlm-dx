@@ -52,9 +52,6 @@ CREATE TABLE IF NOT EXISTS passkey_challenges (
   created_at DATETIME NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_passkey_challenges_user_type ON passkey_challenges(user_id, type);
-CREATE INDEX IF NOT EXISTS idx_passkey_challenges_expires_at ON passkey_challenges(expires_at);
-
 CREATE TABLE IF NOT EXISTS groups (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
