@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { startRegistration } from '@simplewebauthn/browser'
 import type { AuthenticatorAttestationResponseJSON } from '@simplewebauthn/types'
 import { toast } from 'sonner'
+import { showSuccessToast } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { httpClient } from '@/lib/http-client'
 
@@ -109,7 +110,7 @@ export default function Page() {
         optionsJSON: start.options
       })
       await apiClient.finishPasskeyRegistration(start.challengeId, attestation as unknown as AuthenticatorAttestationResponseJSON)
-      toast.success('Passkeyを追加しました')
+      showSuccessToast({ message: 'Passkeyを追加しました' })
       await fetchPasskeys()
     } catch (error) {
       if (error instanceof Error) {
@@ -141,7 +142,7 @@ export default function Page() {
     try {
       const res = await apiClient.deletePasskeyCredential(confirmingPasskeyId)
       if (res.success) {
-        toast.success('Passkeyを削除しました')
+        showSuccessToast({ message: 'Passkeyを削除しました' })
         await fetchPasskeys()
       } else {
         toast.error('Passkeyの削除に失敗しました')

@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { httpClient } from '@/lib/http-client'
 import { toast } from 'sonner'
+import { showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
 import { startAuthentication } from '@simplewebauthn/browser'
 import type { AuthenticatorAssertionResponseJSON } from '@simplewebauthn/types'
@@ -84,7 +85,7 @@ function LoginContent() {
         toast.error('Passkeyでのログインに失敗しました')
         return
       }
-      toast.success('Passkeyでログインしました')
+      showSuccessToast({ message: 'Passkeyでログインしました' })
       router.push('/')
     } catch (error) {
       console.error('Passkey login failed:', error)

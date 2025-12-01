@@ -16,6 +16,7 @@ import { CalendarIcon, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
+import { showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
@@ -103,7 +104,7 @@ export default function UnavailablePeriodsPage() {
       })
 
       if (response.success) {
-        toast.success('予約不可期間を追加しました')
+        showSuccessToast({ message: '予約不可期間を追加しました' })
         setIsFormOpen(false)
         setStartDate(new Date())
         setStartTime('00:00')
@@ -138,7 +139,7 @@ export default function UnavailablePeriodsPage() {
       const response = await apiClient.deleteUnavailablePeriod(periodToDelete)
 
       if (response.success) {
-        toast.success('予約不可期間を削除しました')
+        showSuccessToast({ message: '予約不可期間を削除しました' })
         setIsDeleteDialogOpen(false)
         setPeriodToDelete(null)
         await fetchPeriods()

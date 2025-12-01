@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { EventCard } from "./event-card"
 import { EventForm } from "./event-form"
 import { Event } from "@/app/types"
-import { useRouter } from 'next/navigation'
 import { EventPageHeader } from '@/components/event-page-header'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
@@ -19,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { apiClient } from '@/lib/api'
 import { EventProvider } from './event-context'
+import { showSuccessToast } from '@/lib/utils'
 
 export default function Page() {
   const [events, setEvents] = useState<Event[]>([])
@@ -30,11 +30,10 @@ export default function Page() {
   const [editingEvent, setEditingEvent] = useState<Event | undefined>()
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
   const { user } = useAuth()
   const isUserAdmin = user && isAdmin(user.role)
 
-  const fetchAggregates = async () => {
+  const fetchAggregates = useCallback(async () => {
     try {
       setLoadingEntries(true)
       const [groupsRes, entriesRes] = await Promise.all([
@@ -46,7 +45,7 @@ export default function Page() {
     } finally {
       setLoadingEntries(false)
     }
-  }
+  }, [isUserAdmin])
 
   const fetchEvents = async () => {
     try {
@@ -61,7 +60,7 @@ export default function Page() {
   useEffect(() => {
     fetchEvents()
     fetchAggregates()
-  }, [])
+  }, [fetchAggregates])
 
   const handleEdit = (id: string) => {
     const event = events.find(e => e.id === id)
@@ -78,24 +77,21 @@ export default function Page() {
 
   const handleDeleteConfirm = async () => {
     if (!deletingEventId) return
-    
-    startTransition(async () => {
-      try {
-        const response = await apiClient.deleteEvent(deletingEventId)
-        if (response.success) {
-          setEvents(prev => prev.filter(e => e.id !== deletingEventId))
-          toast.success('イベントを削除しました')
-        } else {
-          toast.error('イベントの削除中にエラーが発生しました')
-        }
-      } catch (error) {
-        console.error('Error deleting event:', error)
-        toast.error('エラーが発生しました')
-      } finally {
-        setIsDeleteDialogOpen(false)
-        setDeletingEventId(null)
+
+    try {
+      const response = await apiClient.deleteEvent(deletingEventId)
+      if (response.success) {
+        setEvents(prev => prev.filter(e => e.id !== deletingEventId))
+        showSuccessToast({ message: 'イベントを削除しました' })
+      } else {
+        toast.error('イベントの削除中にエラーが発生しました')
       }
-    })
+    } catch {
+      toast.error('エラーが発生しました')
+    } finally {
+      setIsDeleteDialogOpen(false)
+      setDeletingEventId(null)
+    }
   }
 
   const handleAdd = () => {
@@ -139,7 +135,7 @@ export default function Page() {
       setlist_deadline: new Date().toISOString(),
       is_setlist_accepting: true,
       group_limit: 1,
-      song_limit: 10,
+      song_limit: 2,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }

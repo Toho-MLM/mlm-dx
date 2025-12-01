@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { LoadingButton } from '@/components/ui/loading-button'
 import { toast } from 'sonner'
+import { showSuccessToast } from '@/lib/utils'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -176,7 +177,7 @@ function TimelineContent() {
         else toast.error('保存に失敗しました')
         return
       }
-      toast.success('タイムラインを保存しました')
+      showSuccessToast({ message: 'タイムラインを保存しました' })
       setEditing(false)
     } finally {
       setSaving(false)
