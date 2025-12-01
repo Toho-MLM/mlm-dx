@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
+import { showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
 import { useEffect, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -71,7 +72,7 @@ export default function CreateFirstUserPage() {
         email: email.trim(),
         grade: Number(grade),
       })
-      toast.success('最初のユーザーが作成されました。')
+      showSuccessToast({ message: '最初のユーザーが作成されました。' })
       setTimeout(() => {
         router.push('/login')
       }, 1000)

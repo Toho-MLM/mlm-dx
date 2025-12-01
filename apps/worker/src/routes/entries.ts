@@ -4,6 +4,7 @@ import type { Bindings, Variables } from '../index';
 import { z } from 'zod';
 import { getUserGroupIds } from './groups';
 import { EntrySchema, CreateEntryRequestSchema, UpdateEntryRequestSchema } from '@shared-schemas';
+import { requireAdmin } from '../utils/admin';
 
 const entriesRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -83,11 +84,26 @@ entriesRoutes.post('/', async (c) => {
     const user = c.get('user');
     const requestData = CreateEntryRequestSchema.parse(await c.req.json());
 
-    const userGroupIds = await getUserGroupIds(c.env, user.id);
+    const isAdminMode = requestData.admin === true;
 
-    const validGroupIds = requestData.group_ids.filter(groupId => 
-      userGroupIds.includes(groupId)
-    );
+    if (isAdminMode) {
+      try {
+        requireAdmin(user.role);
+      } catch (error) {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
+
+    let validGroupIds: string[];
+
+    if (isAdminMode) {
+      validGroupIds = requestData.group_ids;
+    } else {
+      const userGroupIds = await getUserGroupIds(c.env, user.id);
+      validGroupIds = requestData.group_ids.filter(groupId => 
+        userGroupIds.includes(groupId)
+      );
+    }
 
     if (validGroupIds.length === 0) {
       return c.json({ success: false, error: 'NO_VALID_GROUPS' }, 400);

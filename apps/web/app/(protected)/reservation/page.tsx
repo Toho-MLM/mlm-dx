@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { cn } from "@/lib/utils"
+import { cn, showSuccessToast } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ReservationState, eventStateNames, Event } from '../../types'
 import { validateReservationTime, isReservationDateValid, isReservationTimeValid, type Reservation, type UnavailablePeriod } from '@shared-schemas'
@@ -329,7 +329,7 @@ export default function Page() {
       });
 
       if (response.success) {
-        toast.success('予約を送信しました')
+        showSuccessToast({ message: '予約を送信しました' })
         
         setReservationDraft({
           date: new Date(),
@@ -365,7 +365,7 @@ export default function Page() {
         setIsEventDetailOpen(false)
         setSelectedReservation(null)
         await fetchReservations()
-        toast.success('予約をキャンセルしました')
+        showSuccessToast({ message: '予約をキャンセルしました' })
       } else {
         toast.error('データの送信中にエラーが発生しました', {
           description: translateError(response.error || 'UNKNOWN_ERROR')
