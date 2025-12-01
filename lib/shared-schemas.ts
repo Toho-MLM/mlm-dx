@@ -288,6 +288,7 @@ export const EntrySchema = z.object({
 export const CreateEntryRequestSchema = z.object({
   event_id: z.string(),
   group_ids: z.array(z.string()),
+  admin: z.boolean().optional(),
 });
 
 export const UpdateEntryRequestSchema = z.object({

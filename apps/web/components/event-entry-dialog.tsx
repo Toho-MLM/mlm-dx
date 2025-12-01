@@ -21,6 +21,7 @@ import {
 import { X } from "lucide-react"
 import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
+import { showSuccessToast } from '@/lib/utils'
 import { Event } from '@/app/types'
 
 interface Group {
@@ -115,7 +116,7 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
       })
 
       if (response.success) {
-        toast.success('参加登録が完了しました')
+        showSuccessToast({ message: '参加登録が完了しました' })
         onSuccess()
         onClose()
       } else {

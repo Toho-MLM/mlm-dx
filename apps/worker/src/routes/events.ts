@@ -6,11 +6,11 @@ import { z } from 'zod';
 import { EventSchema, CreateEventRequestSchema, UpdateEventRequestSchema } from '@shared-schemas';
 
 function validateEventDates(entryDeadline: string, setlistDeadline: string, eventDate: string): boolean {
-  const entry = new Date(entryDeadline);
-  const setlist = new Date(setlistDeadline);
-  const event = new Date(eventDate);
+  const entry = new Date(entryDeadline)
+  const setlist = new Date(setlistDeadline)
+  const event = new Date(eventDate)
 
-  return entry < setlist && setlist < event;
+  return entry <= setlist && setlist < event
 }
 
 const eventRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -30,7 +30,7 @@ eventRoutes.post('/', async (c) => {
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
     
-    const songLimit = requestData.song_limit ?? 10;
+    const songLimit = requestData.song_limit ?? 2;
     
     await c.env.DB.prepare(`
       INSERT INTO events (id, title, event_date, entry_deadline, is_entry_accepting, setlist_deadline, is_setlist_accepting, group_limit, song_limit, created_at, updated_at)

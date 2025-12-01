@@ -1,17 +1,17 @@
 'use client'
 
-import React from 'react';
-import { useEffect } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import { AuthProvider, useAuth } from "./context/AuthContext";
+import React, { useEffect } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
+import { AuthProvider, useAuth } from "./context/AuthContext"
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarFooter } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Toaster } from "@/components/ui/sonner"
 
 function Content({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const { user, loading } = useAuth();
+  const pathname = usePathname()
+  const router = useRouter()
+  const { user, loading } = useAuth()
 
   useEffect(() => {
     if (!loading && !user) {
@@ -34,7 +34,6 @@ function Content({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {/* sidebar area: show skeleton while auth resolving, real sidebar when allowed */}
       {shouldRenderSidebarArea && (
         isAuthResolving ? (
           <Sidebar aria-label="メインナビゲーション">
@@ -81,8 +80,9 @@ function Content({ children }: { children: React.ReactNode }) {
       <div className="w-full">
         {children}
       </div>
+      <Toaster />
     </>
-  );
+  )
 }
 
 export function MainContent({ children }: { children: React.ReactNode }) {

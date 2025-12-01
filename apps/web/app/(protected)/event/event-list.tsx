@@ -10,6 +10,7 @@ import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
 import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
+import { showSuccessToast } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -48,8 +49,8 @@ export function EventList({ events }: { events: Event[] }) {
     try {
       const response = await apiClient.deleteEvent(deletingEventId)
       
-      if (response.success) {
-        toast.success('イベントを削除しました')
+        if (response.success) {
+          showSuccessToast({ message: 'イベントを削除しました' })
         router.refresh()
       } else {
         if (response.error === 'INSUFFICIENT_PERMISSIONS') {

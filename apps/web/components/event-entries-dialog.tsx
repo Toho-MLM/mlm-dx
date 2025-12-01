@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
+import { showSuccessToast } from '@/lib/utils'
 import { Music, FileText } from 'lucide-react'
 import { Entry } from '@/app/types'
 import Link from 'next/link'
@@ -70,7 +71,7 @@ export function EventEntriesDialog({ eventId, eventTitle, isOpen, onClose }: Eve
     
     try {
       await apiClient.deleteEntry(entryId)
-      toast.success('エントリーを削除しました')
+      showSuccessToast({ message: 'エントリーを削除しました' })
       loadData()
     } catch (error) {
       console.error('Error deleting entry:', error)

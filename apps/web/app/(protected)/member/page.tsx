@@ -15,6 +15,7 @@ import { isAdmin } from '@shared-schemas'
 import { apiClient } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
+import { showSuccessToast } from '@/lib/utils'
 import { 
   Dialog, 
   DialogContent, 
@@ -119,7 +120,7 @@ export default function Page() {
         grade: formData.grade,
       })
       if (response.success) {
-        toast.success('メンバーを作成しました')
+        showSuccessToast({ message: 'メンバーを作成しました' })
         setIsCreateDialogOpen(false)
         resetForm()
         await fetchMembers()
@@ -172,7 +173,7 @@ export default function Page() {
         role: editFormData.role,
       })
       if (response.success) {
-        toast.success('メンバーを更新しました')
+        showSuccessToast({ message: 'メンバーを更新しました' })
         setIsEditDialogOpen(false)
         setEditingMember(null)
         resetForm()
@@ -200,7 +201,7 @@ export default function Page() {
           role: editFormData.role,
         })
         if (response.success) {
-          toast.success('メンバーを更新しました')
+          showSuccessToast({ message: 'メンバーを更新しました' })
           setIsEditDialogOpen(false)
           setEditingMember(null)
           resetForm()
@@ -229,7 +230,7 @@ export default function Page() {
     try {
       const response = await apiClient.deleteMember(deletingMember.id)
       if (response.success) {
-        toast.success('メンバーを削除しました')
+        showSuccessToast({ message: 'メンバーを削除しました' })
         setIsDeleteDialogOpen(false)
         setDeletingMember(null)
         await fetchMembers()
@@ -372,7 +373,7 @@ export default function Page() {
         const successCount = response.data.created.length
         const failCount = response.data.failed.length
         if (successCount > 0) {
-          toast.success(`${successCount}件のメンバーを追加しました`)
+          showSuccessToast({ message: `${successCount}件のメンバーを追加しました` })
         }
         if (failCount > 0) {
           toast.error(`${failCount}件のインポートに失敗しました`)
