@@ -221,7 +221,7 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
             <Select
               value={selectedGroupId}
               onValueChange={handleCreateEntry}
-              disabled={event.group_limit === 0 || availableGroups.length === 0 || creatingEntry || loadingGroups}
+              disabled={availableGroups.length === 0 || creatingEntry || loadingGroups}
             >
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="エントリーを追加" />

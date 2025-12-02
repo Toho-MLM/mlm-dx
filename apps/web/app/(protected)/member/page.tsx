@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
@@ -282,7 +282,7 @@ export default function Page() {
           }
         }
         result.push(current)
-        return result.map(cell => cell.replace(/^\s*\"|\"\s*$/g, '').trim())
+        return result.map(cell => cell.replace(/^\s*"|"\s*$/g, '').trim())
       }
       const headerRaw = lines[0]
       const headers = parseCsvLine(headerRaw).map(col => col.toLowerCase())
@@ -495,7 +495,7 @@ export default function Page() {
                       <p>・必須ヘッダー: name, email, grade（gradeは1-6の整数）</p>
                       <p>・任意ヘッダー: nickname, instruments, role</p>
                       <p>・instruments: VO, GT, KEY, DR, BA のコードを文字列内に含めて記述（複数可）</p>
-                      <p>　例: DR,GT,VO｜DR GT VO｜["DR","GT","VO"]</p>
+                      <p>例: DR,GT,VO｜DR GT VO</p>
                       <p>・role: MGR, CHF, MAC, MBR, ADM, NHD, NAC のいずれか</p>
                     </div>
                     <div className="flex justify-between items-center gap-2">

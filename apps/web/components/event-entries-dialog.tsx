@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,6 @@ import { toast } from 'sonner'
 import { showSuccessToast } from '@/lib/utils'
 import { Music, FileText } from 'lucide-react'
 import { Entry } from '@/app/types'
-import Link from 'next/link'
 
 interface EventEntriesDialogProps {
   eventId: string
@@ -28,17 +27,9 @@ interface EventEntriesDialogProps {
 export function EventEntriesDialog({ eventId, eventTitle, isOpen, onClose }: EventEntriesDialogProps) {
   const [entries, setEntries] = useState<Entry[]>([])
   const [loading, setLoading] = useState(true)
-  const [isSetlistDialogOpen, setIsSetlistDialogOpen] = useState(false)
-  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const [groups, setGroups] = useState<Map<string, string>>(new Map())
 
-  useEffect(() => {
-    if (isOpen) {
-      loadData()
-    }
-  }, [isOpen, eventId])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
       const [entriesResponse, groupsResponse] = await Promise.all([
@@ -60,9 +51,15 @@ export function EventEntriesDialog({ eventId, eventTitle, isOpen, onClose }: Eve
     } finally {
       setLoading(false)
     }
-  }
+  }, [eventId])
 
-  const handleOpenSetlist = (entry: Entry) => {
+  useEffect(() => {
+    if (isOpen) {
+      loadData()
+    }
+  }, [isOpen, loadData])
+
+  const handleOpenSetlist = () => {
     window.location.href = `/event/setlist?eventId=${eventId}`
   }
 
@@ -79,9 +76,6 @@ export function EventEntriesDialog({ eventId, eventTitle, isOpen, onClose }: Eve
     }
   }
 
-  const handleSetlistSuccess = () => {
-    loadData()
-  }
 
   return (
     <>
@@ -126,7 +120,7 @@ export function EventEntriesDialog({ eventId, eventTitle, isOpen, onClose }: Eve
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleOpenSetlist(entry)}
+                        onClick={handleOpenSetlist}
                         className="flex items-center gap-2"
                       >
                         <Music className="h-4 w-4" />

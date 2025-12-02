@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect } from 'react'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { AuthProvider, useAuth } from "./context/AuthContext"
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarFooter } from "@/components/ui/sidebar"
@@ -39,7 +40,7 @@ function Content({ children }: { children: React.ReactNode }) {
           <Sidebar aria-label="メインナビゲーション">
             <SidebarHeader>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <img src="/assets/logo.png" alt="MLM DX logo" style={{ height: '32px', width: 'auto', marginRight: '8px', display: 'block' }} />
+                <Image src="/assets/logo.png" alt="MLM DX logo" width={32} height={32} style={{ marginRight: '8px', display: 'block' }} />
                 <h2 className="text-lg font-semibold">MLM DX</h2>
               </div>
             </SidebarHeader>

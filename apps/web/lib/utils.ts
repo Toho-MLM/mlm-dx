@@ -2,19 +2,32 @@ import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { toast } from "sonner"
 import type { Group } from '@/app/types'
+import { Instrument } from '@/app/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatGroups(raw: any[]): Group[] {
-  return (raw || []).map((group: any) => ({
-    id: group.id,
-    name: group.name,
-    isMain: group.is_main,
-    isActive: group.is_active,
-    assignments: group.assignments || [],
-  }))
+export function formatGroups(raw: unknown[]): Group[] {
+  return (raw || []).map((group: unknown) => {
+    const g = group as { 
+      id: string
+      name: string
+      is_main?: boolean
+      is_active?: boolean
+      assignments?: Array<{ id: string; instruments: string[] }>
+    }
+    return {
+      id: g.id,
+      name: g.name,
+      isMain: g.is_main ?? false,
+      isActive: g.is_active ?? false,
+      assignments: (g.assignments || []).map(assignment => ({
+        id: assignment.id,
+        instruments: assignment.instruments as Instrument[],
+      })),
+    }
+  })
 }
 
 type SuccessToastParams = {

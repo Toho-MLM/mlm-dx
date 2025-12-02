@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 type RequestInit = globalThis.RequestInit
 
 export class HttpClient {
@@ -10,7 +12,7 @@ export class HttpClient {
   async request<T>(
     endpoint: string,
     options: RequestInit = {},
-    schema?: any
+    schema?: z.ZodSchema<T>
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`
 
@@ -70,25 +72,25 @@ export class HttpClient {
     return data
   }
 
-  async get<T>(endpoint: string, schema?: any): Promise<T> {
+  async get<T>(endpoint: string, schema?: z.ZodSchema<T>): Promise<T> {
     return this.request<T>(endpoint, { method: 'GET' }, schema)
   }
 
-  async post<T>(endpoint: string, body?: any, schema?: any): Promise<T> {
+  async post<T>(endpoint: string, body?: unknown, schema?: z.ZodSchema<T>): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
     }, schema)
   }
 
-  async put<T>(endpoint: string, body?: any, schema?: any): Promise<T> {
+  async put<T>(endpoint: string, body?: unknown, schema?: z.ZodSchema<T>): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
       body: body ? JSON.stringify(body) : undefined,
     }, schema)
   }
 
-  async delete<T>(endpoint: string, schema?: any): Promise<T> {
+  async delete<T>(endpoint: string, schema?: z.ZodSchema<T>): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE' }, schema)
   }
 }

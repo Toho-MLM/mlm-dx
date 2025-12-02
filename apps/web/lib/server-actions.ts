@@ -13,10 +13,10 @@ export interface ApiResponse<T = unknown> {
   message?: string
 }
 
-async function serverActionRequest(
+async function serverActionRequest<T = unknown>(
   endpoint: string, 
-  options: RequestInit = {}
-): Promise<any> {
+  options: Parameters<typeof fetch>[1] = {}
+): Promise<T> {
   const cookieStore = await cookies()
   const cookieHeader = cookieStore.toString()
   
