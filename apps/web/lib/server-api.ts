@@ -19,10 +19,10 @@ export interface ApiResponse<T = unknown> {
   message?: string
 }
 
-async function serverRequest(
+async function serverRequest<T = unknown>(
   endpoint: string, 
-  options: RequestInit = {}
-): Promise<any> {
+  options: Parameters<typeof fetch>[1] = {}
+): Promise<T> {
   const cookieStore = await cookies()
   const cookieHeader = cookieStore.toString()
   
@@ -47,7 +47,7 @@ async function serverRequest(
 
 export const getServerUser = cache(async (): Promise<SessionResponse['user']> => {
   try {
-    const session = await serverRequest('/auth/session')
+    const session = await serverRequest<SessionResponse>('/auth/session')
     return session.user
   } catch (error) {
     return null
