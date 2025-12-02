@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from "@/app/context/AuthContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarFooter, useSidebar } from "@/components/ui/sidebar"
@@ -34,7 +35,7 @@ export function AppSidebar() {
     <Sidebar aria-label="メインナビゲーション">
       <SidebarHeader>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <img src="/assets/logo.png" alt="MLM DX logo" style={{ height: '32px', width: 'auto', marginRight: '8px', display: 'block' }} />
+          <Image src="/assets/logo.png" alt="MLM DX logo" width={32} height={32} style={{ marginRight: '8px', display: 'block' }} />
           <h2 className="text-lg font-semibold">MLM DX</h2>
         </div>
       </SidebarHeader>
