@@ -101,15 +101,6 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
       return []
     }
 
-    const now = new Date()
-    const entryDeadline = new Date(event.entry_deadline)
-    const isEntryAccepting = event.is_entry_accepting
-    const isDeadlinePassed = now >= entryDeadline
-
-    if (!isEntryAccepting || isDeadlinePassed) {
-      return []
-    }
-
     const existingGroupIds = new Set(existingEntries.map(e => e.group_id))
     
     return groupOptions.filter(group => 
