@@ -256,11 +256,44 @@ function SetlistContent() {
 
   const selectedEvent = useMemo(() => events.find(e => e.id === selectedEventId) || null, [events, selectedEventId])
 
-  const openEditDialog = (item: EntryWithSetlist) => {
-    const entrance = item.setlistItems.find(i => i.position === 0)
+  const clearDialogState = useCallback((entryId: string) => {
+    setEditingItems(prev => {
+      const newMap = new Map(prev)
+      newMap.delete(entryId)
+      return newMap
+    })
+    setSubmitting(prev => {
+      const newMap = new Map(prev)
+      newMap.delete(entryId)
+      return newMap
+    })
+    setEntranceSEEnabled(prev => {
+      const newMap = new Map(prev)
+      newMap.delete(entryId)
+      return newMap
+    })
+    setEntranceSETitle(prev => {
+      const newMap = new Map(prev)
+      newMap.delete(entryId)
+      return newMap
+    })
+    setEntranceSEArtist(prev => {
+      const newMap = new Map(prev)
+      newMap.delete(entryId)
+      return newMap
+    })
+  }, [])
+
+  const openEditDialog = useCallback((item: EntryWithSetlist) => {
+    const setlistItems = item.setlistItems.map(i => ({ ...i }))
+    const entrance = setlistItems.find(i => i.position === 0)
     const hasEntrance = !!entrance
-    const cloned = item.setlistItems.filter(i => i.position > 0).map(i => ({ ...i }))
-    setEditingItems(prev => new Map(prev.set(item.entry.id, cloned)))
+    const songs = setlistItems
+      .filter(i => i.position > 0)
+      .sort((a, b) => a.position - b.position)
+      .map(i => ({ ...i }))
+
+    setEditingItems(prev => new Map(prev.set(item.entry.id, songs)))
     setSubmitting(prev => new Map(prev.set(item.entry.id, false)))
     const ev = selectedEventId ? selectedEvent : events.find(e => e.id === item.entry.event_id) || null
     setDialogSongLimit(ev ? ev.song_limit : null)
@@ -271,7 +304,7 @@ function SetlistContent() {
     setEntranceSETitle(prev => new Map(prev.set(item.entry.id, entrance?.title || '')))
     setEntranceSEArtist(prev => new Map(prev.set(item.entry.id, entrance?.artist || '')))
     editDialogOpenRef.current = true
-  }
+  }, [events, selectedEvent, selectedEventId])
 
   useEffect(() => {
     const init = async () => {
@@ -377,14 +410,17 @@ function SetlistContent() {
       const payload = hasSE
         ? [{ title: entranceSETitle.get(entryId) || '', artist: entranceSEArtist.get(entryId) || '' }, ...songsPayload]
         : songsPayload
-      await apiClient.replaceSetlistItems(entryId, payload, hasSE)
+      await apiClient.replaceSetlistItems(entryId, payload, hasSE, isAdminMode)
       showSuccessToast({ message: 'セットリストを保存しました' })
-      if (selectedEventId) {
-        sectionRefs.current.get(selectedEventId)?.reload()
-      } else {
-        const targetEventId = editDialogEntry?.entry.event_id
-        if (targetEventId) sectionRefs.current.get(targetEventId)?.reload()
+      
+      const targetEventId = editDialogEntry?.entry.event_id
+      if (targetEventId) {
+        sectionRefs.current.get(targetEventId)?.reload()
       }
+      
+      clearDialogState(entryId)
+      setEditDialogEntry(null)
+      editDialogOpenRef.current = false
     } catch {
       toast.error('セットリストの保存に失敗しました')
     } finally {
@@ -535,7 +571,15 @@ function SetlistContent() {
           ))
         )}
       </div>
-      <Dialog open={!!editDialogEntry} onOpenChange={(o) => { if (!o) setEditDialogEntry(null) }}>
+      <Dialog open={!!editDialogEntry} onOpenChange={(o) => { 
+        if (!o) {
+          if (editDialogEntry) {
+            clearDialogState(editDialogEntry.entry.id)
+          }
+          setEditDialogEntry(null)
+          editDialogOpenRef.current = false
+        }
+      }}>
         {editDialogOpenRef.current = !!editDialogEntry}
         <DialogContent>
           <DialogHeader>
@@ -628,7 +672,6 @@ function SetlistContent() {
                         await apiClient.updateEntry(entryId, { note: editingEntryNote || null })
                       }
                       await handleSave(entryId)
-                      setEditDialogEntry(null)
                     }
                   }}
                   isLoading={!!submitting.get(editDialogEntry.entry.id)}
