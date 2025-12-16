@@ -201,7 +201,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
           />
           <div>
             <label className="text-sm font-medium mb-2 block">イベント日</label>
-            <Popover>
+            <Popover modal={true}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
@@ -233,7 +233,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
           <div>
             <label className="text-sm font-medium mb-2 block">出演締切</label>
             <div className="flex items-center gap-3">
-              <Popover>
+              <Popover modal={true}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -274,7 +274,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
           <div>
             <label className="text-sm font-medium mb-2 block">セットリスト締切</label>
             <div className="flex items-center gap-3">
-              <Popover>
+              <Popover modal={true}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
