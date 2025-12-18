@@ -85,15 +85,16 @@ reservationRoutes.get('/', async (c) => {
         FROM reservations r
         LEFT JOIN users u ON r.user_id = u.id
         LEFT JOIN groups ug ON r.group_id = ug.id
-        WHERE (r.state IN ('PENDING', 'CONFIRMED')
-           OR r.user_id = ?
-           OR (r.group_id IS NOT NULL AND EXISTS (
-             SELECT 1 FROM group_member_instruments gm 
-             WHERE gm.group_id = r.group_id AND gm.user_id = ?
-           )))
+        WHERE ((r.state IN ('PENDING', 'CONFIRMED')
+                AND (r.user_id = ?
+                     OR (r.group_id IS NOT NULL AND EXISTS (
+                       SELECT 1 FROM group_member_instruments gm 
+                       WHERE gm.group_id = r.group_id AND gm.user_id = ?
+                     ))))
+            OR (r.state NOT IN ('PENDING', 'CONFIRMED') AND r.user_id = ?))
            AND r.start_time >= ?
         ORDER BY r.start_time ASC
-      `).bind(user.id, user.id, user.id, user.id, twoWeeksAgoIso).all();
+      `).bind(user.id, user.id, user.id, user.id, user.id, twoWeeksAgoIso).all();
 
       return c.json({ success: true, data: reservations.results });
     }

@@ -29,6 +29,7 @@ import { validateReservationTime, isReservationDateValid, isReservationTimeValid
 type GroupOption = {
   id: string;
   name: string;
+  is_main: boolean;
 }
 
 type CalendarEvent = {
@@ -55,6 +56,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMe
 import { useAuth } from '../../context/AuthContext'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
 import { useRouter } from 'next/navigation'
 
 
@@ -814,7 +816,12 @@ export default function Page() {
                       ) : (
                         myGroups.map((group) => (
                           <SelectItem key={group.id} value={group.id}>
-                            {group.name}
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span>{group.name}</span>
+                              <Badge variant={group.is_main ? "default" : "outline"} className="text-sm px-1.5 py-0 shrink-0">
+                                {group.is_main ? '本バンド' : '自由バンド'}
+                              </Badge>
+                            </div>
                           </SelectItem>
                         ))
                       )}
