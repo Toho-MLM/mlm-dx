@@ -40,24 +40,20 @@ setlistRoutes.post('/', async (c) => {
     }
 
     const acceptRow = await c.env.DB.prepare(`
-      SELECT ev.is_setlist_accepting, ev.setlist_deadline
+      SELECT ev.is_setlist_accepting
       FROM entries e JOIN events ev ON ev.id = e.event_id
       WHERE e.id = ?
-    `).bind(requestData.entry_id).first<{ is_setlist_accepting: number | boolean; setlist_deadline: string }>();
+    `).bind(requestData.entry_id).first<{ is_setlist_accepting: number | boolean }>();
 
     if (!acceptRow) {
       return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
 
-    const isSetlistAccepting = Boolean(acceptRow.is_setlist_accepting);
-    const setlistDeadline = new Date(acceptRow.setlist_deadline);
-    const nowTime = new Date();
-
-    if (!isSetlistAccepting) {
-      return c.json({ success: false, error: 'SETLIST_NOT_ACCEPTING' }, 400);
-    }
-    if (nowTime >= setlistDeadline) {
-      return c.json({ success: false, error: 'SETLIST_DEADLINE_PASSED' }, 400);
+    if (!isAdminMode) {
+      const isSetlistAccepting = Boolean(acceptRow.is_setlist_accepting);
+      if (!isSetlistAccepting) {
+        return c.json({ success: false, error: 'SETLIST_NOT_ACCEPTING' }, 400);
+      }
     }
 
     const now = new Date().toISOString();
@@ -244,23 +240,19 @@ setlistRoutes.put('/', async (c) => {
     const now = new Date().toISOString();
 
     const eventRow = await c.env.DB.prepare(`
-      SELECT e.event_id, ev.song_limit, ev.is_setlist_accepting, ev.setlist_deadline
+      SELECT e.event_id, ev.song_limit, ev.is_setlist_accepting
       FROM entries e JOIN events ev ON ev.id = e.event_id WHERE e.id = ?
-    `).bind(entryId).first<{ event_id: string; song_limit: number; is_setlist_accepting: number | boolean; setlist_deadline: string }>();
+    `).bind(entryId).first<{ event_id: string; song_limit: number; is_setlist_accepting: number | boolean }>();
     if (!eventRow) {
       return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
     const songLimit = eventRow.song_limit;
 
-    const isSetlistAccepting = Boolean(eventRow.is_setlist_accepting);
-    const setlistDeadline = new Date(eventRow.setlist_deadline);
-    const nowTime = new Date();
-
-    if (!isSetlistAccepting) {
-      return c.json({ success: false, error: 'SETLIST_NOT_ACCEPTING' }, 400);
-    }
-    if (nowTime >= setlistDeadline) {
-      return c.json({ success: false, error: 'SETLIST_DEADLINE_PASSED' }, 400);
+    if (!isAdminMode) {
+      const isSetlistAccepting = Boolean(eventRow.is_setlist_accepting);
+      if (!isSetlistAccepting) {
+        return c.json({ success: false, error: 'SETLIST_NOT_ACCEPTING' }, 400);
+      }
     }
     const songsOnly = reqData.hasSE ? reqData.items.slice(1) : reqData.items;
     if (songsOnly.length > songLimit) {

@@ -51,55 +51,11 @@ export default function AdminManualPage() {
                 <li>バンド: バンドの作成・編集</li>
                 <li>資料: アーカイブ、部員名簿</li>
               </ul>
-              <p>ページ名はサイドバーとページヘッダーに表示されます。迷ったらサイドバーのラベルを参照してください。</p>
             </div>
             <div className="space-y-2 text-sm text-gray-700">
               <h3 className="text-base font-semibold text-gray-900">管理者モードのスイッチ</h3>
               <p>予約やバンドの画面にあるスイッチをオンにすると、管理者向けの操作（全体の閲覧・編集など）が有効になります。</p>
             </div>
-            <div className="space-y-2 text-sm text-gray-700">
-              <h3 className="text-base font-semibold text-gray-900">通知</h3>
-              <p>操作結果は画面右上に表示されます。赤い通知は失敗です。内容を読み、必要に応じて操作をやり直してください。</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>日々のチェック</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <table className={tableClass}>
-              <thead>
-                <tr>
-                  <th className={thClass}>タイミング</th>
-                  <th className={thClass}>項目</th>
-                  <th className={thClass}>内容</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="odd:bg-white even:bg-gray-50">
-                  <td className={tdClass}>朝</td>
-                  <td className={tdClass}>当日の予約を確認</td>
-                  <td className={tdClass}>予約表で本日の予約状況を確認し、重複や時間の抜け漏れがないかをチェックします。</td>
-                </tr>
-                <tr className="odd:bg-white even:bg-gray-50">
-                  <td className={tdClass}>日中</td>
-                  <td className={tdClass}>追加・変更の把握</td>
-                  <td className={tdClass}>新しい予約や変更がないかを確認します。必要に応じて利用者へ案内します。</td>
-                </tr>
-                <tr className="odd:bg-white even:bg-gray-50">
-                  <td className={tdClass}>随時</td>
-                  <td className={tdClass}>メンバー・バンドの更新</td>
-                  <td className={tdClass}>異動や役職変更があれば部員名簿とバンドを更新します。</td>
-                </tr>
-                <tr className="odd:bg-white even:bg-gray-50">
-                  <td className={tdClass}>イベント前</td>
-                  <td className={tdClass}>締切と準備の最終確認</td>
-                  <td className={tdClass}>エントリーやセットリストの締切後は受付をオフにし、タイムラインとセットリストを最終確認します。</td>
-                </tr>
-              </tbody>
-            </table>
           </CardContent>
         </Card>
 
@@ -164,11 +120,6 @@ export default function AdminManualPage() {
                   </tr>
                 </tbody>
               </table>
-            </div>
-            <div className="text-sm text-gray-700 space-y-2">
-              <h3 className="text-base font-semibold text-gray-900">キャンセルと同日予約</h3>
-              <p>予約詳細で状況を確認し、必要に応じて利用者へキャンセルや変更の案内を行ってください。</p>
-              <p>同日の予約はすぐに反映されます。朝の確認を習慣にしてください。</p>
             </div>
           </CardContent>
         </Card>
@@ -250,8 +201,7 @@ export default function AdminManualPage() {
               <h3 className="text-base font-semibold text-gray-900">イベントの作成・編集</h3>
               <ol className="list-decimal pl-6 space-y-1">
                 <li>ページヘッダーの「作成」ボタンでフォームを開きます。</li>
-                <li>必要項目を入力し、保存します。</li>
-                <li>編集・削除はカード右上のメニューから実行します（削除は取り消し不可）。</li>
+                <li>編集・削除はカード右上のメニューから実行します。</li>
               </ol>
             </div>
             <div className="space-y-2 text-sm text-gray-700">
@@ -300,23 +250,10 @@ export default function AdminManualPage() {
             <ol className="list-decimal pl-6 space-y-2 text-sm text-gray-700">
               <li>ページヘッダーの「追加」から、タイトル・YouTube URL・年を入力します。</li>
               <li>追加後は年度ごとに表示されます。</li>
-              <li>削除は元に戻せません。内容を確認してから操作してください。</li>
             </ol>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>困ったときは</CardTitle>
-          </CardHeader>
-          <CardContent className={sectionClass}>
-            <ul className="list-disc pl-6 space-y-1 text-sm text-gray-700">
-              <li>保存できない場合は、未入力や締切超過がないか確認してください。</li>
-              <li>表示がおかしい場合は、ページの再読み込みや別のブラウザでの確認を試してください。</li>
-              <li>権限で操作できないときは、管理担当に権限の見直しを依頼してください。</li>
-            </ul>
-          </CardContent>
-        </Card>
       </div>
     </>
   );
