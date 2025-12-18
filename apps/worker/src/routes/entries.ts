@@ -110,22 +110,18 @@ entriesRoutes.post('/', async (c) => {
     }
 
     const eventRow = await c.env.DB.prepare(`
-      SELECT is_entry_accepting, entry_deadline FROM events WHERE id = ?
-    `).bind(requestData.event_id).first<{ is_entry_accepting: number | boolean; entry_deadline: string }>();
+      SELECT is_entry_accepting FROM events WHERE id = ?
+    `).bind(requestData.event_id).first<{ is_entry_accepting: number | boolean }>();
 
     if (!eventRow) {
       return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
 
-    const isEntryAccepting = Boolean(eventRow.is_entry_accepting);
-    const entryDeadline = new Date(eventRow.entry_deadline);
-    const nowTime = new Date();
-
-    if (!isEntryAccepting) {
-      return c.json({ success: false, error: 'ENTRY_NOT_ACCEPTING' }, 400);
-    }
-    if (nowTime >= entryDeadline) {
-      return c.json({ success: false, error: 'ENTRY_DEADLINE_PASSED' }, 400);
+    if (!isAdminMode) {
+      const isEntryAccepting = Boolean(eventRow.is_entry_accepting);
+      if (!isEntryAccepting) {
+        return c.json({ success: false, error: 'ENTRY_NOT_ACCEPTING' }, 400);
+      }
     }
 
     const validation = await validateGroupLimit(c.env, requestData.event_id, validGroupIds);

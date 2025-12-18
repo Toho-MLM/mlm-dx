@@ -25,6 +25,8 @@ export const ERROR_MESSAGES: Record<string, string> = {
   // イベント・エントリー関連エラー
   'INVALID_DATE_ORDER': 'イベントの日付が不正な順序です。',
   'ENTRY_NOT_FOUND': 'エントリーが見つかりません。',
+  'ENTRY_NOT_ACCEPTING': '参加登録の受け付けは終了しています。',
+  'ENTRY_DEADLINE_PASSED': '参加登録の締切が過ぎています。',
   'SETLIST_ITEM_NOT_FOUND': 'セットリストアイテムが見つかりません。',
   'GROUP_LIMIT_EXCEEDED': 'メンバーのバンド登録数が上限を超えています。',
   'EVENT_NOT_FOUND': 'イベントが見つかりません。',
