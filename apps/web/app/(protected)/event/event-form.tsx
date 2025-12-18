@@ -49,12 +49,8 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
     if (event) {
       setTitle(event.title)
       setDate(new Date(event.event_date))
-      const entryDeadlineDate = new Date(event.entry_deadline)
-      entryDeadlineDate.setDate(entryDeadlineDate.getDate() - 1)
-      const setlistDeadlineDate = new Date(event.setlist_deadline)
-      setlistDeadlineDate.setDate(setlistDeadlineDate.getDate() - 1)
-      setEntryDeadline(entryDeadlineDate)
-      setSetlistDeadline(setlistDeadlineDate)
+      setEntryDeadline(new Date(event.entry_deadline))
+      setSetlistDeadline(new Date(event.setlist_deadline))
       setIsFreeBand(event.group_limit !== 0)
       setFreeBandLimit(event.group_limit > 0 ? event.group_limit.toString() : '2')
       setSongLimit(event.song_limit ?? 2)
@@ -89,13 +85,6 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
     return null
   }
 
-  const formatDeadlineToNextDay = (deadlineDate: Date): string => {
-    const nextDay = new Date(deadlineDate)
-    nextDay.setDate(nextDay.getDate() + 1)
-    nextDay.setHours(0, 0, 0, 0)
-    return nextDay.toISOString()
-  }
-
   const handleSongLimitChange = (value: string) => {
     if (value === '') {
       setSongLimit(NaN)
@@ -117,9 +106,13 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
       return
     }
 
-    const formattedDate = date.toISOString().split('T')[0]
-    const formattedEntryDeadline = formatDeadlineToNextDay(entryDeadline)
-    const formattedSetlistDeadline = formatDeadlineToNextDay(setlistDeadline)
+    const formattedDate = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+    ].join('-')
+    const formattedEntryDeadline = entryDeadline.toISOString()
+    const formattedSetlistDeadline = setlistDeadline.toISOString()
     const groupLimitNum = isFreeBand ? parseInt(freeBandLimit) || 2 : 0
     const songLimitNum = Number.isNaN(songLimit) ? 2 : songLimit
 
