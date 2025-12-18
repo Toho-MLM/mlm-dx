@@ -122,6 +122,10 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
       } else {
         if (response.error === 'NO_VALID_GROUPS') {
           toast.error('登録可能なグループがありません')
+        } else if (response.error === 'ENTRY_NOT_ACCEPTING') {
+          toast.error('参加登録の受け付けは終了しています')
+        } else if (response.error === 'ENTRY_DEADLINE_PASSED') {
+          toast.error('参加登録の締切が過ぎています')
         } else if (response.error === 'GROUP_LIMIT_EXCEEDED') {
           const members = (response as { members?: string[] }).members || [];
           if (members.length > 0) {

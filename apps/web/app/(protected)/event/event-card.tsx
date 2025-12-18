@@ -20,7 +20,7 @@ interface EventCardProps {
   event: Event
 }
 
-function Countdown({ targetDate }: { targetDate: string }) {
+function Countdown({ targetDate, isAccepting }: { targetDate: string; isAccepting: boolean }) {
   const [mounted, setMounted] = useState(false)
   const [, setForceUpdate] = useState(0)
 
@@ -37,6 +37,10 @@ function Countdown({ targetDate }: { targetDate: string }) {
   function calculateTimeRemaining(target: Date): { text: string; color: string } {
     const now = new Date()
     const diff = target.getTime() - now.getTime()
+
+    if (!isAccepting) {
+      return { text: '受付終了', color: 'text-red-600 font-bold' }
+    }
 
     if (diff <= 0) {
       return { text: '期限切れ', color: 'text-red-600 font-bold' }
@@ -97,7 +101,6 @@ export function EventCard({ event }: EventCardProps) {
   const onEdit = ctx?.onEdit
   const onDelete = ctx?.onDelete
   const [isEntryDialogOpen, setIsEntryDialogOpen] = useState(false)
-  const [isEntriesDialogOpen, setIsEntriesDialogOpen] = useState(false)
   
   const userEntryIds = useMemo(() => {
     const eventEntries = userEntries.filter(e => e.event_id === event.id)
@@ -208,11 +211,8 @@ export function EventCard({ event }: EventCardProps) {
                   <div className="text-sm font-medium text-gray-900">
                     {formatDeadlineDate(event.entry_deadline)}
                   </div>
-                  <Countdown targetDate={event.entry_deadline} />
+                  <Countdown targetDate={event.entry_deadline} isAccepting={event.is_entry_accepting} />
                 </div>
-                {!event.is_entry_accepting && (
-                  <Badge variant="destructive" className="mt-2">受け付け終了</Badge>
-                )}
               </>
             )}
           </div>
@@ -230,11 +230,8 @@ export function EventCard({ event }: EventCardProps) {
                   <div className="text-sm font-medium text-gray-900">
                     {formatDeadlineDate(event.setlist_deadline)}
                   </div>
-                  <Countdown targetDate={event.setlist_deadline} />
+                  <Countdown targetDate={event.setlist_deadline} isAccepting={event.is_setlist_accepting} />
                 </div>
-                {!event.is_setlist_accepting && (
-                  <Badge variant="destructive" className="mt-2">受け付け終了</Badge>
-                )}
               </>
             )}
           </div>

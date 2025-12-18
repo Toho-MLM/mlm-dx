@@ -29,10 +29,34 @@ type TimelineRow = {
 }
 
 function toIsoFromEventDateAndTime(eventDateIso: string, hhmm: string): string {
-  const d = new Date(eventDateIso)
+  const date = new Date(eventDateIso)
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  const dateString = `${year}-${month}-${day}`
   const [hh, mm] = hhmm.split(':').map(Number)
-  d.setHours(hh || 0, mm || 0, 0, 0)
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString()
+  const jstDateTime = new Date(`${dateString}T${String(hh || 0).padStart(2, '0')}:${String(mm || 0).padStart(2, '0')}:00+09:00`)
+  return jstDateTime.toISOString()
+}
+
+function formatTimeToHHMM(isoString: string | null): string {
+  if (!isoString) return '未設定'
+  const date = new Date(isoString)
+  const jstMs = date.getTime() + 9 * 60 * 60 * 1000
+  const jstDate = new Date(jstMs)
+  const hh = String(jstDate.getUTCHours()).padStart(2, '0')
+  const mm = String(jstDate.getUTCMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+function isoToHHMM(isoString: string | null): string {
+  if (!isoString) return ''
+  const date = new Date(isoString)
+  const jstMs = date.getTime() + 9 * 60 * 60 * 1000
+  const jstDate = new Date(jstMs)
+  const hh = String(jstDate.getUTCHours()).padStart(2, '0')
+  const mm = String(jstDate.getUTCMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
 }
 
 function TimelineContent() {
@@ -46,6 +70,8 @@ function TimelineContent() {
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editingConfigured, setEditingConfigured] = useState<TimelineRow[]>([])
+  const [editingUnconfigured, setEditingUnconfigured] = useState<TimelineRow[]>([])
 
   const selectedEvent = useMemo(() => events.find(e => e.id === selectedEventId) || null, [events, selectedEventId])
 
@@ -94,47 +120,63 @@ function TimelineContent() {
     load()
   }, [selectedEventId, events])
 
+  const startEditing = () => {
+    setEditingConfigured(configured.map(r => ({
+      ...r,
+      start_time: r.start_time ? isoToHHMM(r.start_time) : null,
+      end_time: r.end_time ? isoToHHMM(r.end_time) : null,
+    })))
+    setEditingUnconfigured([...unconfigured])
+    setEditing(true)
+  }
+
+  const cancelEditing = () => {
+    setEditingConfigured([])
+    setEditingUnconfigured([])
+    setEditing(false)
+  }
+
   const moveUp = (index: number) => {
     if (index <= 0) return
-    const arr = [...configured]
+    const arr = [...editingConfigured]
     const tmp = arr[index - 1]
     arr[index - 1] = arr[index]
     arr[index] = tmp
-    setConfigured(arr)
+    setEditingConfigured(arr)
   }
 
   const moveDown = (index: number) => {
-    if (index >= configured.length - 1) return
-    const arr = [...configured]
+    if (index >= editingConfigured.length - 1) return
+    const arr = [...editingConfigured]
     const tmp = arr[index + 1]
     arr[index + 1] = arr[index]
     arr[index] = tmp
-    setConfigured(arr)
+    setEditingConfigured(arr)
   }
 
   const addFromUnconfigured = (entryId: string) => {
-    const idx = unconfigured.findIndex(r => r.entry_id === entryId)
+    const idx = editingUnconfigured.findIndex(r => r.entry_id === entryId)
     if (idx === -1) return
-    const item = unconfigured[idx]
-    const rest = [...unconfigured]
+    const item = editingUnconfigured[idx]
+    const rest = [...editingUnconfigured]
     rest.splice(idx, 1)
-    setUnconfigured(rest)
-    setConfigured([...configured, { ...item, position: (configured.length + 1) }])
+    setEditingUnconfigured(rest)
+    setEditingConfigured([...editingConfigured, { ...item, position: (editingConfigured.length + 1) }])
   }
 
   const removeFromConfigured = (entryId: string) => {
-    const idx = configured.findIndex(r => r.entry_id === entryId)
+    const idx = editingConfigured.findIndex(r => r.entry_id === entryId)
     if (idx === -1) return
-    const item = configured[idx]
-    const rest = [...configured]
+    const item = editingConfigured[idx]
+    const rest = [...editingConfigured]
     rest.splice(idx, 1)
-    setConfigured(rest.map((r, i) => ({ ...r, position: i + 1 })))
-    setUnconfigured([{ ...item, position: null }, ...unconfigured])
+    setEditingConfigured(rest.map((r, i) => ({ ...r, position: i + 1 })))
+    setEditingUnconfigured([{ ...item, position: null }, ...editingUnconfigured])
   }
 
   const setTime = (entryId: string, field: 'start_time' | 'end_time', value: string) => {
-    const upd = configured.map(r => r.entry_id === entryId ? { ...r, [field]: value || null } : r)
-    setConfigured(upd)
+    const upd = editingConfigured.map(r => r.entry_id === entryId ? { ...r, [field]: value || null } : r)
+    setEditingConfigured(upd)
   }
 
   const normalizeTimeOnChange = (v: string): string => {
@@ -161,13 +203,13 @@ function TimelineContent() {
     try {
       setSaving(true)
       const items = [
-        ...configured.map((r, i) => ({
+        ...editingConfigured.map((r, i) => ({
           entry_id: r.entry_id,
           position: i + 1,
           start_time: r.start_time ? toIsoFromEventDateAndTime(selectedEvent.event_date, r.start_time) : null,
           end_time: r.end_time ? toIsoFromEventDateAndTime(selectedEvent.event_date, r.end_time) : null,
         })),
-        ...unconfigured.map(r => ({ entry_id: r.entry_id, position: null, start_time: null, end_time: null })),
+        ...editingUnconfigured.map(r => ({ entry_id: r.entry_id, position: null, start_time: null, end_time: null })),
       ]
       const res = await apiClient.updateTimeline(selectedEvent.id, { items })
       if (!res.success) {
@@ -178,7 +220,14 @@ function TimelineContent() {
         return
       }
       showSuccessToast({ message: 'タイムラインを保存しました' })
-      setEditing(false)
+      cancelEditing()
+      if (selectedEventId) {
+        const loadRes = await apiClient.getTimeline(selectedEventId)
+        if (loadRes.success && loadRes.data) {
+          setConfigured(loadRes.data.configured)
+          setUnconfigured(loadRes.data.unconfigured)
+        }
+      }
     } finally {
       setSaving(false)
     }
@@ -200,7 +249,7 @@ function TimelineContent() {
         </SelectContent>
       </Select>
       {selectedEventId && user && isAdmin(user.role) && (
-        <Button size="sm" variant="outline" onClick={() => { setEditing(true) }}>
+        <Button size="sm" variant="outline" onClick={startEditing}>
           編集
         </Button>
       )}
@@ -233,7 +282,7 @@ function TimelineContent() {
                               <div className="w-8 text-center text-sm font-semibold">{i + 1}</div>
                               <div className="flex-1 min-w-0">
                                 <div className="font-medium truncate">{r.group_name}</div>
-                                <div className="text-sm text-gray-600">開始: {r.start_time || '未設定'} / 終了: {r.end_time || '未設定'}</div>
+                                <div className="text-sm text-gray-600">開始: {formatTimeToHHMM(r.start_time)} / 終了: {formatTimeToHHMM(r.end_time)}</div>
                               </div>
                             </div>
                           ))
@@ -292,7 +341,7 @@ function TimelineContent() {
         )}
       </div>
 
-      <Dialog open={editing} onOpenChange={setEditing}>
+      <Dialog open={editing} onOpenChange={(open) => { if (!open) cancelEditing() }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>タイムライン編集</DialogTitle>
@@ -301,7 +350,7 @@ function TimelineContent() {
             <div>
               <div className="text-sm font-medium mb-2">設定済み</div>
               <div className="space-y-2">
-                {configured.map((r, i) => (
+                {editingConfigured.map((r, i) => (
                   <div key={r.entry_id} className="relative flex items-center gap-3 p-3 border rounded-lg bg-gray-50 pr-12">
                     <div className="w-8 text-center text-sm font-semibold">{i + 1}</div>
                     <div className="flex-1 min-w-0">
@@ -332,7 +381,7 @@ function TimelineContent() {
                       <Button variant="outline" size="icon" onClick={() => moveUp(i)} disabled={i === 0} aria-label="上へ">
                         <ChevronUp className="h-4 w-4" />
                       </Button>
-                      <Button variant="outline" size="icon" onClick={() => moveDown(i)} disabled={i === configured.length - 1} aria-label="下へ">
+                      <Button variant="outline" size="icon" onClick={() => moveDown(i)} disabled={i === editingConfigured.length - 1} aria-label="下へ">
                         <ChevronDown className="h-4 w-4" />
                       </Button>
                     </div>
@@ -353,7 +402,7 @@ function TimelineContent() {
             <div>
               <div className="text-sm font-medium mb-2">未設定</div>
               <div className="space-y-2">
-                {unconfigured.map((r) => (
+                {editingUnconfigured.map((r) => (
                   <div key={r.entry_id} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50">
                     <div className="w-8 text-center text-sm font-semibold">—</div>
                     <div className="flex-1 min-w-0">
@@ -366,12 +415,12 @@ function TimelineContent() {
             </div>
 
             <div className="flex gap-2 justify-end">
-              <Button variant="ghost" onClick={() => setEditing(false)}>閉じる</Button>
+              <Button variant="ghost" onClick={cancelEditing}>閉じる</Button>
               <LoadingButton
                 isLoading={saving}
                 onClick={async () => {
                   if (!selectedEvent) return
-                  for (const r of configured) {
+                  for (const r of editingConfigured) {
                     if (r.start_time && r.end_time) {
                       const start = toIsoFromEventDateAndTime(selectedEvent.event_date, r.start_time)
                       const end = toIsoFromEventDateAndTime(selectedEvent.event_date, r.end_time)
