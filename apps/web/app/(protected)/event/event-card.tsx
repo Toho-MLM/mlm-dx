@@ -130,14 +130,13 @@ export function EventCard({ event }: EventCardProps) {
   };
 
   const formatDeadlineDate = (dateString: string) => {
-    const date = new Date(dateString);
-    date.setDate(date.getDate() - 1);
+    const date = new Date(dateString)
     return date.toLocaleDateString('ja-JP', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
-    });
-  };
+    })
+  }
 
   const handleEntrySuccess = () => {
     onEntriesChanged?.()
