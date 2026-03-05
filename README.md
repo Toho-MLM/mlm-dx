@@ -39,7 +39,7 @@ pnpm install
 pnpm run db:migrate:local
 
 # サンプルデータを投入（オプション）
-pnpm run db:seed:local
+pnpm run seed -- user add --email="test@example.com" --grade=2
 
 # または一括でセットアップ
 pnpm run db:setup:local
@@ -54,7 +54,7 @@ pnpm run db:create:prod
 pnpm run db:migrate:prod
 
 # サンプルデータを投入（オプション）
-pnpm run db:seed:prod
+pnpm run seed -- user add --email="test@example.com" --grade=2
 
 # または一括でセットアップ
 pnpm run db:setup:prod
@@ -258,12 +258,9 @@ GOOGLE_CLIENT_SECRET=your-dev-google-client-secret
 # フルスタック開発環境を起動（全てローカル）
 pnpm run dev
 
-# または明示的にローカル環境を指定
-pnpm run dev:local
-
 # 個別に実行
 pnpm run dev:web           # フロントエンド（Next.js）
-pnpm run dev:worker:local  # バックエンド（Wrangler ローカル）
+pnpm run dev:worker        # バックエンド（Wrangler ローカル）
 ```
 
 ## デプロイ
@@ -273,20 +270,20 @@ pnpm run dev:worker:local  # バックエンド（Wrangler ローカル）
 #### フルスタックデプロイ
 ```bash
 # 本番環境にフルスタックデプロイ
-pnpm run deploy:all:prod
+pnpm run deploy
 ```
 #### 個別デプロイ
 
 **Cloudflare Workers:**
 ```bash
 # 本番環境
-pnpm run deploy:worker:prod
+pnpm run deploy:worker
 ```
 
 **Next.js（Cloudflare Pages）:**
 ```bash
 # 本番環境
-pnpm run deploy:web:prod
+pnpm run deploy:web
 ```
 
 ### ビルド
@@ -294,29 +291,29 @@ pnpm run deploy:web:prod
 #### ローカルビルド（開発用）
 ```bash
 # ローカル用ビルド
-pnpm run build:local
+pnpm run build
 
 # 個別ビルド
 pnpm run build:web
-pnpm run build:worker:local
+pnpm run build:worker
 ```
 
 ### データベース管理
 
 #### ローカル環境
 ```bash
-# ローカルDB設定（マイグレーション + シード）
+# ローカルDB設定（マイグレーション）
 pnpm run db:setup:local
 
 # 個別実行
 pnpm run db:migrate:local
-pnpm run db:seed:local
+pnpm run seed -- user add --email="your-email@example.com" --grade=2
 
 # CLIツールを使用したローカルDBセットアップ
 cd apps/worker
 wrangler d1 execute mlm-dx-db --file=./schema.sql --local
 cd ../..
-pnpm run seed -- sample --local
+pnpm run seed -- user add --email="your-email@example.com" --grade=2 --local
 ```
 
 #### 本番環境（クラウド）
@@ -326,7 +323,7 @@ pnpm run db:setup:prod
 
 # 個別実行
 pnpm run db:migrate:prod
-pnpm run db:seed:prod
+pnpm run seed -- user add --email="your-email@example.com" --grade=2
 ```
 
 ### バッチ処理
@@ -673,19 +670,18 @@ curl http://localhost:8787/auth/session
 | スクリプト | 説明 |
 |-----------|------|
 | `pnpm run dev` | フルスタック開発環境を起動（ローカル） |
-| `pnpm run dev:local` | フルスタック開発環境を起動（ローカル） |
 | `pnpm run dev:web` | フロントエンドのみ起動 |
-| `pnpm run dev:worker:local` | バックエンドのみ起動（ローカル） |
-| `pnpm run build:local` | ローカル用ビルド |
+| `pnpm run dev:worker` | バックエンドのみ起動（ローカル） |
+| `pnpm run build` | ローカル用ビルド |
 | `pnpm run db:setup:local` | ローカルDB設定 |
 
 ### 本番環境（クラウド）
 
 | スクリプト | 説明 |
 |-----------|------|
-| `pnpm run deploy:all:prod` | 本番環境にフルスタックデプロイ |
-| `pnpm run deploy:worker:prod` | 本番環境にWorkerデプロイ |
-| `pnpm run deploy:web:prod` | 本番環境にWebデプロイ |
+| `pnpm run deploy` | 本番環境にフルスタックデプロイ |
+| `pnpm run deploy:worker` | 本番環境にWorkerデプロイ |
+| `pnpm run deploy:web` | 本番環境にWebデプロイ |
 | `pnpm run db:setup:prod` | 本番DB設定 |
 
 ### ユーティリティ
@@ -697,5 +693,3 @@ curl http://localhost:8787/auth/session
 | `pnpm run lint:worker` | バックエンドのリント |
 | `pnpm run type-check` | 型チェック |
 | `pnpm run clean` | 全ビルド成果物を削除 |
-| `pnpm run clean:local` | ローカルビルド成果物を削除 |
-| `pnpm run install:all` | 全依存関係をインストール |

@@ -237,8 +237,9 @@ function listGroupMemberInstruments(isLocal = false) {
 }
 
 function main() {
-  const args = process.argv.slice(2);
-  
+  let args = process.argv.slice(2);
+  if (args[0] === '--') args = args.slice(1);
+
   if (args.length === 0 || args.includes('--help')) {
     showHelp();
     return;
@@ -282,7 +283,7 @@ function main() {
           const role = values.role || 'MBR';
           const name = values.name;
           
-          if (!email || !grade || !name) {
+          if (!email || !grade) {
             console.error('ERROR: Missing required fields. Use --help for usage information.');
             process.exit(1);
           }
