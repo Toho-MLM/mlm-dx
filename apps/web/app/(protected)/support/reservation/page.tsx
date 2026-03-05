@@ -52,7 +52,7 @@ const AboutPage = () => {
           <h3 className="mt-4 text-lg font-semibold">予約の作成</h3>
           <ol className="list-decimal list-inside ml-2">
             <li>予約表ページを開く</li>
-            <li>右下の <CalendarPlusIcon className="inline-block h-5 w-5 relative left-[-2px] top-[-3px]" /> を押す</li>
+            <li>右上の <CalendarPlusIcon className="inline-block h-5 w-5 relative left-[-2px] top-[-3px]" /> を押す</li>
             <li>利用者（個人 or 所属バンド）、日付、開始・終了時刻を入力する</li>
             <li>内容を確認して送信する</li>
           </ol>
@@ -71,7 +71,7 @@ const AboutPage = () => {
           <ol className="list-decimal list-inside ml-2">
             <li>予約表ページを開く</li>
             <li>キャンセルしたい予約を選択</li>
-            <li>右下の <CalendarX2 className="inline-block h-5 w-5 relative left-[-2px] top-[-3px]" /> を押す</li>
+            <li>右上の <CalendarX2 className="inline-block h-5 w-5 relative left-[-2px] top-[-3px]" /> を押す</li>
             <li>内容を確認してキャンセルする</li>
           </ol>
           <p className="ml-2">
