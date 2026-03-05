@@ -14,6 +14,23 @@ import { translateError } from '@/lib/error-label'
 import { startAuthentication } from '@simplewebauthn/browser'
 import type { AuthenticatorAssertionResponseJSON } from '@simplewebauthn/types'
 import { apiClient } from '@/lib/api'
+import { InAppBrowserGuide } from '@/components/in-app-browser-guide'
+
+function detectInAppBrowser(ua: string) {
+  const isIos = /iPhone|iPad|iPod/i.test(ua)
+  const isAndroid = /Android/i.test(ua)
+  const isMobile = isIos || isAndroid
+  if (!isMobile) {
+    return false
+  }
+
+  const iosWebView = isIos && /AppleWebKit/i.test(ua) && !/Safari/i.test(ua)
+  const androidWebView = isAndroid && (/\bwv\b/i.test(ua) || /; wv\)/i.test(ua))
+  const inAppTokens =
+    /(FBAN|FBAV|Instagram|Line\/|LIFF|MicroMessenger|WeChat|TikTok|Snapchat|Pinterest|KAKAOTALK|Discord|GSA|YaApp_Android|YJApp-IOS|wv;|Messenger|Twitter)/i
+
+  return iosWebView || androidWebView || inAppTokens.test(ua)
+}
 
 function LoginContent() {
   const router = useRouter()
@@ -21,6 +38,8 @@ function LoginContent() {
   const { user, loading } = useAuth()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false)
+  const [showInAppGuide, setShowInAppGuide] = useState(false)
+
   useEffect(() => {
     const error = searchParams.get('error')
     if (error) {
@@ -52,6 +71,10 @@ function LoginContent() {
   }
 
   const handleGoogleSignIn = async () => {
+    if (typeof window !== 'undefined' && detectInAppBrowser(window.navigator.userAgent)) {
+      setShowInAppGuide(true)
+      return
+    }
     try {
       const data = await httpClient.post('/auth/signin/google') as { authUrl?: string }
       if (data.authUrl) {
@@ -98,7 +121,7 @@ function LoginContent() {
   const isLoading = loading
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+    <div className="relative min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <Card className="w-full max-w-md overflow-hidden">
         <CardHeader className="bg-gray-800 text-white pb-4">
           <CardTitle className="text-center text-2xl font-bold">MLM DX ログイン</CardTitle>
@@ -150,6 +173,22 @@ function LoginContent() {
           )}
         </CardContent>
       </Card>
+
+      {showInAppGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="relative w-full max-w-lg">
+              <button
+              type="button"
+              onClick={() => setShowInAppGuide(false)}
+              className="absolute right-0 top-0 z-10 inline-flex h-8 w-8 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 shadow hover:bg-gray-100"
+              aria-label="閉じる"
+            >
+              ×
+            </button>
+            <InAppBrowserGuide />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
