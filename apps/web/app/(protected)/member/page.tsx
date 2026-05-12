@@ -36,6 +36,7 @@ export default function Page() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isWarningDialogOpen, setIsWarningDialogOpen] = useState(false)
+  const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false)
   const [isCsvImportDialogOpen, setIsCsvImportDialogOpen] = useState(false)
   const [csvMembers, setCsvMembers] = useState<Array<{ name: string; email: string; grade: number | null; nickname?: string; instruments?: string[]; role?: string; row: number; errors: string[] }>>([])
   const [editingMember, setEditingMember] = useState<MemberListItem | null>(null)
@@ -97,6 +98,8 @@ export default function Page() {
   }, [csvMembers, existingEmails])
   const missingRequiredRows = useMemo(() => csvMembers.filter(r => r.errors.includes('REQUIRED_MISSING')), [csvMembers])
   const invalidGradeRows = useMemo(() => csvMembers.filter(r => r.errors.includes('INVALID_GRADE')), [csvMembers])
+  const sixthGradeCount = useMemo(() => (members || []).filter(member => member.grade === 6).length, [members])
+  const moveUpGradeTargetCount = useMemo(() => (members || []).filter(member => member.grade >= 1 && member.grade <= 5).length, [members])
 
   const resetForm = () => {
     setFormData({
@@ -239,6 +242,26 @@ export default function Page() {
       }
     } catch (error) {
       toast.error('エラーが発生しました')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleMoveUpGrade = async () => {
+    setIsSubmitting(true)
+    try {
+      const response = await apiClient.moveUpGrade()
+      if (response.success && response.data) {
+        showSuccessToast({
+          message: `学年繰上を実行しました（${response.data.movedUpCount}人更新、6年生 ${response.data.deletedCount}人削除）`
+        })
+        setIsPromoteDialogOpen(false)
+        await fetchMembers()
+      } else {
+        toast.error('学年繰上に失敗しました')
+      }
+    } catch {
+      toast.error('学年繰上に失敗しました')
     } finally {
       setIsSubmitting(false)
     }
@@ -564,6 +587,49 @@ export default function Page() {
                     </Button>
                     <LoadingButton onClick={handleCreate} isLoading={isSubmitting}>
                       作成
+                    </LoadingButton>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Dialog open={isPromoteDialogOpen} onOpenChange={setIsPromoteDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="destructive">
+                  学年繰上
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>学年繰上</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-700">
+                    全メンバーの学年を一括で1つ繰り上げます。
+                  </p>
+                  <Alert variant="destructive">
+                    <AlertTitle>6年生は削除されます</AlertTitle>
+                    <AlertDescription>
+                      この操作を実行すると、6年生 {sixthGradeCount}人は削除されます。取り消すことはできません。
+                    </AlertDescription>
+                  </Alert>
+                  <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                    <p>繰上対象: {moveUpGradeTargetCount}人</p>
+                    <p>削除対象: 6年生 {sixthGradeCount}人</p>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsPromoteDialogOpen(false)}
+                      disabled={isSubmitting}
+                    >
+                      キャンセル
+                    </Button>
+                    <LoadingButton
+                      variant="destructive"
+                      onClick={handleMoveUpGrade}
+                      isLoading={isSubmitting}
+                    >
+                      実行する
                     </LoadingButton>
                   </div>
                 </div>
