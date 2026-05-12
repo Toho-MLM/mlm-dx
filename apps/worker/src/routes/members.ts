@@ -254,6 +254,44 @@ memberRoutes.post('/bulk', async (c) => {
   }
 });
 
+memberRoutes.post('/move-up-grade', async (c) => {
+  try {
+    const user = c.get('user');
+    requireAdmin(user.role);
+
+    const sixthGradeCountRow = await c.env.DB.prepare(
+      'SELECT COUNT(*) as count FROM users WHERE grade = 6'
+    ).first<{ count: number | string }>();
+    const moveUpGradeTargetCountRow = await c.env.DB.prepare(
+      'SELECT COUNT(*) as count FROM users WHERE grade BETWEEN 1 AND 5'
+    ).first<{ count: number | string }>();
+
+    const deletedCount = Number(sixthGradeCountRow?.count ?? 0);
+    const movedUpCount = Number(moveUpGradeTargetCountRow?.count ?? 0);
+    const now = new Date().toISOString();
+
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM users WHERE grade = 6'),
+      c.env.DB.prepare(`
+        UPDATE users
+        SET grade = grade + 1, updated_at = ?
+        WHERE grade BETWEEN 1 AND 5
+      `).bind(now),
+    ]);
+
+    return c.json({
+      success: true,
+      data: {
+        deletedCount,
+        movedUpCount,
+      },
+    });
+  } catch (error) {
+    console.error('Error moving up grades:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
 memberRoutes.delete('/:id', async (c) => {
   try {
     const user = c.get('user');
