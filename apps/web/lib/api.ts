@@ -161,6 +161,10 @@ class ApiClient {
     return httpClient.post<ApiResponse<{ created: string[]; failed: Array<{ email: string; error: string }> }>>('/members/bulk', { members })
   }
 
+  async moveUpGrade(): Promise<ApiResponse<{ deletedCount: number; movedUpCount: number }>> {
+    return httpClient.post<ApiResponse<{ deletedCount: number; movedUpCount: number }>>('/members/move-up-grade')
+  }
+
   async getReservations(admin: boolean = false): Promise<ApiResponse<Reservation[]>> {
     const params = admin ? '?admin=true' : '';
     return httpClient.get<ApiResponse<Reservation[]>>(`/reservations${params}`)
