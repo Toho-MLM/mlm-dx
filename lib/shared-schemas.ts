@@ -159,6 +159,7 @@ export const CreateReservationRequestSchema = z.object({
   start_time: z.string(),
   end_time: z.string(),
   group_id: z.string().optional(),
+  admin: z.boolean().optional(),
 });
 
 export function isAdmin(role: string | undefined): boolean {
