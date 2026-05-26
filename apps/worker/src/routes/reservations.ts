@@ -111,7 +111,15 @@ reservationRoutes.post('/', async (c) => {
     const requestData = await c.req.json();
     
     const validatedData = CreateReservationRequestSchema.parse(requestData);
-    const { start_time, end_time, group_id } = validatedData;
+    const { start_time, end_time, group_id, admin: isAdminMode } = validatedData;
+
+    if (isAdminMode) {
+      try {
+        requireAdmin(user.role);
+      } catch (error) {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
 
     const validation = validateReservationTime(start_time, end_time);
     if (!validation.isValid) {
@@ -133,7 +141,7 @@ reservationRoutes.post('/', async (c) => {
         }, 400);
       }
 
-      const isMember = await isUserInGroup(c.env, user.id, group_id);
+      const isMember = isAdminMode || await isUserInGroup(c.env, user.id, group_id);
       if (!isMember) {
         return c.json({
           success: false,
@@ -148,7 +156,7 @@ reservationRoutes.post('/', async (c) => {
       WHERE start_datetime < ? AND end_datetime > ?
     `).bind(end_time, start_time).all();
 
-    if (unavailablePeriods.results.length > 0) {
+    if (!isAdminMode && unavailablePeriods.results.length > 0) {
       return c.json({
         success: false,
         error: 'BLOCKED_PERIOD_CONFLICT'
