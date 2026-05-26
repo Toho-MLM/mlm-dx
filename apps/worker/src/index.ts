@@ -17,7 +17,7 @@ import { setlistRoutes } from './routes/setlist';
 import { timelineRoutes } from './routes/timeline';
 import type { User } from './types';
 import { UserSchema } from './schemas';
-import { processTodayReservations, processYesterdayReservations, deleteOldReservations } from './utils/reservation-processor';
+import { processTodayReservations, processPastReservations, deleteOldReservations } from './utils/reservation-processor';
 import { deleteExpiredEvents } from './utils/event-processor';
 import { requireAuth } from './middleware/auth';
 import { createRegistrationOptions, verifyRegistration, createAuthenticationOptions, verifyAuthentication, nowISO, futureISO, encodeBase64Url } from './utils/passkey';
@@ -791,7 +791,7 @@ export default {
     void ctx;
     switch (event.cron) {
       case "0 15 * * *":
-        await processYesterdayReservations(env);
+        await processPastReservations(env);
         await processTodayReservations(env);
         await deleteExpiredEvents(env);
         await deleteOldReservations(env);

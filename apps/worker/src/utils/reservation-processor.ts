@@ -202,25 +202,19 @@ export async function processTodayReservations(env: Bindings): Promise<void> {
   console.log('Daily reservation processing completed');
 }
 
-export async function processYesterdayReservations(env: Bindings): Promise<void> {
+export async function processPastReservations(env: Bindings): Promise<void> {
   const now = new Date();
-  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const ymd = getJSTDateString(yesterday);
-  const range = getJSTDayRange(ymd);
-  const startIso = range.startUTC.toISOString();
-  const endIso = range.endUTC.toISOString();
-  const confirmed = await env.DB.prepare(`
-    SELECT id FROM reservations
-    WHERE state = 'CONFIRMED'
-      AND start_time >= ?
-      AND start_time <= ?
-  `).bind(startIso, endIso).all<{ id: string | number }>();
+  const todayJST = getJSTDateString(now);
+  const todayRange = getJSTDayRange(todayJST);
+  const startOfTodayIso = todayRange.startUTC.toISOString();
   const updateTime = new Date().toISOString();
-  for (const r of confirmed.results) {
-    await env.DB.prepare(`
-      UPDATE reservations SET state = 'COMPLETED', updated_at = ? WHERE id = ?
-    `).bind(updateTime, r.id).run();
-  }
+
+  await env.DB.prepare(`
+    UPDATE reservations
+    SET state = 'COMPLETED', updated_at = ?
+    WHERE state IN ('CONFIRMED', 'PENDING')
+      AND end_time < ?
+  `).bind(updateTime, startOfTodayIso).run();
 }
 
 export async function deleteOldReservations(env: Bindings): Promise<void> {
