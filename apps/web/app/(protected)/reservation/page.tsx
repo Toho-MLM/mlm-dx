@@ -328,6 +328,7 @@ export default function Page() {
         group_id: !isPersonalReservation && reservationDraft.group ? reservationDraft.group : undefined,
         start_time: start.toISOString(),
         end_time: end.toISOString(),
+        admin: isAdminMode || undefined,
       });
 
       if (response.success) {
@@ -460,7 +461,7 @@ export default function Page() {
     
     try {
       setIsGroupsLoading(true);
-      const response = await apiClient.getGroupOptions();
+      const response = await apiClient.getGroupOptions(isAdminMode);
       
       if (response.success && response.data) {
         setMyGroups(response.data);
@@ -566,9 +567,9 @@ export default function Page() {
     await fetchReservations()
   }
 
-  const handleAdminToggle = async (checked: boolean) => {
+  const handleAdminToggle = (checked: boolean) => {
     setIsAdminMode(checked)
-    await fetchReservations()
+    setMyGroups([])
   }
 
   return (
