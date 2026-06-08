@@ -229,7 +229,7 @@ export default function UnavailablePeriodsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>開始日</Label>
-                  <Popover>
+                  <Popover modal={true}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
@@ -266,7 +266,7 @@ export default function UnavailablePeriodsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>終了日</Label>
-                  <Popover>
+                  <Popover modal={true}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
@@ -355,4 +355,3 @@ export default function UnavailablePeriodsPage() {
     </>
   )
 }
-
