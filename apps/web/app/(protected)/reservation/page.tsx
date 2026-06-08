@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, CalendarRangeIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
@@ -30,6 +29,15 @@ type GroupOption = {
   id: string;
   name: string;
   is_main: boolean;
+}
+
+type ReservationDraft = {
+  date: Date;
+  group: string | null;
+  startHour: number | null;
+  startMinute: number | null;
+  endHour: number | null;
+  endMinute: number | null;
 }
 
 type CalendarEvent = {
@@ -82,6 +90,9 @@ const messages = {
   agenda: 'リスト',
   showMore: (total: number) => `+${total} 件`,
 }
+
+const MIN_RESERVATION_MINUTES = 10
+const TIME_STEP_MINUTES = 5
 
 function ThreeDayView({
   date,
@@ -144,7 +155,7 @@ ThreeDayView.title = (date: Date) => {
 export default function Page() {
   const [isMobile, setIsMobile] = useState(false)
   const [isAdminMode, setIsAdminMode] = useState(false)
-  const [reservationDraft, setReservationDraft] = useState({
+  const [reservationDraft, setReservationDraft] = useState<ReservationDraft>({
     date: startOfDay(new Date()),
     group: null as string | null,
     startHour: null as number | null,
@@ -294,6 +305,134 @@ export default function Page() {
     })
   }
 
+  const dateWithTime = (date: Date, hour: number, minute: number) => {
+    const result = new Date(date)
+    result.setHours(hour, minute, 0, 0)
+    return result
+  }
+
+  const setDraftTime = (draft: ReservationDraft, start: Date, end: Date): ReservationDraft => ({
+    ...draft,
+    startHour: start.getHours(),
+    startMinute: start.getMinutes(),
+    endHour: end.getHours(),
+    endMinute: end.getMinutes(),
+  })
+
+  const clearDraftTime = (draft: ReservationDraft): ReservationDraft => ({
+    ...draft,
+    startHour: null,
+    startMinute: null,
+    endHour: null,
+    endMinute: null,
+  })
+
+  const roundUpToTimeStep = (date: Date) => {
+    const result = new Date(date)
+    result.setSeconds(0, 0)
+    const remainder = result.getMinutes() % TIME_STEP_MINUTES
+    if (remainder !== 0) {
+      result.setMinutes(result.getMinutes() + TIME_STEP_MINUTES - remainder)
+    }
+    return result
+  }
+
+  const roundDownToTimeStep = (date: Date) => {
+    const result = new Date(date)
+    result.setSeconds(0, 0)
+    const remainder = result.getMinutes() % TIME_STEP_MINUTES
+    if (remainder !== 0) {
+      result.setMinutes(result.getMinutes() - remainder)
+    }
+    return result
+  }
+
+  const getUnavailableIntervals = (rangeStart: Date, rangeEnd: Date) => {
+    if (isAdminMode) return []
+    return unavailablePeriods
+      .filter((period) => period.start < rangeEnd && period.end > rangeStart)
+      .map((period) => ({
+        start: new Date(Math.max(period.start.getTime(), rangeStart.getTime())),
+        end: new Date(Math.min(period.end.getTime(), rangeEnd.getTime())),
+      }))
+      .sort((a, b) => a.start.getTime() - b.start.getTime())
+  }
+
+  const selectLongestAvailableInterval = (desiredStart: Date, desiredEnd: Date) => {
+    const latestEnd = dateWithTime(desiredStart, 23, 0)
+    let rangeStart = new Date(desiredStart)
+    let rangeEnd = new Date(Math.min(desiredEnd.getTime(), latestEnd.getTime()))
+
+    const now = new Date()
+    if (startOfDay(rangeStart).getTime() === startOfDay(now).getTime() && rangeStart < now) {
+      rangeStart = roundUpToTimeStep(now)
+    }
+
+    rangeStart = roundUpToTimeStep(rangeStart)
+    rangeEnd = roundDownToTimeStep(rangeEnd)
+
+    if (rangeEnd.getTime() - rangeStart.getTime() < MIN_RESERVATION_MINUTES * 60 * 1000) {
+      return null
+    }
+
+    const available = getUnavailableIntervals(rangeStart, rangeEnd).reduce(
+      (intervals, blocked) => intervals.flatMap((interval) => {
+        if (blocked.end <= interval.start || blocked.start >= interval.end) return [interval]
+        return [
+          blocked.start > interval.start ? { start: interval.start, end: blocked.start } : null,
+          blocked.end < interval.end ? { start: blocked.end, end: interval.end } : null,
+        ].filter((item): item is { start: Date; end: Date } => item !== null)
+      }),
+      [{ start: rangeStart, end: rangeEnd }]
+    )
+
+    return available
+      .map((interval) => ({
+        start: roundUpToTimeStep(interval.start),
+        end: roundDownToTimeStep(interval.end),
+      }))
+      .filter((interval) => interval.end.getTime() - interval.start.getTime() >= MIN_RESERVATION_MINUTES * 60 * 1000)
+      .reduce<{ start: Date; end: Date } | null>((longest, interval) => {
+        if (!longest) return interval
+        const longestDuration = longest.end.getTime() - longest.start.getTime()
+        const intervalDuration = interval.end.getTime() - interval.start.getTime()
+        return intervalDuration > longestDuration ? interval : longest
+      }, null)
+  }
+
+  const adjustDraftForDate = (draft: ReservationDraft, date: Date): ReservationDraft => {
+    const nextDraft = { ...draft, date }
+
+    if (
+      draft.startHour !== null &&
+      draft.startMinute !== null &&
+      draft.endHour !== null &&
+      draft.endMinute !== null
+    ) {
+      const desiredStart = dateWithTime(date, draft.startHour, draft.startMinute)
+      const desiredEnd = dateWithTime(date, draft.endHour, draft.endMinute)
+      const adjusted = selectLongestAvailableInterval(desiredStart, desiredEnd)
+      return adjusted ? setDraftTime(nextDraft, adjusted.start, adjusted.end) : clearDraftTime(nextDraft)
+    }
+
+    if (draft.startHour !== null && draft.startMinute !== null) {
+      const desiredStart = dateWithTime(date, draft.startHour, draft.startMinute)
+      const latestEndTime = dateWithTime(date, 23, 0)
+      if (
+        !isReservationTimeValid(date, draft.startHour, draft.startMinute) ||
+        addMinutes(desiredStart, MIN_RESERVATION_MINUTES).getTime() > latestEndTime.getTime()
+      ) {
+        return clearDraftTime(nextDraft)
+      }
+    }
+
+    return nextDraft
+  }
+
+  const handleReservationDateSelect = (date: Date) => {
+    setReservationDraft((prev) => adjustDraftForDate(prev, date))
+  }
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -388,8 +527,12 @@ export default function Page() {
     setIsEventDetailOpen(true)
   }
 
-  const generateHourOptions = () => {
+  const generateStartHourOptions = () => {
     return Array.from({ length: 17 }, (_, i) => i + 6)
+  }
+
+  const generateEndHourOptions = () => {
+    return Array.from({ length: 18 }, (_, i) => i + 6)
   }
 
   const generateMinuteOptions = () => {
@@ -401,12 +544,30 @@ export default function Page() {
     return !isReservationTimeValid(reservationDraft.date, hour, minute);
   }
 
+  const isStartTimeSelectable = (hour: number, minute: number) => {
+    if (isStartTimeDisabled(hour, minute)) return false
+    const startDate = new Date(reservationDraft.date)
+    startDate.setHours(hour, minute, 0, 0)
+    const latestEndTime = new Date(reservationDraft.date)
+    latestEndTime.setHours(23, 0, 0, 0)
+    return addMinutes(startDate, 10).getTime() <= latestEndTime.getTime()
+  }
+
+  const isStartHourSelectable = (hour: number) => {
+    return generateMinuteOptions().some((minute) => isStartTimeSelectable(hour, minute))
+  }
+
+  const isEndHourSelectable = (hour: number) => {
+    if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return false
+    return generateMinuteOptions().some((minute) => !isEndTimeDisabled(hour, minute))
+  }
+
   const isEndTimeDisabled = (hour: number, minute: number) => {
     if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return true
     const startDate = new Date(reservationDraft.date)
-    startDate.setHours(reservationDraft.startHour, reservationDraft.startMinute)
+    startDate.setHours(reservationDraft.startHour, reservationDraft.startMinute, 0, 0)
     const endDate = new Date(reservationDraft.date)
-    endDate.setHours(hour, minute)
+    endDate.setHours(hour, minute, 0, 0)
     const minEndTime = addMinutes(startDate, 10)
     const maxEndTime = addHours(startDate, 4)
     if (isBefore(endDate, minEndTime)) return true
@@ -804,29 +965,27 @@ export default function Page() {
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <ScrollArea className="max-h-[200px]">
-                      <SelectItem value="none">
-                        {user?.nickname || '個人'}
-                      </SelectItem>
-                      {isGroupsLoading ? (
-                        <div className="flex items-center justify-center p-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span className="ml-2 text-sm text-gray-500">読み込み中...</span>
-                        </div>
-                      ) : (
-                        myGroups.map((group) => (
-                          <SelectItem key={group.id} value={group.id}>
-                            <div className="flex items-center justify-between w-full gap-2">
-                              <span>{group.name}</span>
-                              <Badge variant={group.is_main ? "default" : "outline"} className="text-sm px-1.5 py-0 shrink-0">
-                                {group.is_main ? '本バンド' : '自由バンド'}
-                              </Badge>
-                            </div>
-                          </SelectItem>
-                        ))
-                      )}
-                    </ScrollArea>
+                  <SelectContent className="max-h-[200px]">
+                    <SelectItem value="none">
+                      {user?.nickname || '個人'}
+                    </SelectItem>
+                    {isGroupsLoading ? (
+                      <div className="flex items-center justify-center p-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="ml-2 text-sm text-gray-500">読み込み中...</span>
+                      </div>
+                    ) : (
+                      myGroups.map((group) => (
+                        <SelectItem key={group.id} value={group.id}>
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span>{group.name}</span>
+                            <Badge variant={group.is_main ? "default" : "outline"} className="text-sm px-1.5 py-0 shrink-0">
+                              {group.is_main ? '本バンド' : '自由バンド'}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -848,11 +1007,7 @@ export default function Page() {
                       selected={reservationDraft.date}
                       onSelect={(date) => {
                         if (date) {
-                          handleInputChange('date', date)
-                          handleInputChange('startHour', null)
-                          handleInputChange('startMinute', null)
-                          handleInputChange('endHour', null)
-                          handleInputChange('endMinute', null)
+                          handleReservationDateSelect(date)
                         }
                         setIsFormDatePickerOpen(false)
                       }}
@@ -875,19 +1030,17 @@ export default function Page() {
                       else setOpenPicker(null)
                     }}
                     onValueChange={(value) => handleInputChange('startHour', parseInt(value))}
-                    value={reservationDraft.startHour?.toString() || ''}
+                    value={reservationDraft.startHour !== null ? reservationDraft.startHour.toString() : ''}
                   >
                     <SelectTrigger id="startHour">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="max-h-[200px]">
-                      <ScrollArea>
-                        {generateHourOptions().filter(hour => !isStartTimeDisabled(hour + 1, 0)).map((hour) => (
-                          <SelectItem key={hour} value={hour.toString()}>
-                            {hour.toString().padStart(2, '0')}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
+                      {generateStartHourOptions().filter(isStartHourSelectable).map((hour) => (
+                        <SelectItem key={hour} value={hour.toString()}>
+                          {hour.toString().padStart(2, '0')}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -900,20 +1053,18 @@ export default function Page() {
                       else setOpenPicker(null)
                     }}
                     onValueChange={(value) => handleInputChange('startMinute', parseInt(value))}
-                    value={reservationDraft.startMinute?.toString() || ''}
+                    value={reservationDraft.startMinute !== null ? reservationDraft.startMinute.toString() : ''}
                     disabled={reservationDraft.startHour === null}
                   >
                     <SelectTrigger id="startMinute">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="max-h-[200px]">
-                      <ScrollArea>
-                        {generateMinuteOptions().filter(minute => reservationDraft.startHour !== null && !isStartTimeDisabled(reservationDraft.startHour, minute)).map((minute) => (
-                          <SelectItem key={minute} value={minute.toString()}>
-                            {minute.toString().padStart(2, '0')}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
+                      {generateMinuteOptions().filter(minute => reservationDraft.startHour !== null && isStartTimeSelectable(reservationDraft.startHour, minute)).map((minute) => (
+                        <SelectItem key={minute} value={minute.toString()}>
+                          {minute.toString().padStart(2, '0')}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -926,33 +1077,18 @@ export default function Page() {
                       else setOpenPicker(null)
                     }}
                     onValueChange={(value) => handleInputChange('endHour', parseInt(value))}
-                    value={reservationDraft.endHour?.toString() || ''}
+                    value={reservationDraft.endHour !== null ? reservationDraft.endHour.toString() : ''}
                     disabled={reservationDraft.startMinute === null}
                   >
                     <SelectTrigger id="endHour">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="max-h-[200px]">
-                      <ScrollArea>
-                        {generateHourOptions().filter(hour => {
-                          if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return false
-                          const startDate = new Date(reservationDraft.date)
-                          startDate.setHours(reservationDraft.startHour, reservationDraft.startMinute)
-                          const minEndTime = addMinutes(startDate, 10)
-                          const maxEndTime = addHours(startDate, 4)
-                          const endDateAt0 = new Date(reservationDraft.date)
-                          endDateAt0.setHours(hour, 0)
-                          const endDateAt55 = new Date(reservationDraft.date)
-                          endDateAt55.setHours(hour, 55)
-                          const hasValidMinute = (!isBefore(endDateAt0, minEndTime) && endDateAt0.getTime() <= maxEndTime.getTime()) ||
-                                                 (!isBefore(endDateAt55, minEndTime) && endDateAt55.getTime() <= maxEndTime.getTime())
-                          return hasValidMinute
-                        }).map((hour) => (
-                          <SelectItem key={hour} value={hour.toString()}>
-                            {hour.toString().padStart(2, '0')}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
+                      {generateEndHourOptions().filter(isEndHourSelectable).map((hour) => (
+                        <SelectItem key={hour} value={hour.toString()}>
+                          {hour.toString().padStart(2, '0')}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -965,20 +1101,18 @@ export default function Page() {
                       else setOpenPicker(null)
                     }}
                     onValueChange={(value) => handleInputChange('endMinute', parseInt(value))}
-                    value={reservationDraft.endMinute?.toString() || ''}
+                    value={reservationDraft.endMinute !== null ? reservationDraft.endMinute.toString() : ''}
                     disabled={reservationDraft.endHour === null}
                   >
                     <SelectTrigger id="endMinute">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="max-h-[200px]">
-                      <ScrollArea>
-                        {generateMinuteOptions().filter(minute => reservationDraft.endHour !== null && !isEndTimeDisabled(reservationDraft.endHour, minute)).map((minute) => (
-                          <SelectItem key={minute} value={minute.toString()}>
-                            {minute.toString().padStart(2, '0')}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
+                      {generateMinuteOptions().filter(minute => reservationDraft.endHour !== null && !isEndTimeDisabled(reservationDraft.endHour, minute)).map((minute) => (
+                        <SelectItem key={minute} value={minute.toString()}>
+                          {minute.toString().padStart(2, '0')}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

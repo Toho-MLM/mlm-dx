@@ -55,10 +55,13 @@ export function BandList() {
         is_active: !band.isActive,
         assignments: JSON.stringify(band.assignments.reduce((acc, member) => {
           member.instruments.forEach(instrument => {
-            acc[instrument] = member.id
+            if (!acc[instrument]) {
+              acc[instrument] = []
+            }
+            acc[instrument].push(member.id)
           })
           return acc
-        }, {} as Record<string, string>))
+        }, {} as Record<string, string[]>))
       })
       
       if (response.success) {
@@ -158,4 +161,3 @@ export function BandList() {
     </>
   )
 }
-

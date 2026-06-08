@@ -6,6 +6,37 @@ import { requireAdmin } from '../utils/admin';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+function normalizeAssignments(assignmentsInput: unknown): Record<string, string[]> | null {
+  const rawAssignments = typeof assignmentsInput === 'string'
+    ? JSON.parse(assignmentsInput)
+    : assignmentsInput;
+
+  if (!rawAssignments || typeof rawAssignments !== 'object' || Array.isArray(rawAssignments)) {
+    return null;
+  }
+
+  const normalizedAssignments: Record<string, string[]> = {};
+
+  for (const [instrument, memberUserIds] of Object.entries(rawAssignments)) {
+    if (Array.isArray(memberUserIds)) {
+      if (!memberUserIds.every(memberUserId => typeof memberUserId === 'string')) {
+        return null;
+      }
+      normalizedAssignments[instrument] = memberUserIds;
+      continue;
+    }
+
+    if (typeof memberUserIds === 'string') {
+      normalizedAssignments[instrument] = [memberUserIds];
+      continue;
+    }
+
+    return null;
+  }
+
+  return normalizedAssignments;
+}
+
 export async function isUserInGroup(env: Bindings, userId: string, groupId: string): Promise<boolean> {
   const result = await env.DB.prepare(`
     SELECT 1
@@ -44,18 +75,21 @@ groupRoutes.post('/', async (c) => {
     `).bind(newId, requestData.name, requestData.is_main, now, now).run();
     
     if (requestData.assignments) {
-      let assignments: Record<string, string[]>;
-      if (typeof requestData.assignments === 'string') {
-        try {
-          assignments = JSON.parse(requestData.assignments);
-        } catch (parseError) {
-          return c.json({ 
-            success: false, 
-            error: 'INVALID_ASSIGNMENTS_FORMAT' 
-          }, 400);
-        }
-      } else {
-        assignments = requestData.assignments;
+      let assignments: Record<string, string[]> | null;
+      try {
+        assignments = normalizeAssignments(requestData.assignments);
+      } catch (parseError) {
+        return c.json({
+          success: false,
+          error: 'INVALID_ASSIGNMENTS_FORMAT'
+        }, 400);
+      }
+
+      if (!assignments) {
+        return c.json({
+          success: false,
+          error: 'INVALID_ASSIGNMENTS_FORMAT'
+        }, 400);
       }
 
       for (const [instrument, memberUserIds] of Object.entries(assignments)) {
@@ -166,18 +200,21 @@ groupRoutes.put('/:id', async (c) => {
     `).bind(requestData.name, requestData.is_main, requestData.is_active, now, groupId).run();
 
     if (requestData.assignments) {
-      let assignments: Record<string, string[]>;
-      if (typeof requestData.assignments === 'string') {
-        try {
-          assignments = JSON.parse(requestData.assignments);
-        } catch (parseError) {
-          return c.json({ 
-            success: false, 
-            error: 'INVALID_ASSIGNMENTS_FORMAT' 
-          }, 400);
-        }
-      } else {
-        assignments = requestData.assignments;
+      let assignments: Record<string, string[]> | null;
+      try {
+        assignments = normalizeAssignments(requestData.assignments);
+      } catch (parseError) {
+        return c.json({
+          success: false,
+          error: 'INVALID_ASSIGNMENTS_FORMAT'
+        }, 400);
+      }
+
+      if (!assignments) {
+        return c.json({
+          success: false,
+          error: 'INVALID_ASSIGNMENTS_FORMAT'
+        }, 400);
       }
 
       await c.env.DB.prepare(`
