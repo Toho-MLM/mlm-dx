@@ -129,6 +129,26 @@ export const UnavailablePeriodSchema = z.object({
   updated_at: z.string(),
 });
 
+export const ReservationLimitScopeSchema = z.enum(['PERSONAL', 'GROUP']);
+export const ReservationLimitTypeSchema = z.enum(['FIXED', 'ROLLING']);
+
+export const ReservationLimitSchema = z.object({
+  id: z.string(),
+  scope: ReservationLimitScopeSchema,
+  limit_type: ReservationLimitTypeSchema,
+  start_datetime: z.string().nullable(),
+  end_datetime: z.string().nullable(),
+  window_days: z.number().nullable(),
+  max_minutes: z.number(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const ReservationLimitRemainingSchema = ReservationLimitSchema.extend({
+  used_minutes: z.number(),
+  remaining_minutes: z.number(),
+});
+
 export const AssignmentMapSchema = z.record(z.string(), z.array(z.string()));
 
 export const CreateGroupRequestSchema = z.object({
@@ -278,6 +298,44 @@ export const CreateUnavailablePeriodRequestSchema = z.object({
   message: "終了日時は開始日時より後である必要があります。"
 });
 
+const ReservationLimitRequestSchemaBase = z.object({
+  scope: ReservationLimitScopeSchema,
+  limit_type: ReservationLimitTypeSchema,
+  start_datetime: z.string().optional(),
+  end_datetime: z.string().optional(),
+  window_days: z.number().int().min(1).optional(),
+  max_minutes: z.number().int().min(1),
+}).superRefine((data, ctx) => {
+  if (data.limit_type === 'FIXED') {
+    if (!data.start_datetime || !data.end_datetime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "期間限定Limitでは開始日時と終了日時が必要です。",
+      });
+      return;
+    }
+
+    const start = new Date(data.start_datetime);
+    const end = new Date(data.end_datetime);
+    if (end <= start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "終了日時は開始日時より後である必要があります。",
+      });
+    }
+  }
+
+  if (data.limit_type === 'ROLLING' && !data.window_days) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "常設Limitでは対象日数が必要です。",
+    });
+  }
+});
+
+export const CreateReservationLimitRequestSchema = ReservationLimitRequestSchemaBase;
+export const UpdateReservationLimitRequestSchema = ReservationLimitRequestSchemaBase;
+
 export const EntrySchema = z.object({
   id: z.string(),
   event_id: z.string(),
@@ -413,6 +471,12 @@ export type CreateEventRequest = z.infer<typeof CreateEventRequestSchema>;
 export type UpdateEventRequest = z.infer<typeof UpdateEventRequestSchema>;
 export type UnavailablePeriod = z.infer<typeof UnavailablePeriodSchema>;
 export type CreateUnavailablePeriodRequest = z.infer<typeof CreateUnavailablePeriodRequestSchema>;
+export type ReservationLimitScope = z.infer<typeof ReservationLimitScopeSchema>;
+export type ReservationLimitType = z.infer<typeof ReservationLimitTypeSchema>;
+export type ReservationLimit = z.infer<typeof ReservationLimitSchema>;
+export type ReservationLimitRemaining = z.infer<typeof ReservationLimitRemainingSchema>;
+export type CreateReservationLimitRequest = z.infer<typeof CreateReservationLimitRequestSchema>;
+export type UpdateReservationLimitRequest = z.infer<typeof UpdateReservationLimitRequestSchema>;
 export type Entry = z.infer<typeof EntrySchema>;
 export type CreateEntryRequest = z.infer<typeof CreateEntryRequestSchema>;
 export type UpdateEntryRequest = z.infer<typeof UpdateEntryRequestSchema>;

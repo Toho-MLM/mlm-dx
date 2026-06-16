@@ -6,11 +6,16 @@ import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequest
 type User = SharedSchemas.User
 type Group = SharedSchemas.Group
 type Reservation = SharedSchemas.Reservation
+type ReservationLimit = SharedSchemas.ReservationLimit
+type ReservationLimitRemaining = SharedSchemas.ReservationLimitRemaining
+type ReservationLimitScope = SharedSchemas.ReservationLimitScope
 type Archive = SharedSchemas.Archive
 type CreateGroupRequest = SharedSchemas.CreateGroupRequest
 type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest
 type UpdateUserRequest = SharedSchemas.UpdateUserRequest
 type CreateReservationRequest = SharedSchemas.CreateReservationRequest
+type CreateReservationLimitRequest = SharedSchemas.CreateReservationLimitRequest
+type UpdateReservationLimitRequest = SharedSchemas.UpdateReservationLimitRequest
 type CreateArchiveRequest = SharedSchemas.CreateArchiveRequest
 type UpdateArchiveRequest = SharedSchemas.UpdateArchiveRequest
 type Event = SharedSchemas.Event
@@ -187,6 +192,32 @@ class ApiClient {
   async cancelReservation(reservationId: string, admin: boolean = false): Promise<ApiResponse<void>> {
     const params = admin ? '?admin=true' : '';
     return httpClient.post<ApiResponse<void>>(`/reservations/${reservationId}/cancel${params}`)
+  }
+
+  async getReservationLimits(): Promise<ApiResponse<ReservationLimit[]>> {
+    return httpClient.get<ApiResponse<ReservationLimit[]>>('/reservations/limits')
+  }
+
+  async getReservationLimitRemaining(scope: ReservationLimitScope, targetId: string, referenceTime?: string): Promise<ApiResponse<ReservationLimitRemaining[]>> {
+    const params = new URLSearchParams({ scope, target_id: targetId })
+    if (referenceTime) {
+      params.set('reference_time', referenceTime)
+    }
+    return httpClient.get<ApiResponse<ReservationLimitRemaining[]>>(`/reservations/limits/remaining?${params.toString()}`)
+  }
+
+  async createReservationLimit(data: CreateReservationLimitRequest): Promise<ApiResponse<void>> {
+    SharedSchemas.CreateReservationLimitRequestSchema.parse(data)
+    return httpClient.post<ApiResponse<void>>('/reservations/limits', data)
+  }
+
+  async updateReservationLimit(id: string, data: UpdateReservationLimitRequest): Promise<ApiResponse<void>> {
+    SharedSchemas.UpdateReservationLimitRequestSchema.parse(data)
+    return httpClient.put<ApiResponse<void>>(`/reservations/limits/${id}`, data)
+  }
+
+  async deleteReservationLimit(id: string): Promise<ApiResponse<void>> {
+    return httpClient.delete<ApiResponse<void>>(`/reservations/limits/${id}`)
   }
 
   async getUnavailablePeriods(): Promise<ApiResponse<UnavailablePeriod[]>> {

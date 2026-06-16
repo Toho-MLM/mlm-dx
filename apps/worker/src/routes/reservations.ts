@@ -2,11 +2,24 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { isUserInGroup } from './groups';
-import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema } from '../../../../lib/shared-schemas';
-import { processReservationState, isTodayInJST } from '../utils/reservation-processor';
+import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationLimitRemainingSchema, isAdmin } from '../../../../lib/shared-schemas';
+import { processReservationState, isTodayInJST, getJSTDateString, getJSTDayRange } from '../utils/reservation-processor';
 import { requireAdmin } from '../utils/admin';
 
 const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+type ReservationLimitScope = 'PERSONAL' | 'GROUP';
+type ReservationLimitType = 'FIXED' | 'ROLLING';
+
+type ReservationLimitRow = {
+  id: string;
+  scope: ReservationLimitScope;
+  limit_type: ReservationLimitType;
+  start_datetime: string | null;
+  end_datetime: string | null;
+  window_days: number | null;
+  max_minutes: number;
+};
 
 async function isReservationCancellable(
   env: Bindings, 
@@ -29,6 +42,235 @@ async function isReservationCancellable(
   }
   
   return false;
+}
+
+function calculateOverlapMinutes(
+  startTime: string,
+  endTime: string,
+  rangeStartTime: string,
+  rangeEndTime: string
+): number {
+  const start = new Date(startTime).getTime();
+  const end = new Date(endTime).getTime();
+  const rangeStart = new Date(rangeStartTime).getTime();
+  const rangeEnd = new Date(rangeEndTime).getTime();
+  const overlapStart = Math.max(start, rangeStart);
+  const overlapEnd = Math.min(end, rangeEnd);
+
+  if (overlapEnd <= overlapStart) {
+    return 0;
+  }
+
+  return Math.ceil((overlapEnd - overlapStart) / (1000 * 60));
+}
+
+function getRollingWindow(referenceTime: string, windowDays: number): { startTime: string; endTime: string } {
+  const end = new Date(referenceTime);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - windowDays);
+  return {
+    startTime: start.toISOString(),
+    endTime: end.toISOString(),
+  };
+}
+
+function getReferenceDayRange(referenceTime: string): { startTime: string; endTime: string } {
+  const jstDateString = getJSTDateString(new Date(referenceTime));
+  const { startUTC, endUTC } = getJSTDayRange(jstDateString);
+  return {
+    startTime: startUTC.toISOString(),
+    endTime: endUTC.toISOString(),
+  };
+}
+
+async function getUsedReservationMinutes(
+  env: Bindings,
+  scope: ReservationLimitScope,
+  targetId: string,
+  rangeStartTime: string,
+  rangeEndTime: string
+): Promise<number> {
+  const reservations = scope === 'GROUP'
+    ? await env.DB.prepare(`
+        SELECT start_time, end_time
+        FROM reservations
+        WHERE group_id = ?
+          AND state IN ('PENDING', 'CONFIRMED')
+          AND start_time < ?
+          AND end_time > ?
+      `).bind(targetId, rangeEndTime, rangeStartTime).all<{ start_time: string; end_time: string }>()
+    : await env.DB.prepare(`
+        SELECT start_time, end_time
+        FROM reservations
+        WHERE user_id = ?
+          AND group_id IS NULL
+          AND state IN ('PENDING', 'CONFIRMED')
+          AND start_time < ?
+          AND end_time > ?
+      `).bind(targetId, rangeEndTime, rangeStartTime).all<{ start_time: string; end_time: string }>();
+
+  return reservations.results.reduce((total, reservation) => (
+    total + calculateOverlapMinutes(
+      reservation.start_time,
+      reservation.end_time,
+      rangeStartTime,
+      rangeEndTime
+    )
+  ), 0);
+}
+
+async function hasReservationLimitConflict(
+  env: Bindings,
+  userId: string,
+  groupId: string | null,
+  startTime: string,
+  endTime: string
+): Promise<boolean> {
+  const scope: ReservationLimitScope = groupId ? 'GROUP' : 'PERSONAL';
+  const limits = await env.DB.prepare(`
+    SELECT id, scope, limit_type, start_datetime, end_datetime, window_days, max_minutes
+    FROM reservation_limits
+    WHERE scope = ?
+    ORDER BY start_datetime ASC
+  `).bind(scope).all<ReservationLimitRow>();
+
+  const targetId = groupId || userId;
+  const newReservationMinutes = calculateOverlapMinutes(startTime, endTime, startTime, endTime);
+
+  for (const limit of limits.results) {
+    let rangeStartTime: string;
+    let rangeEndTime: string;
+    let newMinutesInRange = newReservationMinutes;
+
+    if (limit.limit_type === 'FIXED') {
+      if (!limit.start_datetime || !limit.end_datetime) {
+        continue;
+      }
+
+      newMinutesInRange = calculateOverlapMinutes(startTime, endTime, limit.start_datetime, limit.end_datetime);
+      rangeStartTime = limit.start_datetime;
+      rangeEndTime = limit.end_datetime;
+    } else {
+      if (!limit.window_days) {
+        continue;
+      }
+
+      const window = getRollingWindow(startTime, Number(limit.window_days));
+      rangeStartTime = window.startTime;
+      rangeEndTime = window.endTime;
+    }
+
+    if (newMinutesInRange === 0) {
+      continue;
+    }
+
+    const usedMinutes = await getUsedReservationMinutes(env, scope, targetId, rangeStartTime, rangeEndTime);
+
+    if (usedMinutes + newMinutesInRange > Number(limit.max_minutes)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function hasOverlappingReservationLimit(
+  env: Bindings,
+  scope: ReservationLimitScope,
+  limitType: ReservationLimitType,
+  startDatetime: string,
+  endDatetime: string,
+  excludeId?: string
+): Promise<boolean> {
+  if (limitType !== 'FIXED') {
+    return false;
+  }
+
+  const hasExcludeId = Boolean(excludeId);
+  const existing = await env.DB.prepare(`
+    SELECT id
+    FROM reservation_limits
+    WHERE scope = ?
+      AND limit_type = 'FIXED'
+      AND start_datetime < ?
+      AND end_datetime > ?
+      ${hasExcludeId ? 'AND id != ?' : ''}
+    LIMIT 1
+  `).bind(scope, endDatetime, startDatetime, ...(hasExcludeId ? [excludeId] : [])).first();
+
+  return Boolean(existing);
+}
+
+async function hasDuplicateRollingReservationLimit(
+  env: Bindings,
+  scope: ReservationLimitScope,
+  excludeId?: string
+): Promise<boolean> {
+  const hasExcludeId = Boolean(excludeId);
+  const existing = await env.DB.prepare(`
+    SELECT id
+    FROM reservation_limits
+    WHERE scope = ?
+      AND limit_type = 'ROLLING'
+      ${hasExcludeId ? 'AND id != ?' : ''}
+    LIMIT 1
+  `).bind(scope, ...(hasExcludeId ? [excludeId] : [])).first();
+
+  return Boolean(existing);
+}
+
+async function getReservationLimitRemaining(
+  env: Bindings,
+  scope: ReservationLimitScope,
+  targetId: string,
+  referenceTime: string
+) {
+  const referenceDayRange = getReferenceDayRange(referenceTime);
+  const limits = await env.DB.prepare(`
+    SELECT id, scope, limit_type, start_datetime, end_datetime, window_days, max_minutes, created_at, updated_at
+    FROM reservation_limits
+    WHERE scope = ?
+    ORDER BY start_datetime ASC
+  `).bind(scope).all<ReservationLimitRow & { created_at: string; updated_at: string }>();
+
+  const results = [];
+
+  for (const limit of limits.results) {
+    let rangeStartTime: string;
+    let rangeEndTime: string;
+
+    if (limit.limit_type === 'FIXED') {
+      if (!limit.start_datetime || !limit.end_datetime) {
+        continue;
+      }
+
+      const overlapsReferenceDay = limit.start_datetime < referenceDayRange.endTime && limit.end_datetime > referenceDayRange.startTime;
+      if (!overlapsReferenceDay) {
+        continue;
+      }
+
+      rangeStartTime = limit.start_datetime;
+      rangeEndTime = limit.end_datetime;
+    } else {
+      if (!limit.window_days) {
+        continue;
+      }
+
+      const window = getRollingWindow(referenceTime, Number(limit.window_days));
+      rangeStartTime = window.startTime;
+      rangeEndTime = window.endTime;
+    }
+
+    const usedMinutes = await getUsedReservationMinutes(env, scope, targetId, rangeStartTime, rangeEndTime);
+
+    results.push(ReservationLimitRemainingSchema.parse({
+      ...limit,
+      used_minutes: usedMinutes,
+      remaining_minutes: Math.max(0, Number(limit.max_minutes) - usedMinutes),
+    }));
+  }
+
+  return results;
 }
 
 reservationRoutes.use('*', requireAuth);
@@ -169,6 +411,16 @@ reservationRoutes.post('/', async (c) => {
     const userId = user.id;
     const groupId = group_id || null;
 
+    if (!isAdminMode) {
+      const isLimitExceeded = await hasReservationLimitConflict(c.env, userId, groupId, start_time, end_time);
+      if (isLimitExceeded) {
+        return c.json({
+          success: false,
+          error: 'RESERVATION_LIMIT_EXCEEDED'
+        }, 400);
+      }
+    }
+
     await c.env.DB.prepare(`
       INSERT INTO reservations (id, user_id, group_id, start_time, end_time, state, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -215,6 +467,203 @@ reservationRoutes.post('/', async (c) => {
       if (error.message.includes('FOREIGN KEY constraint failed')) {
         return c.json({ success: false, error: 'INVALID_USER_OR_GROUP' }, 400);
       }
+    }
+    
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+reservationRoutes.get('/limits', async (c) => {
+  try {
+    const limits = await c.env.DB.prepare(`
+      SELECT id, scope, limit_type, start_datetime, end_datetime, window_days, max_minutes, created_at, updated_at
+      FROM reservation_limits
+      ORDER BY start_datetime ASC
+    `).all();
+
+    const validatedLimits = limits.results.map(limit => 
+      ReservationLimitSchema.parse(limit)
+    );
+
+    return c.json({ success: true, data: validatedLimits });
+  } catch (error) {
+    console.error('Error fetching reservation limits:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+reservationRoutes.get('/limits/remaining', async (c) => {
+  try {
+    const user = c.get('user');
+    const scope = c.req.query('scope');
+    const targetId = c.req.query('target_id');
+    const referenceTime = c.req.query('reference_time') || new Date().toISOString();
+
+    if ((scope !== 'PERSONAL' && scope !== 'GROUP') || !targetId || Number.isNaN(new Date(referenceTime).getTime())) {
+      return c.json({ success: false, error: 'INVALID_PARAMETERS' }, 400);
+    }
+
+    if (!isAdmin(user.role)) {
+      if (scope === 'PERSONAL' && targetId !== user.id) {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+
+      if (scope === 'GROUP') {
+        const isMember = await isUserInGroup(c.env, user.id, targetId);
+        if (!isMember) {
+          return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+        }
+      }
+    }
+
+    const remaining = await getReservationLimitRemaining(c.env, scope, targetId, referenceTime);
+
+    return c.json({ success: true, data: remaining });
+  } catch (error) {
+    console.error('Error fetching reservation limit remaining:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+reservationRoutes.post('/limits', async (c) => {
+  try {
+    const user = c.get('user');
+    requireAdmin(user.role);
+
+    const requestData = await c.req.json();
+    const validatedData = CreateReservationLimitRequestSchema.parse(requestData);
+    const { scope, limit_type, start_datetime, end_datetime, window_days, max_minutes } = validatedData;
+
+    const isOverlapping = limit_type === 'FIXED' && start_datetime && end_datetime
+      ? await hasOverlappingReservationLimit(c.env, scope, limit_type, start_datetime, end_datetime)
+      : false;
+    if (isOverlapping) {
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_OVERLAP' }, 400);
+    }
+
+    const isDuplicateRolling = limit_type === 'ROLLING'
+      ? await hasDuplicateRollingReservationLimit(c.env, scope)
+      : false;
+    if (isDuplicateRolling) {
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_OVERLAP' }, 400);
+    }
+
+    const now = new Date().toISOString();
+    const limitId = crypto.randomUUID();
+
+    await c.env.DB.prepare(`
+      INSERT INTO reservation_limits (id, scope, limit_type, start_datetime, end_datetime, window_days, max_minutes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      limitId,
+      scope,
+      limit_type,
+      limit_type === 'FIXED' ? start_datetime || null : null,
+      limit_type === 'FIXED' ? end_datetime || null : null,
+      limit_type === 'ROLLING' ? window_days || null : null,
+      max_minutes,
+      now,
+      now
+    ).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error creating reservation limit:', error);
+    
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+    
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+reservationRoutes.put('/limits/:id', async (c) => {
+  try {
+    const user = c.get('user');
+    requireAdmin(user.role);
+
+    const limitId = c.req.param('id');
+    const requestData = await c.req.json();
+    const validatedData = UpdateReservationLimitRequestSchema.parse(requestData);
+    const { scope, limit_type, start_datetime, end_datetime, window_days, max_minutes } = validatedData;
+
+    const existingLimit = await c.env.DB.prepare(
+      'SELECT id FROM reservation_limits WHERE id = ?'
+    ).bind(limitId).first();
+
+    if (!existingLimit) {
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_NOT_FOUND' }, 404);
+    }
+
+    const isOverlapping = limit_type === 'FIXED' && start_datetime && end_datetime
+      ? await hasOverlappingReservationLimit(c.env, scope, limit_type, start_datetime, end_datetime, limitId)
+      : false;
+    if (isOverlapping) {
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_OVERLAP' }, 400);
+    }
+
+    const isDuplicateRolling = limit_type === 'ROLLING'
+      ? await hasDuplicateRollingReservationLimit(c.env, scope, limitId)
+      : false;
+    if (isDuplicateRolling) {
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_OVERLAP' }, 400);
+    }
+
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(`
+      UPDATE reservation_limits
+      SET scope = ?, limit_type = ?, start_datetime = ?, end_datetime = ?, window_days = ?, max_minutes = ?, updated_at = ?
+      WHERE id = ?
+    `).bind(
+      scope,
+      limit_type,
+      limit_type === 'FIXED' ? start_datetime || null : null,
+      limit_type === 'FIXED' ? end_datetime || null : null,
+      limit_type === 'ROLLING' ? window_days || null : null,
+      max_minutes,
+      now,
+      limitId
+    ).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error updating reservation limit:', error);
+    
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+    
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+reservationRoutes.delete('/limits/:id', async (c) => {
+  try {
+    const user = c.get('user');
+    requireAdmin(user.role);
+
+    const limitId = c.req.param('id');
+
+    const existingLimit = await c.env.DB.prepare(
+      'SELECT id FROM reservation_limits WHERE id = ?'
+    ).bind(limitId).first();
+
+    if (!existingLimit) {
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_NOT_FOUND' }, 404);
+    }
+
+    await c.env.DB.prepare(
+      'DELETE FROM reservation_limits WHERE id = ?'
+    ).bind(limitId).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting reservation limit:', error);
+    
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
     
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
