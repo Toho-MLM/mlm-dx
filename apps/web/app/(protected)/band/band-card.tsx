@@ -1,4 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Group, instrumentColors, instrumentNames } from "@/app/types"
 import { Button } from "@/components/ui/button"
@@ -22,112 +21,120 @@ interface BandCardProps {
 
 export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, isAdminMode = false, loading = false }: BandCardProps) {
   return (
-    <Card className={`w-full max-w-md transition-shadow duration-200 ${band.isActive ? 'hover:shadow-lg' : 'opacity-60 bg-gray-50'}`}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          {loading ? (
-            <Skeleton className="h-6 w-40" />
-          ) : (
-            <CardTitle className="text-xl font-bold">{band.name}</CardTitle>
-          )}
-          <div className="flex items-center gap-2">
-            {loading ? (
-              <Skeleton className="h-5 w-16" />
-            ) : (
-              <Badge 
-                className="py-1 px-2 text-xs font-medium" 
+    <div className={`grid w-full grid-cols-[1fr_auto] items-center gap-x-2 rounded-md border px-3 py-2.5 transition-colors sm:grid-cols-[minmax(150px,220px)_1fr_auto] sm:gap-x-3 ${band.isActive ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 opacity-70'}`}>
+      <div className="min-w-0 pr-1">
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-4 w-24" />
+          </div>
+        ) : (
+          <>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+              <div className="truncate text-sm font-semibold leading-5">{band.name}</div>
+              <Badge
+                className="h-5 shrink-0 px-1.5 text-[11px] font-medium"
                 variant={band.isMain ? "default" : "secondary"}
               >
                 {band.isMain ? "本バンド" : "自由バンド"}
               </Badge>
-            )}
-            {!loading && !(band.isMain && !isAdminMode) && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    className="h-6 w-6 p-0"
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {band.isActive ? (
-                    <>
-                      <DropdownMenuItem 
-                        onClick={() => onEdit(band.id)}
-                        className="flex items-center gap-2"
-                      >
-                        編集
-                      </DropdownMenuItem>
-                      {onToggleActive && (
-                        <DropdownMenuItem 
-                          onClick={() => onToggleActive(band.id)}
-                          className="flex items-center gap-2"
-                        >
-                          無効化
-                        </DropdownMenuItem>
-                      )}
-                    </>
-                  ) : (
-                    onToggleActive && (
-                      <DropdownMenuItem 
-                        onClick={() => onToggleActive(band.id)}
-                        className="flex items-center gap-2"
-                      >
-                        有効化
-                      </DropdownMenuItem>
-                    )
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <div className="space-y-2">
-              {loading ? (
-                [0,1,2].map((i) => (
-                  <div key={i} className="flex items-center space-x-2 p-2 border rounded">
-                    <span className="flex-grow font-medium"><Skeleton className="h-4 w-32" /></span>
-                    <div className="flex items-center space-x-1">
-                      <Skeleton className="h-6 w-16 rounded" />
-                    </div>
-                  </div>
-                ))
-              ) : (
-                band.assignments.map((bandMember, index) => {
-                  const memberOption = memberOptions?.find(m => m.id === bandMember.id)
-                  return (
-                    <div 
-                      key={`${bandMember.id}-${index}`} 
-                      className="flex items-center space-x-2 p-2 border rounded"
-                    >
-                      <span className="flex-grow font-medium">{memberOption?.name || `不明なメンバー (${bandMember.id})`}</span>
-                      <div className="flex items-center space-x-1">
-                        {bandMember.instruments.map((instrument) => (
-                          <Badge
-                            key={instrument}
-                            variant="secondary"
-                            className={`text-sm ${instrumentColors[instrument]}`}
-                          >
-                            {instrumentNames[instrument]}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })
-              )}
             </div>
-          </div>
+            {!band.isActive && (
+              <div className="mt-1.5 flex">
+                <Badge className="h-5 px-1.5 text-[11px] font-medium" variant="outline">
+                  無効
+                </Badge>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          {loading ? (
+            [0, 1, 2].map((i) => (
+              <div key={i} className="flex h-7 items-center gap-2 rounded-md border px-2">
+                <Skeleton className="h-4 w-12 rounded" />
+                <Skeleton className="h-4 w-20" />
+              </div>
+            ))
+          ) : band.assignments.length > 0 ? (
+            band.assignments.map((bandMember, index) => {
+              const memberOption = memberOptions?.find(m => m.id === bandMember.id)
+              return (
+                <div
+                  key={`${bandMember.id}-${index}`}
+                  className="flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-1 rounded-md border bg-white px-2 py-1.5"
+                >
+                  <div className="flex shrink-0 flex-wrap gap-1">
+                    {bandMember.instruments.map((instrument) => (
+                      <Badge
+                        key={instrument}
+                        variant="secondary"
+                        className={`h-5 px-1.5 text-[11px] leading-none ${instrumentColors[instrument]}`}
+                      >
+                        {instrumentNames[instrument]}
+                      </Badge>
+                    ))}
+                  </div>
+                  <span className="min-w-0 truncate text-xs font-medium">
+                    {memberOption?.name || `不明なメンバー (${bandMember.id})`}
+                  </span>
+                </div>
+              )
+            })
+          ) : (
+            <div className="text-sm text-muted-foreground">メンバー未設定</div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      <div className="col-start-2 row-start-1 flex shrink-0 justify-end sm:col-start-3">
+        {!loading && !(band.isMain && !isAdminMode) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label={`${band.name}の操作`}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {band.isActive ? (
+                <>
+                  <DropdownMenuItem
+                    onClick={() => onEdit(band.id)}
+                    className="flex items-center gap-2"
+                  >
+                    編集
+                  </DropdownMenuItem>
+                  {onToggleActive && (
+                    <DropdownMenuItem
+                      onClick={() => onToggleActive(band.id)}
+                      className="flex items-center gap-2"
+                    >
+                      無効化
+                    </DropdownMenuItem>
+                  )}
+                </>
+              ) : (
+                onToggleActive && (
+                  <DropdownMenuItem
+                    onClick={() => onToggleActive(band.id)}
+                    className="flex items-center gap-2"
+                  >
+                    有効化
+                  </DropdownMenuItem>
+                )
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </div>
   )
 }
-

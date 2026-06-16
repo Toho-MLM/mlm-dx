@@ -29,6 +29,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { PlusIcon, EditIcon, TrashIcon, UploadIcon } from 'lucide-react'
 
+const isMoveUpDeleteTarget = (member: MemberListItem) => {
+  const studentNumberPrefix = member.student_number.toLowerCase().charAt(0)
+  return (studentNumberPrefix === 'n' && member.grade === 4) || (studentNumberPrefix === 'm' && member.grade === 6)
+}
 
 export default function Page() {
   const [searchTerm, setSearchTerm] = useState('')
@@ -98,8 +102,11 @@ export default function Page() {
   }, [csvMembers, existingEmails])
   const missingRequiredRows = useMemo(() => csvMembers.filter(r => r.errors.includes('REQUIRED_MISSING')), [csvMembers])
   const invalidGradeRows = useMemo(() => csvMembers.filter(r => r.errors.includes('INVALID_GRADE')), [csvMembers])
-  const sixthGradeCount = useMemo(() => (members || []).filter(member => member.grade === 6).length, [members])
-  const moveUpGradeTargetCount = useMemo(() => (members || []).filter(member => member.grade >= 1 && member.grade <= 5).length, [members])
+  const moveUpDeleteTargetCount = useMemo(() => (members || []).filter(isMoveUpDeleteTarget).length, [members])
+  const moveUpGradeTargetCount = useMemo(
+    () => (members || []).filter(member => member.grade >= 1 && member.grade <= 5 && !isMoveUpDeleteTarget(member)).length,
+    [members]
+  )
 
   const resetForm = () => {
     setFormData({
@@ -253,7 +260,7 @@ export default function Page() {
       const response = await apiClient.moveUpGrade()
       if (response.success && response.data) {
         showSuccessToast({
-          message: `学年繰上を実行しました（${response.data.movedUpCount}人更新、6年生 ${response.data.deletedCount}人削除）`
+          message: `学年繰上を実行しました（${response.data.movedUpCount}人更新、${response.data.deletedCount}人削除）`
         })
         setIsPromoteDialogOpen(false)
         await fetchMembers()
@@ -604,17 +611,17 @@ export default function Page() {
                 </DialogHeader>
                 <div className="space-y-4">
                   <p className="text-sm text-gray-700">
-                    全メンバーの学年を一括で1つ繰り上げます。
+                    削除対象以外のメンバーの学年を一括で1つ繰り上げます。
                   </p>
                   <Alert variant="destructive">
-                    <AlertTitle>6年生は削除されます</AlertTitle>
+                    <AlertTitle>対象学年のメンバーは削除されます</AlertTitle>
                     <AlertDescription>
-                      この操作を実行すると、6年生 {sixthGradeCount}人は削除されます。取り消すことはできません。
+                      この操作を実行すると、学籍番号がnで始まる4年生とmで始まる6年生の計 {moveUpDeleteTargetCount}人は削除されます。取り消すことはできません。
                     </AlertDescription>
                   </Alert>
                   <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
                     <p>繰上対象: {moveUpGradeTargetCount}人</p>
-                    <p>削除対象: 6年生 {sixthGradeCount}人</p>
+                    <p>削除対象: {moveUpDeleteTargetCount}人</p>
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button

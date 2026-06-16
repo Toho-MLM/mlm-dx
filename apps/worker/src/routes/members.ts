@@ -259,23 +259,40 @@ memberRoutes.post('/move-up-grade', async (c) => {
     const user = c.get('user');
     requireAdmin(user.role);
 
-    const sixthGradeCountRow = await c.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM users WHERE grade = 6'
+    const deleteTargetCountRow = await c.env.DB.prepare(
+      `
+      SELECT COUNT(*) as count
+      FROM users
+      WHERE
+        (LOWER(SUBSTR(email, 1, 1)) = 'n' AND grade = 4)
+        OR (LOWER(SUBSTR(email, 1, 1)) = 'm' AND grade = 6)
+      `
     ).first<{ count: number | string }>();
     const moveUpGradeTargetCountRow = await c.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM users WHERE grade BETWEEN 1 AND 5'
+      `
+      SELECT COUNT(*) as count
+      FROM users
+      WHERE grade BETWEEN 1 AND 5
+        AND NOT (LOWER(SUBSTR(email, 1, 1)) = 'n' AND grade = 4)
+      `
     ).first<{ count: number | string }>();
 
-    const deletedCount = Number(sixthGradeCountRow?.count ?? 0);
+    const deletedCount = Number(deleteTargetCountRow?.count ?? 0);
     const movedUpCount = Number(moveUpGradeTargetCountRow?.count ?? 0);
     const now = new Date().toISOString();
 
     await c.env.DB.batch([
-      c.env.DB.prepare('DELETE FROM users WHERE grade = 6'),
+      c.env.DB.prepare(`
+        DELETE FROM users
+        WHERE
+          (LOWER(SUBSTR(email, 1, 1)) = 'n' AND grade = 4)
+          OR (LOWER(SUBSTR(email, 1, 1)) = 'm' AND grade = 6)
+      `),
       c.env.DB.prepare(`
         UPDATE users
         SET grade = grade + 1, updated_at = ?
         WHERE grade BETWEEN 1 AND 5
+          AND NOT (LOWER(SUBSTR(email, 1, 1)) = 'n' AND grade = 4)
       `).bind(now),
     ]);
 
