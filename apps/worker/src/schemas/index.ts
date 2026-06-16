@@ -8,12 +8,18 @@ export const {
   GroupWithMemberRoleSchema,
   MemberSchema,
   ReservationSchema,
+  ReservationLimitSchema,
+  ReservationLimitRemainingSchema,
+  ReservationLimitScopeSchema,
+  ReservationLimitTypeSchema,
   ArchiveSchema,
   CreateGroupRequestSchema,
   UpdateGroupRequestSchema,
   UpdateUserRequestSchema,
   AddMemberToGroupRequestSchema,
   CreateReservationRequestSchema,
+  CreateReservationLimitRequestSchema,
+  UpdateReservationLimitRequestSchema,
   CreateArchiveRequestSchema,
   UpdateArchiveRequestSchema,
   ApiResponseSchema,
@@ -74,12 +80,18 @@ export type Group = SharedSchemas.Group;
 export type GroupWithMemberRole = SharedSchemas.GroupWithMemberRole;
 export type Member = SharedSchemas.Member;
 export type Reservation = SharedSchemas.Reservation;
+export type ReservationLimitScope = SharedSchemas.ReservationLimitScope;
+export type ReservationLimitType = SharedSchemas.ReservationLimitType;
+export type ReservationLimit = SharedSchemas.ReservationLimit;
+export type ReservationLimitRemaining = SharedSchemas.ReservationLimitRemaining;
 export type Archive = SharedSchemas.Archive;
 export type CreateGroupRequest = SharedSchemas.CreateGroupRequest;
 export type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest;
 export type UpdateUserRequest = SharedSchemas.UpdateUserRequest;
 export type AddMemberToGroupRequest = SharedSchemas.AddMemberToGroupRequest;
 export type CreateReservationRequest = SharedSchemas.CreateReservationRequest;
+export type CreateReservationLimitRequest = SharedSchemas.CreateReservationLimitRequest;
+export type UpdateReservationLimitRequest = SharedSchemas.UpdateReservationLimitRequest;
 export type CreateArchiveRequest = SharedSchemas.CreateArchiveRequest;
 export type UpdateArchiveRequest = SharedSchemas.UpdateArchiveRequest;
 export type ApiResponse<T> = SharedSchemas.ApiResponse<T>;

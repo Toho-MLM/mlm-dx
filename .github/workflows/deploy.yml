@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy_frontend:
     name: Deploy Frontend
@@ -33,6 +36,8 @@ jobs:
   deploy_backend:
     name: Deploy Backend
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,6 +60,41 @@ jobs:
           sed -i "s|CORS_ORIGIN = \"\"|CORS_ORIGIN = \"${{ vars.CORS_ORIGIN }}\"|" wrangler.toml
           sed -i "s|FRONTEND_URL = \"\"|FRONTEND_URL = \"${{ vars.FRONTEND_URL }}\"|" wrangler.toml
           sed -i "/^\[\[env\.production\.d1_databases\]\]/,/^\[/{s|database_id = \"\"|database_id = \"${{ vars.D1_DATABASE_ID }}\"|}" wrangler.toml
+      - name: Check for D1 migration files
+        id: d1_migrations
+        working-directory: apps/worker
+        run: |
+          if find migrations -maxdepth 1 -type f -name '*.sql' | grep -q .; then
+            echo "has_migrations=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_migrations=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Apply D1 migrations
+        if: steps.d1_migrations.outputs.has_migrations == 'true'
+        uses: cloudflare/wrangler-action@v3.14.1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/worker
+          command: d1 migrations apply mlm-dx-db --env production --remote
+          packageManager: pnpm
+      - name: Delete applied D1 migration files
+        if: steps.d1_migrations.outputs.has_migrations == 'true'
+        working-directory: apps/worker
+        run: find migrations -maxdepth 1 -type f -name '*.sql' -delete
+      - name: Commit deleted D1 migration files
+        if: steps.d1_migrations.outputs.has_migrations == 'true'
+        run: |
+          if git diff --quiet -- apps/worker/migrations; then
+            echo "No migration files to delete."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/migrations
+          git commit -m "chore: remove applied d1 migrations [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
       - name: Deploy to Cloudflare Workers with Wrangler
         uses: cloudflare/wrangler-action@v3.14.1
         with:

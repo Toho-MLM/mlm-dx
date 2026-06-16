@@ -16,6 +16,7 @@ export const navigationConfig: NavigationGroup[] = [
     items: [
       { iconName: "CalendarIcon", href: "/reservation", title: "予約表" },
       { iconName: "HelpCircleIcon", href: "/support/reservation", title: "予約の使い方" },
+      { iconName: "CalendarIcon", href: "/admin/reservation-limits", title: "予約上限設定", adminOnly: true },
       { iconName: "BanIcon", href: "/admin/unavailable-periods", title: "予約不可期間設定", adminOnly: true }
     ]
   },
@@ -50,6 +51,7 @@ export const additionalPages: Record<string, string> = {
   '/event': 'イベント管理',
   '/event/setlist': 'セットリスト管理',
   '/event/timeline': 'タイムライン',
+  '/admin/reservation-limits': '予約上限設定',
   '/admin/unavailable-periods': '予約不可期間設定',
 };
 
