@@ -112,51 +112,51 @@ export function BandList() {
         onAdminToggle={handleAdminToggle}
         isAdminMode={isAdminMode}
       />
-      <div className="p-5">
-      <div className="grid gap-5 md:grid-cols-2">
-        {loading ? (
-          <>
-            <div className="flex justify-center">
-              <BandCard
-                band={placeholderMain}
-                memberOptions={[]}
-                onEdit={() => {}}
-                isAdminMode={isAdminMode}
-                loading={true}
-              />
-            </div>
-            <div className="flex justify-center">
-              <BandCard
-                band={placeholderFree}
-                memberOptions={[]}
-                onEdit={() => {}}
-                isAdminMode={isAdminMode}
-                loading={true}
-              />
-            </div>
-          </>
-        ) : (
-          bands.map((band) => (
-            <div className="flex justify-center" key={band.id}>
-              <BandCard
-                band={band}
-                memberOptions={memberOptions}
-                onEdit={handleEdit}
-                onToggleActive={handleToggleActive}
-                isAdminMode={isAdminMode}
-              />
-            </div>
-          ))
-        )}
-      </div>
-      <BandForm
-        band={editingBand}
-        memberOptions={memberOptions}
-        isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
-        onSuccess={handleSuccess}
-        isAdminMode={isAdminMode}
-      />
+      <div className="p-3 sm:p-4">
+        <div className="space-y-2">
+          {loading ? (
+            <>
+              <div className="min-w-0">
+                <BandCard
+                  band={placeholderMain}
+                  memberOptions={[]}
+                  onEdit={() => {}}
+                  isAdminMode={isAdminMode}
+                  loading={true}
+                />
+              </div>
+              <div className="min-w-0">
+                <BandCard
+                  band={placeholderFree}
+                  memberOptions={[]}
+                  onEdit={() => {}}
+                  isAdminMode={isAdminMode}
+                  loading={true}
+                />
+              </div>
+            </>
+          ) : (
+            bands.map((band) => (
+              <div className="min-w-0" key={band.id}>
+                <BandCard
+                  band={band}
+                  memberOptions={memberOptions}
+                  onEdit={handleEdit}
+                  onToggleActive={handleToggleActive}
+                  isAdminMode={isAdminMode}
+                />
+              </div>
+            ))
+          )}
+        </div>
+        <BandForm
+          band={editingBand}
+          memberOptions={memberOptions}
+          isOpen={isFormOpen}
+          onClose={() => setIsFormOpen(false)}
+          onSuccess={handleSuccess}
+          isAdminMode={isAdminMode}
+        />
       </div>
     </>
   )

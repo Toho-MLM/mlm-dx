@@ -41,7 +41,6 @@ next-env.d.ts
 
 # wrangler
 /apps/worker/.wrangler
-/apps/worker/migrations
 /apps/web/.open-next
 /apps/worker/.worker-bundle
 /.pnpm-store

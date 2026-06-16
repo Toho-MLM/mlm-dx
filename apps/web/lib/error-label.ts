@@ -7,6 +7,9 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'INVALID_USER_OR_GROUP': '無効なユーザーまたはグループが指定されています。',
   'RESERVATION_NOT_FOUND': '予約が見つかりません。',
   'RESERVATION_CANNOT_BE_CANCELLED': 'この予約はキャンセルできません。',
+  'RESERVATION_LIMIT_EXCEEDED': 'この期間の予約可能時間を超えています。',
+  'RESERVATION_LIMIT_OVERLAP': '同じ対象の予約上限期間が重複しています。',
+  'RESERVATION_LIMIT_NOT_FOUND': '予約上限が見つかりません。',
   
   // 認証関連エラー
   'NO_AUTHENTICATION_TOKEN': '認証トークンが見つかりません。',

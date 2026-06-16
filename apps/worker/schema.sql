@@ -2,6 +2,7 @@
 -- Unified schema for Cloudflare D1 (SQLite)
 
 -- Drop existing tables (for reset functionality)
+DROP TABLE IF EXISTS reservation_limits;
 DROP TABLE IF EXISTS unavailable_periods;
 DROP TABLE IF EXISTS archives;
 DROP TABLE IF EXISTS setlist_items;
@@ -84,6 +85,23 @@ CREATE TABLE IF NOT EXISTS reservations (
   updated_at DATETIME NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS reservation_limits (
+  id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL CHECK (scope IN ('PERSONAL','GROUP')),
+  limit_type TEXT NOT NULL DEFAULT 'FIXED' CHECK (limit_type IN ('FIXED','ROLLING')),
+  start_datetime DATETIME,
+  end_datetime DATETIME,
+  window_days INTEGER CHECK (window_days IS NULL OR window_days > 0),
+  max_minutes INTEGER NOT NULL CHECK (max_minutes > 0),
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  CHECK (
+    (limit_type = 'FIXED' AND start_datetime IS NOT NULL AND end_datetime IS NOT NULL AND end_datetime > start_datetime AND window_days IS NULL)
+    OR
+    (limit_type = 'ROLLING' AND start_datetime IS NULL AND end_datetime IS NULL AND window_days IS NOT NULL)
+  )
 );
 
 CREATE TABLE IF NOT EXISTS archives (

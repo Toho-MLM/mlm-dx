@@ -24,7 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn, showSuccessToast } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ReservationState, eventStateNames, Event } from '../../types'
-import { validateReservationTime, isReservationDateValid, isReservationTimeValid, type Reservation, type UnavailablePeriod } from '@shared-schemas'
+import { validateReservationTime, isReservationDateValid, isReservationTimeValid, isAdmin, type Reservation, type UnavailablePeriod, type ReservationLimit, type ReservationLimitRemaining } from '@shared-schemas'
 type GroupOption = {
   id: string;
   name: string;
@@ -52,6 +52,8 @@ type CalendarEvent = {
     eventId?: string;
     periodId?: string;
     reason?: string | null;
+    user_id?: string;
+    group_id?: string | null;
     user_name?: string;
     group_name?: string;
     state?: ReservationState;
@@ -178,6 +180,8 @@ export default function Page() {
   const [isGroupsLoading, setIsGroupsLoading] = useState(false)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [unavailablePeriods, setUnavailablePeriods] = useState<CalendarEvent[]>([])
+  const [reservationLimits, setReservationLimits] = useState<ReservationLimit[]>([])
+  const [reservationLimitRemaining, setReservationLimitRemaining] = useState<ReservationLimitRemaining[]>([])
   const { user, loading: authLoading } = useAuth();
   const router = useRouter()
 
@@ -193,10 +197,11 @@ export default function Page() {
         return
       }
       try {
-        const [reservationsResponse, eventsResponse, unavailablePeriodsResponse] = await Promise.all([
+        const [reservationsResponse, eventsResponse, unavailablePeriodsResponse, reservationLimitsResponse] = await Promise.all([
           apiClient.getReservations(isAdminMode),
           apiClient.getEvents(),
-          apiClient.getUnavailablePeriods()
+          apiClient.getUnavailablePeriods(),
+          apiClient.getReservationLimits()
         ]);
         
         if (reservationsResponse.success && reservationsResponse.data) {
@@ -209,6 +214,8 @@ export default function Page() {
             resource: {
               type: 'reservation' as const,
               reservationId: item.id,
+              user_id: item.user_id,
+              group_id: item.group_id,
               user_name: item.user_name || undefined,
               group_name: item.group_name || undefined,
               state: item.state as ReservationState,
@@ -260,6 +267,10 @@ export default function Page() {
           });
           setUnavailablePeriods(periodItems);
         }
+
+        if (reservationLimitsResponse.success && reservationLimitsResponse.data) {
+          setReservationLimits(reservationLimitsResponse.data);
+        }
       } finally {
         setLoading(false)
       }
@@ -279,6 +290,30 @@ export default function Page() {
       setCurrentView('myRange' as View)
     }
   }, [isMobile])
+
+  useEffect(() => {
+    const fetchLimitRemaining = async () => {
+      if (!user) return
+
+      const scope = reservationDraft.group ? 'GROUP' : 'PERSONAL'
+      const targetId = reservationDraft.group || user.id
+      const referenceTime = startOfDay(reservationDraft.date).toISOString()
+
+      try {
+        const response = await apiClient.getReservationLimitRemaining(scope, targetId, referenceTime)
+        if (response.success && response.data) {
+          setReservationLimitRemaining(response.data)
+        } else {
+          setReservationLimitRemaining([])
+        }
+      } catch (err) {
+        console.error('Failed to fetch reservation limit remaining:', err)
+        setReservationLimitRemaining([])
+      }
+    }
+
+    fetchLimitRemaining()
+  }, [user?.id, reservationDraft.group, reservationDraft.date])
 
   const calendarRef = useRef<HTMLDivElement>(null)
 
@@ -636,10 +671,11 @@ export default function Page() {
 
   const fetchReservations = async () => {
     try {
-      const [reservationsResponse, eventsResponse, unavailablePeriodsResponse] = await Promise.all([
+      const [reservationsResponse, eventsResponse, unavailablePeriodsResponse, reservationLimitsResponse] = await Promise.all([
         apiClient.getReservations(isAdminMode),
         apiClient.getEvents(),
-        apiClient.getUnavailablePeriods()
+        apiClient.getUnavailablePeriods(),
+        apiClient.getReservationLimits()
       ]);
       
       if (reservationsResponse.success && reservationsResponse.data) {
@@ -652,6 +688,8 @@ export default function Page() {
           resource: {
             type: 'reservation' as const,
             reservationId: item.id,
+            user_id: item.user_id,
+            group_id: item.group_id,
             user_name: item.user_name || undefined,
             group_name: item.group_name || undefined,
             state: item.state as ReservationState,
@@ -703,6 +741,10 @@ export default function Page() {
         });
         setUnavailablePeriods(periodItems);
       }
+
+      if (reservationLimitsResponse.success && reservationLimitsResponse.data) {
+        setReservationLimits(reservationLimitsResponse.data);
+      }
     } catch (err) {
       console.error('Failed to refetch reservation data:', err);
     }
@@ -733,6 +775,60 @@ export default function Page() {
     setMyGroups([])
   }
 
+  const formatLimitMinutes = (minutes: number) => {
+    const hours = Math.floor(minutes / 60)
+    const remainingMinutes = minutes % 60
+    if (hours === 0) return `${remainingMinutes}分`
+    if (remainingMinutes === 0) return `${hours}時間`
+    return `${hours}時間${remainingMinutes}分`
+  }
+
+  const formatLimitDescription = (limit: ReservationLimit | ReservationLimitRemaining) => {
+    if (limit.limit_type === 'ROLLING') {
+      return `${limit.window_days}日間で${formatLimitMinutes(limit.max_minutes)}`
+    }
+
+    if (limit.start_datetime && limit.end_datetime) {
+      return `${format(new Date(limit.start_datetime), 'M/d H:mm', { locale: jaLocale })} 〜 ${format(new Date(limit.end_datetime), 'M/d H:mm', { locale: jaLocale })}`
+    }
+
+    return '期間限定'
+  }
+
+  const reservationLimitUsage = useMemo(() => {
+    const selectedDayStart = startOfDay(reservationDraft.date)
+    const selectedDayEnd = addDays(selectedDayStart, 1)
+
+    return reservationLimitRemaining
+      .filter((item) => {
+        if (item.limit_type === 'ROLLING') return true
+        if (!item.start_datetime || !item.end_datetime) return false
+        const limitStart = new Date(item.start_datetime)
+        const limitEnd = new Date(item.end_datetime)
+        return limitStart < selectedDayEnd && limitEnd > selectedDayStart
+      })
+      .map((item) => ({
+        limit: item,
+        remainingMinutes: item.remaining_minutes,
+      }))
+  }, [reservationDraft.date, reservationLimitRemaining])
+
+  const visibleReservationLimits = useMemo(() => {
+    const selectedDayStart = startOfDay(reservationDraft.date)
+    const selectedDayEnd = addDays(selectedDayStart, 1)
+
+    return reservationLimits
+      .filter((limit) => {
+        if (limit.limit_type === 'ROLLING') return true
+        if (!limit.start_datetime || !limit.end_datetime) return false
+        const limitStart = new Date(limit.start_datetime)
+        const limitEnd = new Date(limit.end_datetime)
+        return limitStart < selectedDayEnd && limitEnd > selectedDayStart
+      })
+  }, [reservationDraft.date, reservationLimits])
+
+  const shouldShowReservationLimits = user && !isAdmin(user.role) && visibleReservationLimits.length > 0
+
   return (
     <>
       <ReservationPageHeader 
@@ -751,41 +847,58 @@ export default function Page() {
                 <Skeleton className="h-9 w-10" />
               </div>
             ) : (
-              <div className={"p-2 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
-                <Button variant="outline" onClick={() => handleNavigate(subDays(currentDate, getRangeSkip()), currentView)}>
-                  <ChevronLeftIcon className=" h-4 w-4" />
-                </Button>
-                <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline">
-                      {currentView === Views.DAY ? format(currentDate, 'yyyy年M月d日', { locale: jaLocale }) : format(currentDate, 'yyyy年M月', { locale: jaLocale })}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="center">
-                    <CalendarPrimitive
-                      mode="single"
-                      locale={jaLocale}
-                      selected={currentDate}
-                      onSelect={handleDateChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline">
-                      <CalendarRangeIcon className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuCheckboxItem checked={currentView === Views.DAY} onCheckedChange={() => handleViewChange(Views.DAY)}>１日</DropdownMenuCheckboxItem>
-                    <DropdownMenuCheckboxItem checked={currentView === 'myRange' as View} onCheckedChange={() => handleViewChange('myRange' as View)}>３日</DropdownMenuCheckboxItem>
-                    <DropdownMenuCheckboxItem checked={currentView === Views.WEEK} onCheckedChange={() => handleViewChange(Views.WEEK)} disabled={isMobile}>週</DropdownMenuCheckboxItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button variant="outline" onClick={() => handleNavigate(addDays(currentDate, getRangeSkip()), currentView)}>
-                  <ChevronRightIcon className=" h-4 w-4" />
-                </Button> 
+              <div className="space-y-2">
+                <div className={"p-2 pb-0 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
+                  <Button variant="outline" onClick={() => handleNavigate(subDays(currentDate, getRangeSkip()), currentView)}>
+                    <ChevronLeftIcon className=" h-4 w-4" />
+                  </Button>
+                  <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline">
+                        {currentView === Views.DAY ? format(currentDate, 'yyyy年M月d日', { locale: jaLocale }) : format(currentDate, 'yyyy年M月', { locale: jaLocale })}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="center">
+                      <CalendarPrimitive
+                        mode="single"
+                        locale={jaLocale}
+                        selected={currentDate}
+                        onSelect={handleDateChange}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline">
+                        <CalendarRangeIcon className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuCheckboxItem checked={currentView === Views.DAY} onCheckedChange={() => handleViewChange(Views.DAY)}>１日</DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem checked={currentView === 'myRange' as View} onCheckedChange={() => handleViewChange('myRange' as View)}>３日</DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem checked={currentView === Views.WEEK} onCheckedChange={() => handleViewChange(Views.WEEK)} disabled={isMobile}>週</DropdownMenuCheckboxItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button variant="outline" onClick={() => handleNavigate(addDays(currentDate, getRangeSkip()), currentView)}>
+                    <ChevronRightIcon className=" h-4 w-4" />
+                  </Button> 
+                </div>
+                {shouldShowReservationLimits && (
+                  <div className="px-2 pb-2">
+                    <div className="flex flex-wrap gap-2 rounded-md border bg-gray-50 p-2">
+                      {visibleReservationLimits.map((limit) => (
+                        <div key={limit.id} className="flex min-w-0 items-center gap-2 rounded border bg-white px-2 py-1 text-xs text-gray-700">
+                          <Badge variant={limit.scope === 'PERSONAL' ? 'default' : 'outline'} className="shrink-0 text-xs">
+                            {limit.scope === 'PERSONAL' ? '個人' : '団体'}
+                          </Badge>
+                          <span className="font-medium shrink-0">{formatLimitMinutes(limit.max_minutes)}</span>
+                          <span className="truncate">{formatLimitDescription(limit)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </CardDescription>
@@ -988,6 +1101,18 @@ export default function Page() {
                     )}
                   </SelectContent>
                 </Select>
+                {reservationLimitUsage.length > 0 && (
+                  <div className="mt-2 space-y-1 rounded-md border bg-gray-50 p-2 text-xs text-gray-700">
+                    {reservationLimitUsage.map(({ limit, remainingMinutes }) => (
+                      <div key={limit.id} className="flex flex-wrap items-center justify-between gap-2">
+                        <span>{formatLimitDescription(limit)}</span>
+                        <span className="font-medium">
+                          残り {formatLimitMinutes(remainingMinutes)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <Label htmlFor="date" className="text-sm font-medium">予約日</Label>
