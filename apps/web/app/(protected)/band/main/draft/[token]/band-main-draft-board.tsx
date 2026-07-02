@@ -444,10 +444,10 @@ export function BandMainDraftBoard({ token }: { token: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <div className="flex h-[calc(100dvh-64px)] min-h-0 flex-col overflow-hidden">
-        <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4">
-          <Card ref={tableCardRef} className="flex min-h-0 flex-1 overflow-hidden rounded-lg shadow-sm">
-            <CardContent className="min-h-0 flex-1 p-0">
+      <div className="flex h-[calc(100dvh-64px)] min-h-0 min-w-0 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col p-3 sm:p-4">
+          <Card ref={tableCardRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg shadow-sm">
+            <CardContent className="min-h-0 min-w-0 flex-1 p-0">
               <ScrollArea className="h-full w-full whitespace-nowrap">
                 <table className="min-w-max border-collapse text-sm">
                   <thead>
