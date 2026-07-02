@@ -2,7 +2,7 @@ import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { toast } from "sonner"
 import type { Group } from '@/app/types'
-import { Instrument } from '@/app/types'
+import { compareInstruments, Instrument } from '@/app/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -24,10 +24,10 @@ export function formatGroups(raw: unknown[]): Group[] {
       isActive: g.is_active ?? false,
       assignments: (g.assignments || []).map(assignment => ({
         id: assignment.id,
-        instruments: assignment.instruments as Instrument[],
+        instruments: [...assignment.instruments].sort(compareInstruments) as Instrument[],
       })),
     }
-  })
+  }).sort((a, b) => a.name.localeCompare(b.name, 'ja'))
 }
 
 type SuccessToastParams = {

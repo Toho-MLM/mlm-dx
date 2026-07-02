@@ -1,5 +1,6 @@
+import { useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
-import { Group, instrumentColors, instrumentNames } from "@/app/types"
+import { compareInstruments, Group, instrumentColors, instrumentNames } from "@/app/types"
 import { Button } from "@/components/ui/button"
 import { MoreVertical } from "lucide-react"
 import {
@@ -20,6 +21,18 @@ interface BandCardProps {
 }
 
 export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, isAdminMode = false, loading = false }: BandCardProps) {
+  const sortedAssignments = useMemo(() => {
+    return [...band.assignments].sort((a, b) => {
+      const instrumentComparison = compareInstrumentLists(a.instruments, b.instruments)
+      if (instrumentComparison !== 0) return instrumentComparison
+
+      const aName = memberOptions.find(m => m.id === a.id)?.name || ''
+      const bName = memberOptions.find(m => m.id === b.id)?.name || ''
+      if (aName || bName) return aName.localeCompare(bName, 'ja')
+      return a.id.localeCompare(b.id)
+    })
+  }, [band.assignments, memberOptions])
+
   return (
     <div className={`grid w-full grid-cols-[1fr_auto] items-center gap-x-2 rounded-md border px-3 py-2.5 transition-colors sm:grid-cols-[minmax(150px,220px)_1fr_auto] sm:gap-x-3 ${band.isActive ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 opacity-70'}`}>
       <div className="min-w-0 pr-1">
@@ -59,8 +72,8 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, isA
                 <Skeleton className="h-4 w-20" />
               </div>
             ))
-          ) : band.assignments.length > 0 ? (
-            band.assignments.map((bandMember, index) => {
+          ) : sortedAssignments.length > 0 ? (
+            sortedAssignments.map((bandMember, index) => {
               const memberOption = memberOptions?.find(m => m.id === bandMember.id)
               return (
                 <div
@@ -137,4 +150,21 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, isA
       </div>
     </div>
   )
+}
+
+function compareInstrumentLists(a: string[], b: string[]) {
+  const length = Math.max(a.length, b.length)
+
+  for (let index = 0; index < length; index += 1) {
+    const aInstrument = a[index]
+    const bInstrument = b[index]
+
+    if (!aInstrument) return 1
+    if (!bInstrument) return -1
+
+    const comparison = compareInstruments(aInstrument, bInstrument)
+    if (comparison !== 0) return comparison
+  }
+
+  return 0
 }

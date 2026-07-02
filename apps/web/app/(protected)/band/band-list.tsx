@@ -12,6 +12,7 @@ import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
 
 const stripStudentNumberPrefix = (name: string) => name.replace(/^[A-Z0-9]{6}\s+/, '')
+type MemberOption = { id: string; name: string; display_name?: string; real_name?: string; instruments: string[] }
 
 export function BandList() {
   const router = useRouter()
@@ -20,7 +21,7 @@ export function BandList() {
   const [isAdminMode, setIsAdminMode] = useState(false)
   const [bands, setBands] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
-  const [memberOptions, setMemberOptions] = useState<{ id: string; name: string; instruments: string[] }[]>([])
+  const [memberOptions, setMemberOptions] = useState<MemberOption[]>([])
   const placeholderMain: Group = { id: 'placeholder-main', name: '', isMain: true, isActive: true, assignments: [] }
   const placeholderFree: Group = { id: 'placeholder-free', name: '', isMain: false, isActive: true, assignments: [] }
 
@@ -35,7 +36,7 @@ export function BandList() {
       if (membersRes.success) {
         setMemberOptions((membersRes.data || []).map((member) => ({
           ...member,
-          name: stripStudentNumberPrefix(member.name),
+          name: stripStudentNumberPrefix(member.display_name || member.name),
         })))
       }
     } finally {
