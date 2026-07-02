@@ -36,7 +36,8 @@ export const navigationConfig: NavigationGroup[] = [
   {
     label: "バンド",
     items: [
-      { iconName: "UsersIcon", href: "/band", title: "バンド管理" }
+      { iconName: "UsersIcon", href: "/band", title: "バンド管理" },
+      { iconName: "ListIcon", href: "/band/main", title: "本バンド表" }
     ]
   },
   {
@@ -58,6 +59,7 @@ export const additionalPages: Record<string, string> = {
   '/event/timeline': 'タイムライン',
   '/admin/reservation-limits': '予約上限設定',
   '/admin/unavailable-periods': '予約不可期間設定',
+  '/band/main': '本バンド表',
 };
 
 const dynamicBreadcrumbs: Array<{

@@ -76,7 +76,7 @@ export async function getServerMemberList(): Promise<ApiResponse<MemberListItem[
   return serverRequest('/members')
 }
 
-export async function getServerMemberOptions(): Promise<ApiResponse<{ id: string; name: string; instruments: string[] }[]>> {
+export async function getServerMemberOptions(): Promise<ApiResponse<{ id: string; name: string; display_name?: string; real_name?: string; instruments: string[] }[]>> {
   return serverRequest('/members/select')
 }
 
