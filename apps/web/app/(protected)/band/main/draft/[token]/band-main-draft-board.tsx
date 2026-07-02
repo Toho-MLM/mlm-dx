@@ -18,18 +18,18 @@ import { Instrument, instrumentNames } from '@/app/types'
 
 const instruments = [Instrument.vocal, Instrument.guitar, Instrument.keyboard, Instrument.drums, Instrument.bass]
 const instrumentTone: Record<Instrument, string> = {
-  [Instrument.vocal]: 'border-blue-200 bg-blue-50 text-blue-700',
-  [Instrument.guitar]: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  [Instrument.keyboard]: 'border-violet-200 bg-violet-50 text-violet-700',
-  [Instrument.drums]: 'border-amber-200 bg-amber-50 text-amber-700',
-  [Instrument.bass]: 'border-rose-200 bg-rose-50 text-rose-700',
+  [Instrument.vocal]: 'border-blue-200 bg-blue-50 text-black',
+  [Instrument.guitar]: 'border-emerald-200 bg-emerald-50 text-black',
+  [Instrument.keyboard]: 'border-violet-200 bg-violet-50 text-black',
+  [Instrument.drums]: 'border-amber-200 bg-amber-50 text-black',
+  [Instrument.bass]: 'border-rose-200 bg-rose-50 text-black',
 }
 const instrumentChipColor: Record<string, { bg: string; border: string; text: string }> = {
-  VO: { bg: '#dbeafe', border: '#bfdbfe', text: '#1d4ed8' },
-  GT: { bg: '#d1fae5', border: '#a7f3d0', text: '#047857' },
-  KEY: { bg: '#ede9fe', border: '#ddd6fe', text: '#6d28d9' },
-  DR: { bg: '#fef3c7', border: '#fde68a', text: '#b45309' },
-  BA: { bg: '#ffe4e6', border: '#fecdd3', text: '#be123c' },
+  VO: { bg: '#dbeafe', border: '#bfdbfe', text: '#111827' },
+  GT: { bg: '#d1fae5', border: '#a7f3d0', text: '#111827' },
+  KEY: { bg: '#ede9fe', border: '#ddd6fe', text: '#111827' },
+  DR: { bg: '#fef3c7', border: '#fde68a', text: '#111827' },
+  BA: { bg: '#ffe4e6', border: '#fecdd3', text: '#111827' },
 }
 
 type SocketStatus = 'connecting' | 'open' | 'closed'
@@ -352,7 +352,7 @@ export function BandMainDraftBoard({ token }: { token: string }) {
 
   const rightActions = (
     <div className="flex items-center gap-2">
-      <Badge variant="secondary" className="hidden gap-1 sm:flex">
+      <Badge variant="secondary" className="hidden gap-1 text-black sm:flex">
         {socketStatus === 'open' ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
         {socketStatus === 'open' ? '同期中' : '再接続中'}
       </Badge>
@@ -444,14 +444,11 @@ export function BandMainDraftBoard({ token }: { token: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <div
-        className="flex min-h-[calc(100vh-64px)] flex-col"
-        style={{ paddingBottom: clampedTrayHeight + 24 }}
-      >
-        <div className="p-3 sm:p-4">
-          <Card ref={tableCardRef} className="overflow-hidden rounded-lg shadow-sm">
-            <CardContent className="p-0">
-              <ScrollArea className="w-full whitespace-nowrap">
+      <div className="flex h-[calc(100dvh-64px)] min-h-0 flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4">
+          <Card ref={tableCardRef} className="flex min-h-0 flex-1 overflow-hidden rounded-lg shadow-sm">
+            <CardContent className="min-h-0 flex-1 p-0">
+              <ScrollArea className="h-full w-full whitespace-nowrap">
                 <table className="min-w-max border-collapse text-sm">
                   <thead>
                     <tr className="border-b bg-muted/50">
@@ -543,53 +540,57 @@ export function BandMainDraftBoard({ token }: { token: string }) {
               </ScrollArea>
             </CardContent>
           </Card>
-        </div>
-        <div
-          data-drop-target="unassigned"
-          className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:left-[var(--sidebar-width)]"
-          style={{ height: clampedTrayHeight }}
-          onDragOver={(event) => {
-            if (isEditable) event.preventDefault()
-          }}
-          onDrop={(event) => {
-            event.preventDefault()
-            if (!isEditable) return
-            const memberId = event.dataTransfer.getData('text/plain')
-            if (memberId) moveMemberToUnassigned(memberId)
-          }}
-        >
-          <button
-            type="button"
-            className={cn(
-              'absolute left-1/2 top-0 flex h-8 w-40 -translate-x-1/2 cursor-row-resize items-center justify-center bg-transparent sm:h-4 sm:w-24',
-              'after:block after:h-1 after:w-10 after:rounded-full after:bg-muted-foreground/35 after:transition-colors hover:after:bg-muted-foreground/55',
-              isResizingTray && 'after:bg-muted-foreground/60'
-            )}
-            onPointerDown={handleTrayResizeStart}
-            aria-label="未配置エリアの高さを調整"
-          />
-          <div className="mb-2 mt-4 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">未配置</span>
-              <Badge variant="secondary" className="rounded-md">{state.unassignedMemberIds.length}</Badge>
-            </div>
-            {socketStatus !== 'open' && (
-              <Badge variant="outline" className="rounded-md text-muted-foreground">再接続中</Badge>
-            )}
-          </div>
           <div
-            className="flex flex-wrap content-start gap-2 overflow-y-auto rounded-md border p-2"
-            style={{ maxHeight: clampedTrayHeight - 76 }}
+            data-drop-target="unassigned"
+            className="mt-3 flex-none"
+            onDragOver={(event) => {
+              if (isEditable) event.preventDefault()
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              if (!isEditable) return
+              const memberId = event.dataTransfer.getData('text/plain')
+              if (memberId) moveMemberToUnassigned(memberId)
+            }}
           >
-            {state.unassignedMemberIds.map((memberId) => (
-              <MemberChip
-                key={memberId}
-                member={memberMap.get(memberId)}
-                disabled={!isEditable}
-                onReturn={undefined}
-                onTouchDragStart={(x, y) => setTouchDrag({ memberId, x, y })}
+            <div
+              className="relative w-full rounded-lg border bg-background p-3 shadow-sm"
+              style={{ height: clampedTrayHeight }}
+            >
+              <button
+                type="button"
+                className={cn(
+                  'absolute left-1/2 top-0 flex h-8 w-40 -translate-x-1/2 cursor-row-resize items-center justify-center bg-transparent sm:h-4 sm:w-24',
+                  'after:block after:h-1 after:w-10 after:rounded-full after:bg-muted-foreground/35 after:transition-colors hover:after:bg-muted-foreground/55',
+                  isResizingTray && 'after:bg-muted-foreground/60'
+                )}
+                onPointerDown={handleTrayResizeStart}
+                aria-label="未配置エリアの高さを調整"
               />
-            ))}
+              <div className="mb-2 mt-4 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">未配置</span>
+                  <Badge variant="secondary" className="rounded-md text-black">{state.unassignedMemberIds.length}</Badge>
+                </div>
+                {socketStatus !== 'open' && (
+                  <Badge variant="outline" className="rounded-md text-black">再接続中</Badge>
+                )}
+              </div>
+              <div
+                className="flex flex-wrap content-start gap-2 overflow-y-auto rounded-md border p-2"
+                style={{ maxHeight: clampedTrayHeight - 76 }}
+              >
+                {state.unassignedMemberIds.map((memberId) => (
+                  <MemberChip
+                    key={memberId}
+                    member={memberMap.get(memberId)}
+                    disabled={!isEditable}
+                    onReturn={undefined}
+                    onTouchDragStart={(x, y) => setTouchDrag({ memberId, x, y })}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
         {touchDrag && touchDragMember && (
@@ -633,12 +634,12 @@ function MemberChip({ member, disabled, onReturn, onTouchDragStart, compact = fa
         disabled && 'opacity-70'
       )}
     >
-      <span className="truncate">{member.name}</span>
       {onReturn && !disabled && (
         <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={onReturn}>
           <X className="h-3.5 w-3.5" />
         </Button>
       )}
+      <span className="truncate">{member.name}</span>
     </div>
   )
 }
@@ -652,7 +653,7 @@ function getMemberChipStyle(member: BandDraftMember): React.CSSProperties {
     return {
       background: 'hsl(var(--background))',
       borderColor: 'hsl(var(--border))',
-      color: 'hsl(var(--foreground))',
+      color: '#111827',
     }
   }
 
@@ -703,18 +704,9 @@ function getDefaultTrayHeightBounds(): TrayHeightBounds {
   return { min, max }
 }
 
-function getMeasuredTrayHeightBounds(tableElement: HTMLElement | null): TrayHeightBounds {
+function getMeasuredTrayHeightBounds(_tableElement: HTMLElement | null): TrayHeightBounds {
   const fallback = getDefaultTrayHeightBounds()
-  if (typeof window === 'undefined' || !tableElement) {
-    return fallback
-  }
-
-  const gap = window.innerWidth >= 768 ? 20 : 12
-  const tableBottom = tableElement.getBoundingClientRect().bottom
-  const maxFromTableBottom = Math.floor(window.innerHeight - tableBottom - gap)
-  const max = Math.max(fallback.min, maxFromTableBottom)
-
-  return { min: fallback.min, max }
+  return fallback
 }
 
 function cloneCells(cells: BandDraftState['cells']): BandDraftState['cells'] {
