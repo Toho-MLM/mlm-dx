@@ -1,4 +1,5 @@
 import type { Bindings } from '../index';
+import { broadcastReservationRealtimeEvent } from './reservation-realtime';
 
 export interface ProcessResult {
   state: string;
@@ -137,7 +138,7 @@ export async function processReservationState(
   }
 }
 
-export async function processTodayReservations(env: Bindings): Promise<void> {
+export async function processTodayReservations(env: Bindings): Promise<number> {
   const now = new Date();
   const todayJST = getJSTDateString(now);
   
@@ -157,6 +158,7 @@ export async function processTodayReservations(env: Bindings): Promise<void> {
   `).bind(startOfDayIso, endOfDayIso).all<{ id: string | number; start_time: string; end_time: string; state: string }>();
   
   console.log(`Found ${pendingReservations.results.length} pending reservations for today`);
+  let changedCount = 0;
   
   for (const reservation of pendingReservations.results) {
     try {
@@ -182,6 +184,7 @@ export async function processTodayReservations(env: Bindings): Promise<void> {
             updateTime, 
             reservation.id
           ).run();
+          changedCount += 1;
           
           console.log(`Updated reservation ${reservation.id} to ${processResult.state} with adjusted time`);
         } else {
@@ -190,6 +193,7 @@ export async function processTodayReservations(env: Bindings): Promise<void> {
             SET state = ?, updated_at = ?
             WHERE id = ?
           `).bind(processResult.state, updateTime, reservation.id).run();
+          changedCount += 1;
           
           console.log(`Updated reservation ${reservation.id} to ${processResult.state}`);
         }
@@ -198,16 +202,27 @@ export async function processTodayReservations(env: Bindings): Promise<void> {
       console.error(`Error processing reservation ${reservation.id}:`, error);
     }
   }
+
+  if (changedCount > 0) {
+    await broadcastReservationRealtimeEvent(env, 'reservations_changed');
+  }
   
   console.log('Daily reservation processing completed');
+  return changedCount;
 }
 
-export async function processPastReservations(env: Bindings): Promise<void> {
+export async function processPastReservations(env: Bindings): Promise<number> {
   const now = new Date();
   const todayJST = getJSTDateString(now);
   const todayRange = getJSTDayRange(todayJST);
   const startOfTodayIso = todayRange.startUTC.toISOString();
   const updateTime = new Date().toISOString();
+  const targetCount = await env.DB.prepare(`
+    SELECT COUNT(*) as count
+    FROM reservations
+    WHERE state IN ('CONFIRMED', 'PENDING')
+      AND end_time < ?
+  `).bind(startOfTodayIso).first<{ count: number }>();
 
   await env.DB.prepare(`
     UPDATE reservations
@@ -215,6 +230,13 @@ export async function processPastReservations(env: Bindings): Promise<void> {
     WHERE state IN ('CONFIRMED', 'PENDING')
       AND end_time < ?
   `).bind(updateTime, startOfTodayIso).run();
+
+  const changedCount = Number(targetCount?.count ?? 0);
+  if (changedCount > 0) {
+    await broadcastReservationRealtimeEvent(env, 'reservations_changed');
+  }
+
+  return changedCount;
 }
 
 export async function deleteOldReservations(env: Bindings): Promise<void> {

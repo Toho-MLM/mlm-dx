@@ -173,6 +173,14 @@ class ApiClient {
     return apiUrl.toString()
   }
 
+  getReservationsWebSocketUrl(): string {
+    const apiUrl = new URL(this.getBaseUrl())
+    apiUrl.protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+    apiUrl.pathname = '/reservations/ws'
+    apiUrl.search = ''
+    return apiUrl.toString()
+  }
+
   async getMemberList(): Promise<ApiResponse<MemberListItem[]>> {
     return httpClient.get<ApiResponse<MemberListItem[]>>('/members')
   }
