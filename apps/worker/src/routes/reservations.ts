@@ -5,6 +5,7 @@ import { isUserInGroup } from './groups';
 import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationLimitRemainingSchema, isAdmin } from '../../../../lib/shared-schemas';
 import { processReservationState, isTodayInJST, getJSTDateString, getJSTDayRange } from '../utils/reservation-processor';
 import { requireAdmin } from '../utils/admin';
+import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
 
 const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -275,6 +276,20 @@ async function getReservationLimitRemaining(
 
 reservationRoutes.use('*', requireAuth);
 
+reservationRoutes.get('/ws', async (c) => {
+  const upgradeHeader = c.req.header('Upgrade');
+  if (upgradeHeader?.toLowerCase() !== 'websocket') {
+    return c.text('Expected Upgrade: websocket', 426);
+  }
+
+  const id = c.env.RESERVATION_ROOM.idFromName('global');
+  const room = c.env.RESERVATION_ROOM.get(id);
+  const typedRoom = room as unknown as {
+    fetch(request: globalThis.Request): Promise<globalThis.Response>;
+  };
+  return await typedRoom.fetch(c.req.raw as unknown as globalThis.Request);
+});
+
 reservationRoutes.get('/', async (c) => {
   try {
     const user = c.get('user');
@@ -456,6 +471,8 @@ reservationRoutes.post('/', async (c) => {
       }
     }
 
+    await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+
     return c.json({ success: true });
   } catch (error) {
     console.error('Error creating reservation:', error);
@@ -566,6 +583,8 @@ reservationRoutes.post('/limits', async (c) => {
       now
     ).run();
 
+    await broadcastReservationRealtimeEvent(c.env, 'reservation_limits_changed');
+
     return c.json({ success: true });
   } catch (error) {
     console.error('Error creating reservation limit:', error);
@@ -627,6 +646,8 @@ reservationRoutes.put('/limits/:id', async (c) => {
       limitId
     ).run();
 
+    await broadcastReservationRealtimeEvent(c.env, 'reservation_limits_changed');
+
     return c.json({ success: true });
   } catch (error) {
     console.error('Error updating reservation limit:', error);
@@ -657,6 +678,8 @@ reservationRoutes.delete('/limits/:id', async (c) => {
     await c.env.DB.prepare(
       'DELETE FROM reservation_limits WHERE id = ?'
     ).bind(limitId).run();
+
+    await broadcastReservationRealtimeEvent(c.env, 'reservation_limits_changed');
 
     return c.json({ success: true });
   } catch (error) {
@@ -801,6 +824,8 @@ reservationRoutes.post('/:id/cancel', async (c) => {
         'UPDATE reservations SET state = ?, updated_at = ? WHERE id = ?'
       ).bind('DECLINED', now, reservationId).run();
 
+      await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+
       return c.json({ success: true });
     } else {
       const cancellable = await isReservationCancellable(c.env, user.id, reservation);
@@ -813,6 +838,8 @@ reservationRoutes.post('/:id/cancel', async (c) => {
       await c.env.DB.prepare(
         'UPDATE reservations SET state = ?, updated_at = ? WHERE id = ?'
       ).bind('CANCELLED', now, reservationId).run();
+
+      await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
 
       return c.json({ success: true });
     }

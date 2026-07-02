@@ -17,6 +17,7 @@ import { setlistRoutes } from './routes/setlist';
 import { timelineRoutes } from './routes/timeline';
 import { bandMainDraftRoutes } from './routes/band-main-draft';
 export { BandDraftRoom } from './durable-objects/band-draft-room';
+export { ReservationRoom } from './durable-objects/reservation-room';
 import type { User } from './types';
 import { UserSchema } from './schemas';
 import { processTodayReservations, processPastReservations, deleteOldReservations } from './utils/reservation-processor';
@@ -35,6 +36,7 @@ export type Bindings = {
   NODE_ENV: string;
   AUTH_URL: string;
   BAND_DRAFT_ROOM: DurableObjectNamespace;
+  RESERVATION_ROOM: DurableObjectNamespace;
 };
 
 export type Variables = {
