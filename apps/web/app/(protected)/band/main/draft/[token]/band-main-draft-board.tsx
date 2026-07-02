@@ -24,6 +24,13 @@ const instrumentTone: Record<Instrument, string> = {
   [Instrument.drums]: 'border-amber-200 bg-amber-50 text-amber-700',
   [Instrument.bass]: 'border-rose-200 bg-rose-50 text-rose-700',
 }
+const instrumentChipColor: Record<string, { bg: string; border: string; text: string }> = {
+  VO: { bg: '#dbeafe', border: '#bfdbfe', text: '#1d4ed8' },
+  GT: { bg: '#d1fae5', border: '#a7f3d0', text: '#047857' },
+  KEY: { bg: '#ede9fe', border: '#ddd6fe', text: '#6d28d9' },
+  DR: { bg: '#fef3c7', border: '#fde68a', text: '#b45309' },
+  BA: { bg: '#ffe4e6', border: '#fecdd3', text: '#be123c' },
+}
 
 type SocketStatus = 'connecting' | 'open' | 'closed'
 
@@ -40,9 +47,13 @@ export function BandMainDraftBoard({ token }: { token: string }) {
   const [loading, setLoading] = useState(true)
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('connecting')
   const [touchDrag, setTouchDrag] = useState<{ memberId: string; x: number; y: number } | null>(null)
+  const [trayHeight, setTrayHeight] = useState(getDefaultTrayHeight)
+  const [trayBounds, setTrayBounds] = useState(getDefaultTrayHeightBounds)
+  const [isResizingTray, setIsResizingTray] = useState(false)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const tableCardRef = useRef<HTMLDivElement | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -51,6 +62,7 @@ export function BandMainDraftBoard({ token }: { token: string }) {
   }, [members])
   const isEditable = socketStatus === 'open'
   const touchDragMember = touchDrag ? memberMap.get(touchDrag.memberId) : undefined
+  const clampedTrayHeight = clampTrayHeight(trayHeight, trayBounds)
 
   const loadDraft = useCallback(async () => {
     try {
@@ -248,6 +260,51 @@ export function BandMainDraftBoard({ token }: { token: string }) {
     }
   }, [finishTouchDrag, touchDrag])
 
+  useEffect(() => {
+    const handleResize = () => {
+      const nextBounds = getMeasuredTrayHeightBounds(tableCardRef.current)
+      setTrayBounds(nextBounds)
+      setTrayHeight((current) => clampTrayHeight(current, nextBounds))
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const nextBounds = getMeasuredTrayHeightBounds(tableCardRef.current)
+      setTrayBounds(nextBounds)
+      setTrayHeight((current) => clampTrayHeight(current, nextBounds))
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [state?.columns.length, state?.unassignedMemberIds.length, loading])
+
+  const handleTrayResizeStart = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    setIsResizingTray(true)
+    const startY = event.clientY
+    const startHeight = clampedTrayHeight
+    const bounds = trayBounds
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      moveEvent.preventDefault()
+      setTrayHeight(clampTrayHeight(startHeight + startY - moveEvent.clientY, bounds))
+    }
+
+    const handlePointerUp = () => {
+      setIsResizingTray(false)
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: false })
+    window.addEventListener('pointerup', handlePointerUp, { once: true })
+    window.addEventListener('pointercancel', handlePointerUp, { once: true })
+  }, [clampedTrayHeight, trayBounds])
+
   const handleFinalize = useCallback(() => {
     startTransition(async () => {
       try {
@@ -387,9 +444,12 @@ export function BandMainDraftBoard({ token }: { token: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <div className="flex min-h-[calc(100vh-64px)] flex-col pb-36">
+      <div
+        className="flex min-h-[calc(100vh-64px)] flex-col"
+        style={{ paddingBottom: clampedTrayHeight + 24 }}
+      >
         <div className="p-3 sm:p-4">
-          <Card className="overflow-hidden rounded-lg shadow-sm">
+          <Card ref={tableCardRef} className="overflow-hidden rounded-lg shadow-sm">
             <CardContent className="p-0">
               <ScrollArea className="w-full whitespace-nowrap">
                 <table className="min-w-max border-collapse text-sm">
@@ -487,6 +547,7 @@ export function BandMainDraftBoard({ token }: { token: string }) {
         <div
           data-drop-target="unassigned"
           className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:left-[var(--sidebar-width)]"
+          style={{ height: clampedTrayHeight }}
           onDragOver={(event) => {
             if (isEditable) event.preventDefault()
           }}
@@ -497,7 +558,17 @@ export function BandMainDraftBoard({ token }: { token: string }) {
             if (memberId) moveMemberToUnassigned(memberId)
           }}
         >
-          <div className="mb-2 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            className={cn(
+              'absolute left-1/2 top-0 flex h-8 w-40 -translate-x-1/2 cursor-row-resize items-center justify-center bg-transparent sm:h-4 sm:w-24',
+              'after:block after:h-1 after:w-10 after:rounded-full after:bg-muted-foreground/35 after:transition-colors hover:after:bg-muted-foreground/55',
+              isResizingTray && 'after:bg-muted-foreground/60'
+            )}
+            onPointerDown={handleTrayResizeStart}
+            aria-label="未配置エリアの高さを調整"
+          />
+          <div className="mb-2 mt-4 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">未配置</span>
               <Badge variant="secondary" className="rounded-md">{state.unassignedMemberIds.length}</Badge>
@@ -506,7 +577,10 @@ export function BandMainDraftBoard({ token }: { token: string }) {
               <Badge variant="outline" className="rounded-md text-muted-foreground">再接続中</Badge>
             )}
           </div>
-          <div className="flex max-h-24 flex-wrap gap-2 overflow-y-auto rounded-md border bg-muted/30 p-2">
+          <div
+            className="flex flex-wrap content-start gap-2 overflow-y-auto rounded-md border p-2"
+            style={{ maxHeight: clampedTrayHeight - 76 }}
+          >
             {state.unassignedMemberIds.map((memberId) => (
               <MemberChip
                 key={memberId}
@@ -520,8 +594,12 @@ export function BandMainDraftBoard({ token }: { token: string }) {
         </div>
         {touchDrag && touchDragMember && (
           <div
-            className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-background px-2 py-1.5 text-sm shadow-lg"
-            style={{ left: touchDrag.x, top: touchDrag.y }}
+            className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 rounded-md border px-2 py-1.5 text-sm font-medium shadow-lg"
+            style={{
+              left: touchDrag.x,
+              top: touchDrag.y,
+              ...getMemberChipStyle(touchDragMember),
+            }}
           >
             {touchDragMember.name}
           </div>
@@ -533,6 +611,7 @@ export function BandMainDraftBoard({ token }: { token: string }) {
 
 function MemberChip({ member, disabled, onReturn, onTouchDragStart, compact = false }: { member?: BandDraftMember; disabled: boolean; onReturn?: () => void; onTouchDragStart?: (x: number, y: number) => void; compact?: boolean }) {
   if (!member) return null
+  const style = getMemberChipStyle(member)
 
   return (
     <div
@@ -546,10 +625,11 @@ function MemberChip({ member, disabled, onReturn, onTouchDragStart, compact = fa
         event.preventDefault()
         onTouchDragStart?.(event.clientX, event.clientY)
       }}
+      style={style}
       className={cn(
-        'inline-flex h-9 max-w-full touch-none select-none items-center gap-1 rounded-md border bg-background px-2 text-sm shadow-sm transition-colors',
+        'inline-flex h-9 max-w-full touch-none select-none items-center gap-1 rounded-md border px-2 text-sm font-medium shadow-sm transition-[box-shadow,transform,opacity]',
         compact && 'w-full',
-        !disabled && 'cursor-grab hover:bg-accent hover:text-accent-foreground active:cursor-grabbing',
+        !disabled && 'cursor-grab hover:shadow-md active:cursor-grabbing active:scale-[0.98]',
         disabled && 'opacity-70'
       )}
     >
@@ -561,6 +641,80 @@ function MemberChip({ member, disabled, onReturn, onTouchDragStart, compact = fa
       )}
     </div>
   )
+}
+
+function getMemberChipStyle(member: BandDraftMember): React.CSSProperties {
+  const colors = member.instruments
+    .map((instrument) => instrumentChipColor[instrument])
+    .filter((color): color is { bg: string; border: string; text: string } => Boolean(color))
+
+  if (colors.length === 0) {
+    return {
+      background: 'hsl(var(--background))',
+      borderColor: 'hsl(var(--border))',
+      color: 'hsl(var(--foreground))',
+    }
+  }
+
+  if (colors.length === 1) {
+    return {
+      background: colors[0].bg,
+      borderColor: colors[0].border,
+      color: colors[0].text,
+    }
+  }
+
+  const step = 100 / colors.length
+  const stops = colors.flatMap((color, index) => {
+    const start = Math.round(index * step)
+    const end = Math.round((index + 1) * step)
+    return [`${color.bg} ${start}%`, `${color.bg} ${end}%`]
+  })
+
+  return {
+    background: `linear-gradient(135deg, ${stops.join(', ')})`,
+    borderColor: colors[0].border,
+    color: '#111827',
+  }
+}
+
+type TrayHeightBounds = { min: number; max: number }
+
+function clampTrayHeight(height: number, bounds: TrayHeightBounds = getDefaultTrayHeightBounds()): number {
+  return Math.max(bounds.min, Math.min(bounds.max, height))
+}
+
+function getDefaultTrayHeight(): number {
+  if (typeof window === 'undefined') return 176
+  const bounds = getDefaultTrayHeightBounds()
+  return clampTrayHeight(window.innerWidth >= 768 ? 220 : 152, bounds)
+}
+
+function getDefaultTrayHeightBounds(): TrayHeightBounds {
+  if (typeof window === 'undefined') {
+    return { min: 128, max: 320 }
+  }
+
+  const isDesktop = window.innerWidth >= 768
+  const min = isDesktop ? 144 : 112
+  const fallbackMax = Math.floor(window.innerHeight * (isDesktop ? 0.34 : 0.38))
+  const max = Math.max(min, fallbackMax)
+
+  return { min, max }
+}
+
+function getMeasuredTrayHeightBounds(tableElement: HTMLElement | null): TrayHeightBounds {
+  const fallback = getDefaultTrayHeightBounds()
+  if (typeof window === 'undefined' || !tableElement) {
+    return fallback
+  }
+
+  const gap = window.innerWidth >= 768 ? 20 : 12
+  const tableBottom = tableElement.getBoundingClientRect().bottom
+  const maxFromTableBottom = Math.floor(window.innerHeight - tableBottom - gap)
+  const max = Math.max(fallback.min, maxFromTableBottom)
+
+  return { min: fallback.min, max }
 }
 
 function cloneCells(cells: BandDraftState['cells']): BandDraftState['cells'] {
