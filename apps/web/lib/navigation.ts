@@ -10,6 +10,11 @@ export interface NavigationGroup {
   items: NavigationItem[];
 }
 
+export interface BreadcrumbItem {
+  title: string;
+  href?: string;
+}
+
 export const navigationConfig: NavigationGroup[] = [
   {
     label: "ホール予約",
@@ -55,6 +60,19 @@ export const additionalPages: Record<string, string> = {
   '/admin/unavailable-periods': '予約不可期間設定',
 };
 
+const dynamicBreadcrumbs: Array<{
+  match: (pathname: string) => boolean;
+  items: BreadcrumbItem[];
+}> = [
+  {
+    match: (pathname) => pathname.startsWith('/band/main/draft/'),
+    items: [
+      { title: 'バンド' },
+      { title: '本バンド決め' },
+    ],
+  },
+];
+
 export const getPageTitle = (pathname: string): string => {
   for (const group of navigationConfig) {
     for (const item of group.items) {
@@ -65,4 +83,24 @@ export const getPageTitle = (pathname: string): string => {
   }
   
   return additionalPages[pathname] || 'MLM DX';
+};
+
+export const getBreadcrumbItems = (pathname: string): BreadcrumbItem[] => {
+  const dynamicMatch = dynamicBreadcrumbs.find((entry) => entry.match(pathname));
+  if (dynamicMatch) {
+    return dynamicMatch.items;
+  }
+
+  for (const group of navigationConfig) {
+    for (const item of group.items) {
+      if (item.href === pathname) {
+        return [
+          { title: group.label },
+          { title: item.title },
+        ];
+      }
+    }
+  }
+
+  return [{ title: additionalPages[pathname] || 'MLM DX' }];
 };

@@ -35,7 +35,7 @@ pnpm install
 #### ローカル開発環境
 ```bash
 # ローカルD1データベースは自動的に作成されます（wrangler dev実行時）
-# マイグレーションを実行
+# 既存データを保持してマイグレーションを実行
 pnpm run db:migrate:local
 
 # サンプルデータを投入（オプション）
@@ -50,7 +50,7 @@ pnpm run db:setup:local
 # 本番環境D1データベースを作成
 pnpm run db:create:prod
 
-# マイグレーションを実行
+# 既存データを保持してマイグレーションを実行
 pnpm run db:migrate:prod
 
 # サンプルデータを投入（オプション）
@@ -302,16 +302,16 @@ pnpm run build:worker
 
 #### ローカル環境
 ```bash
-# ローカルDB設定（マイグレーション）
+# ローカルDB設定（既存データを保持してマイグレーション）
 pnpm run db:setup:local
 
 # 個別実行
 pnpm run db:migrate:local
 pnpm run seed -- user add --email="your-email@example.com" --grade=2
 
-# CLIツールを使用したローカルDBセットアップ
+# CLIツールを使用したローカルDBマイグレーション
 cd apps/worker
-wrangler d1 execute mlm-dx-db --file=./schema.sql --local
+wrangler d1 migrations apply mlm-dx-db --local
 cd ../..
 pnpm run seed -- user add --email="your-email@example.com" --grade=2 --local
 ```
@@ -448,8 +448,13 @@ node scripts/seed.js group reset
 **手動セットアップ（上記が失敗する場合）:**
 ```bash
 cd apps/worker
-wrangler d1 execute mlm-dx-db --file=./schema.sql --local
+wrangler d1 migrations apply mlm-dx-db --local
 cd ../..
+```
+
+**DBを初期化したい場合（既存データは削除されます）:**
+```bash
+pnpm run db:reset:local
 ```
 
 **トラブルシューティング:**
