@@ -17,7 +17,14 @@ interface BandPageHeaderProps {
   className?: string;
 }
 
-export function BandPageHeader({ onAddBand, onOpenMainDraft, onRefresh, onAdminToggle, isAdminMode = false, className }: BandPageHeaderProps) {
+export function BandPageHeader({
+  onAddBand,
+  onOpenMainDraft,
+  onRefresh,
+  onAdminToggle,
+  isAdminMode = false,
+  className,
+}: BandPageHeaderProps) {
   const { user } = useAuth();
   const isUserAdmin = user && isAdmin(user.role);
 

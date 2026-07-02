@@ -116,6 +116,8 @@ groupRoutes.get('/', async (c) => {
     
     const adminParam = c.req.query('admin');
     const isAdminMode = adminParam === 'true';
+    const mainParam = c.req.query('main');
+    const isMainOnly = mainParam === 'true';
     
     if (isAdminMode) {
       try {
@@ -128,7 +130,15 @@ groupRoutes.get('/', async (c) => {
     let query: string;
     let params: any[];
     
-    if (isAdminMode) {
+    if (isMainOnly) {
+      query = `
+        SELECT DISTINCT g.*
+        FROM groups g
+        WHERE g.is_main = TRUE AND g.is_active = TRUE
+        ORDER BY g.name ASC
+      `;
+      params = [];
+    } else if (isAdminMode) {
       query = `
         SELECT DISTINCT g.*
         FROM groups g

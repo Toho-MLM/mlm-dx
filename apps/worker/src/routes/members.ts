@@ -358,10 +358,13 @@ memberRoutes.get('/select', async (c) => {
 
     const processedMembers = members.results.map((member: any) => {
       const displayName = `${member.student_number} ${member.nickname || member.name}`;
+      const realName = `${member.student_number} ${member.name}`;
       const instruments = safeJsonParse<string[]>(member.instruments || '[]', []);
       return {
         id: member.id,
         name: displayName,
+        display_name: displayName,
+        real_name: realName,
         instruments,
       };
     });
