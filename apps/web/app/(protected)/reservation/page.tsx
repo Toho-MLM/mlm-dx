@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useMemo, useEffect } from 'react'
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
 import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, startOfDay, subDays } from 'date-fns'
@@ -185,6 +185,26 @@ export default function Page() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter()
 
+  const fetchReservationLimitRemaining = useCallback(async () => {
+    if (!user) return
+
+    const scope = reservationDraft.group ? 'GROUP' : 'PERSONAL'
+    const targetId = reservationDraft.group || user.id
+    const referenceTime = startOfDay(reservationDraft.date).toISOString()
+
+    try {
+      const response = await apiClient.getReservationLimitRemaining(scope, targetId, referenceTime)
+      if (response.success && response.data) {
+        setReservationLimitRemaining(response.data)
+      } else {
+        setReservationLimitRemaining([])
+      }
+    } catch (err) {
+      console.error('Failed to fetch reservation limit remaining:', err)
+      setReservationLimitRemaining([])
+    }
+  }, [user, reservationDraft.group, reservationDraft.date])
+
   useEffect(() => {
     const init = async () => {
       if (authLoading) return
@@ -292,28 +312,8 @@ export default function Page() {
   }, [isMobile])
 
   useEffect(() => {
-    const fetchLimitRemaining = async () => {
-      if (!user) return
-
-      const scope = reservationDraft.group ? 'GROUP' : 'PERSONAL'
-      const targetId = reservationDraft.group || user.id
-      const referenceTime = startOfDay(reservationDraft.date).toISOString()
-
-      try {
-        const response = await apiClient.getReservationLimitRemaining(scope, targetId, referenceTime)
-        if (response.success && response.data) {
-          setReservationLimitRemaining(response.data)
-        } else {
-          setReservationLimitRemaining([])
-        }
-      } catch (err) {
-        console.error('Failed to fetch reservation limit remaining:', err)
-        setReservationLimitRemaining([])
-      }
-    }
-
-    fetchLimitRemaining()
-  }, [user?.id, reservationDraft.group, reservationDraft.date])
+    fetchReservationLimitRemaining()
+  }, [fetchReservationLimitRemaining])
 
   const calendarRef = useRef<HTMLDivElement>(null)
 
@@ -749,6 +749,93 @@ export default function Page() {
       console.error('Failed to refetch reservation data:', err);
     }
   }
+
+  const fetchRealtimeReservationData = useCallback(async (includeReservationLimits: boolean) => {
+    try {
+      const [reservationsResponse, reservationLimitsResponse] = await Promise.all([
+        apiClient.getReservations(isAdminMode),
+        includeReservationLimits ? apiClient.getReservationLimits() : Promise.resolve(null)
+      ])
+
+      if (reservationsResponse.success && reservationsResponse.data) {
+        const formattedData: CalendarEvent[] = (reservationsResponse.data as Reservation[]).map((item) => ({
+          id: item.id,
+          title: item.group_name || item.user_name || '予約',
+          start: new Date(item.start_time),
+          end: new Date(item.end_time),
+          allDay: false,
+          resource: {
+            type: 'reservation' as const,
+            reservationId: item.id,
+            user_id: item.user_id,
+            group_id: item.group_id,
+            user_name: item.user_name || undefined,
+            group_name: item.group_name || undefined,
+            state: item.state as ReservationState,
+            cancellable: item.cancellable,
+          },
+        }))
+        setReservationData(formattedData)
+      }
+
+      if (reservationLimitsResponse?.success && reservationLimitsResponse.data) {
+        setReservationLimits(reservationLimitsResponse.data)
+      }
+
+      await fetchReservationLimitRemaining()
+    } catch (err) {
+      console.error('Failed to sync realtime reservation data:', err)
+    }
+  }, [fetchReservationLimitRemaining, isAdminMode])
+
+  useEffect(() => {
+    if (!user) return
+
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let closedByComponent = false
+    let socket: WebSocket | null = null
+
+    const connect = () => {
+      socket = new WebSocket(apiClient.getReservationsWebSocketUrl())
+
+      socket.onmessage = (event) => {
+        let message: { type?: string }
+        try {
+          message = JSON.parse(String(event.data)) as { type?: string }
+        } catch {
+          return
+        }
+
+        if (message.type === 'reservations_changed') {
+          void fetchRealtimeReservationData(false)
+        }
+
+        if (message.type === 'reservation_limits_changed') {
+          void fetchRealtimeReservationData(true)
+        }
+      }
+
+      socket.onclose = () => {
+        if (!closedByComponent) {
+          reconnectTimer = setTimeout(connect, 3000)
+        }
+      }
+
+      socket.onerror = () => {
+        socket?.close()
+      }
+    }
+
+    connect()
+
+    return () => {
+      closedByComponent = true
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+      }
+      socket?.close()
+    }
+  }, [fetchRealtimeReservationData, user])
 
 
   const { customViews } = useMemo(
