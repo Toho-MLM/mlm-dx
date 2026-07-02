@@ -78,7 +78,7 @@ function Content({ children }: { children: React.ReactNode }) {
           </Sidebar>
         ) : (!userBlocksSidebar && <AppSidebar />)
       )}
-      <div className="w-full">
+      <div className="min-w-0 flex-1">
         {children}
       </div>
       <Toaster />
