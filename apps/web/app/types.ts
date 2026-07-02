@@ -59,6 +59,30 @@ export const instrumentNames: Record<Instrument, string> = {
     [Instrument.bass]: 'ベース',
 }
 
+export const instrumentOrder: Instrument[] = [
+    Instrument.vocal,
+    Instrument.guitar,
+    Instrument.keyboard,
+    Instrument.drums,
+    Instrument.bass,
+]
+
+export const instrumentOrderRank: Record<Instrument, number> = {
+    [Instrument.vocal]: 0,
+    [Instrument.guitar]: 1,
+    [Instrument.keyboard]: 2,
+    [Instrument.drums]: 3,
+    [Instrument.bass]: 4,
+}
+
+export function compareInstruments(a: string, b: string) {
+    const aRank = instrumentOrderRank[a as Instrument] ?? Number.MAX_SAFE_INTEGER
+    const bRank = instrumentOrderRank[b as Instrument] ?? Number.MAX_SAFE_INTEGER
+
+    if (aRank !== bRank) return aRank - bRank
+    return a.localeCompare(b, 'ja')
+}
+
 export const roleNames: Record<Role, string> = {
   [Role.manager]: '部長',
   [Role.chief]: '主務',
@@ -171,5 +195,4 @@ export interface SetlistItem {
     created_at: string
     updated_at: string
 }
-
 

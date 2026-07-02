@@ -3,8 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
-import { Group, GroupMember, Instrument, Member, instrumentColors, instrumentNames } from "@/app/types"
-import { X, Plus, ChevronDown, Loader2, AlertTriangle, UserRoundMinus, CircleCheckBig, XCircle } from 'lucide-react'
+import { compareInstruments, Group, GroupMember, Instrument, instrumentColors, instrumentNames, instrumentOrder } from "@/app/types"
+import { X, Plus, ChevronDown, UserRoundMinus, CircleCheckBig, XCircle } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +27,26 @@ interface BandFormProps {
   isAdminMode?: boolean
 }
 
+function sortGroupMembersByName(
+  members: GroupMember[],
+  memberOptions: { id: string; name: string; instruments: string[] }[]
+) {
+  return [...members].sort((a, b) => {
+    const aName = memberOptions.find(m => m.id === a.id)?.name || ''
+    const bName = memberOptions.find(m => m.id === b.id)?.name || ''
+
+    if (aName || bName) return aName.localeCompare(bName, 'ja')
+    return a.id.localeCompare(b.id)
+  })
+}
+
+function sortGroupMemberInstruments(members: GroupMember[]) {
+  return members.map(member => ({
+    ...member,
+    instruments: [...member.instruments].sort(compareInstruments) as Instrument[],
+  }))
+}
+
 export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAdminMode = false }: BandFormProps) {
   const [name, setName] = useState(band?.name || '')
   const [bandMembers, setBandMembers] = useState<GroupMember[]>(band?.assignments || [])
@@ -37,7 +57,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
   useEffect(() => {
     if (band) {
       setName(band.name)
-      setBandMembers(band.assignments)
+      setBandMembers(sortGroupMemberInstruments(band.assignments))
       setIsMain(band.isMain ? 'main' : 'free')
     } else {
       setName('')
@@ -101,7 +121,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
   }
 
   const addMember = async (memberId: string) => {
-    setBandMembers([...bandMembers, { id: memberId, instruments: [] }])
+    setBandMembers(sortGroupMembersByName([...bandMembers, { id: memberId, instruments: [] }], memberOptions))
   }
 
   const removeMember = async (memberId: string) => {
@@ -111,7 +131,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
   const addInstrument = async (memberId: string, instrument: Instrument) => {
     setBandMembers(bandMembers.map(bm => {
       if (bm.id === memberId) {
-        return { ...bm, instruments: [...bm.instruments, instrument] }
+        return { ...bm, instruments: [...bm.instruments, instrument].sort(compareInstruments) as Instrument[] }
       }
       return bm
     }))
@@ -130,8 +150,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
     const memberOption = memberOptions.find(m => m.id === bandMember.id);
     const memberInstruments = memberOption?.instruments || [];
 
-    const allInstruments = Object.values(Instrument);
-    const unassignedInstruments = allInstruments.filter(i => !bandMember.instruments.includes(i));
+    const unassignedInstruments = instrumentOrder.filter(i => !bandMember.instruments.includes(i));
 
     return unassignedInstruments.sort((a, b) => {
       const aIsMemberInstrument = memberInstruments.includes(a);
@@ -139,15 +158,20 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
 
       if (aIsMemberInstrument && !bIsMemberInstrument) return -1;
       if (!aIsMemberInstrument && bIsMemberInstrument) return 1;
-      return 0;
+      return compareInstruments(a, b);
     });
   }
 
   const availableMembers = useMemo(() => {
     return memberOptions
       .filter(m => !bandMembers.some(bm => bm.id === m.id))
-      .filter(m => m.id != null);
+      .filter(m => m.id != null)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
   }, [memberOptions, bandMembers]);
+
+  const sortedBandMembers = useMemo(() => {
+    return sortGroupMembersByName(bandMembers, memberOptions)
+  }, [bandMembers, memberOptions])
 
   const isFormValid = useMemo(() => {
     if (name.trim() === '') return false;
@@ -201,7 +225,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
           )}
           <div className="space-y-2">
             <h3 className="font-medium">メンバー</h3>
-            {bandMembers.map((bandMember, index) => {
+            {sortedBandMembers.map((bandMember, index) => {
               const memberOption = memberOptions.find(m => m.id === bandMember.id);
               return (
                 <div key={`${bandMember.id}-${index}`} className="flex items-center space-x-2 p-2 border rounded">
@@ -330,4 +354,3 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
     </Dialog>
   )
 }
-
