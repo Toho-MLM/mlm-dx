@@ -30,6 +30,22 @@ type CreateEntryRequest = SharedSchemas.CreateEntryRequest
 type UnavailablePeriod = SharedSchemas.UnavailablePeriod
 type CreateUnavailablePeriodRequest = SharedSchemas.CreateUnavailablePeriodRequest
 type ApiResponse<T> = SharedSchemas.ApiResponse<T>
+export type BandDraftState = {
+  columns: Array<{ id: string; name: string }>
+  cells: Record<string, Record<string, string[]>>
+  unassignedMemberIds: string[]
+  version: number
+}
+export type BandDraftMember = { id: string; name: string; instruments: string[] }
+export type BandMainDraft = {
+  id: string
+  shareToken: string
+  state: BandDraftState
+  members: BandDraftMember[]
+  canFinalize: boolean
+  canDelete: boolean
+  updatedAt: string
+}
 export type PasskeyCredential = {
   id: string
   credential_id: string
@@ -44,6 +60,9 @@ type PasskeyRegistrationStartResponse = { challengeId: string; options: PublicKe
 type PasskeyLoginStartResponse = { success: true; challengeId: string; options: PublicKeyCredentialRequestOptionsJSON } | { success: false }
 
 class ApiClient {
+  private getBaseUrl(): string {
+    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+  }
 
   async checkFirstUser(): Promise<{ canCreate: boolean }> {
     return httpClient.get<{ canCreate: boolean }>('/auth/check-first-user')
@@ -128,6 +147,30 @@ class ApiClient {
 
   async deleteGroup(id: string): Promise<ApiResponse<void>> {
     return httpClient.delete<ApiResponse<void>>(`/groups/${id}`)
+  }
+
+  async createBandMainDraft(): Promise<ApiResponse<{ shareToken: string }>> {
+    return httpClient.post<ApiResponse<{ shareToken: string }>>('/band/main/draft')
+  }
+
+  async getBandMainDraft(token: string): Promise<ApiResponse<BandMainDraft>> {
+    return httpClient.get<ApiResponse<BandMainDraft>>(`/band/main/draft/${token}`)
+  }
+
+  async finalizeBandMainDraft(token: string): Promise<ApiResponse<{ createdCount: number }>> {
+    return httpClient.post<ApiResponse<{ createdCount: number }>>(`/band/main/draft/${token}/finalize`)
+  }
+
+  async deleteBandMainDraft(token: string): Promise<ApiResponse<void>> {
+    return httpClient.delete<ApiResponse<void>>(`/band/main/draft/${token}`)
+  }
+
+  getBandMainDraftWebSocketUrl(token: string): string {
+    const apiUrl = new URL(this.getBaseUrl())
+    apiUrl.protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+    apiUrl.pathname = `/band/main/draft/${token}/ws`
+    apiUrl.search = ''
+    return apiUrl.toString()
   }
 
   async getMemberList(): Promise<ApiResponse<MemberListItem[]>> {

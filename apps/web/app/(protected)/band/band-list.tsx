@@ -1,14 +1,18 @@
 "use client"
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { BandCard } from "./band-card"
 import { BandForm } from "./band-form"
 import { Group } from "@/app/types"
 import { apiClient } from '@/lib/api'
 import { BandPageHeader } from '@/components/band-page-header'
 import { formatGroups } from '@/lib/utils'
+import { toast } from 'sonner'
+import { translateError } from '@/lib/error-label'
 
 export function BandList() {
+  const router = useRouter()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBand, setEditingBand] = useState<Group | undefined>()
   const [isAdminMode, setIsAdminMode] = useState(false)
@@ -77,6 +81,23 @@ export function BandList() {
     setIsFormOpen(true)
   }
 
+  const handleOpenMainDraft = async () => {
+    try {
+      const response = await apiClient.createBandMainDraft()
+      if (response.success && response.data?.shareToken) {
+        router.push(`/band/main/draft/${response.data.shareToken}`)
+        return
+      }
+      toast.error('本バンド決めを作成できませんでした', {
+        description: response.error ? translateError(response.error) : undefined,
+      })
+    } catch (error) {
+      toast.error('本バンド決めを作成できませんでした', {
+        description: translateError((error as Error).message),
+      })
+    }
+  }
+
   const handleSuccess = async () => {
     await fetchBandsAndMembers(isAdminMode)
   }
@@ -108,6 +129,7 @@ export function BandList() {
     <>
       <BandPageHeader 
         onAddBand={handleAdd}
+        onOpenMainDraft={handleOpenMainDraft}
         onRefresh={handleRefresh}
         onAdminToggle={handleAdminToggle}
         isAdminMode={isAdminMode}
