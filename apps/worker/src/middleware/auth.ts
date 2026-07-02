@@ -28,12 +28,12 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
     const userData: User = {
       id: fullUser.id,
       name: fullUser.name,
-      nickname: payload.nickname,
+      nickname: fullUser.nickname ?? payload.nickname ?? null,
       email: fullUser.email,
       picture: avatarUrl,
-      instruments: safeJsonParse(fullUser.instruments, []),
+      instruments: safeJsonParse(fullUser.instruments, []) as User['instruments'],
       grade: Number(fullUser.grade),
-      role: fullUser.role,
+      role: fullUser.role as User['role'],
       created_at: fullUser.created_at,
       updated_at: fullUser.updated_at || '',
     };

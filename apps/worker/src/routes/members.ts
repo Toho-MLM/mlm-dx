@@ -343,7 +343,7 @@ memberRoutes.get('/select', async (c) => {
     const members = await c.env.DB.prepare(`
       SELECT 
         u.id,
-        COALESCE(u.nickname, u.name) as name,
+        u.name,
         u.nickname,
         u.instruments,
         u.grade,
@@ -357,7 +357,7 @@ memberRoutes.get('/select', async (c) => {
     `).bind(currentUserId).all();
 
     const processedMembers = members.results.map((member: any) => {
-      const displayName = member.nickname || member.name;
+      const displayName = `${member.student_number} ${member.nickname || member.name}`;
       const instruments = safeJsonParse<string[]>(member.instruments || '[]', []);
       return {
         id: member.id,
