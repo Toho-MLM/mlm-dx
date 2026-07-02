@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { D1Database, ExecutionContext, ScheduledEvent } from '@cloudflare/workers-types';
+import type { D1Database, DurableObjectNamespace, ExecutionContext, ScheduledEvent } from '@cloudflare/workers-types';
 import type { Context } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
@@ -15,10 +15,13 @@ import { eventRoutes } from './routes/events';
 import { entriesRoutes } from './routes/entries';
 import { setlistRoutes } from './routes/setlist';
 import { timelineRoutes } from './routes/timeline';
+import { bandMainDraftRoutes } from './routes/band-main-draft';
+export { BandDraftRoom } from './durable-objects/band-draft-room';
 import type { User } from './types';
 import { UserSchema } from './schemas';
 import { processTodayReservations, processPastReservations, deleteOldReservations } from './utils/reservation-processor';
 import { deleteExpiredEvents } from './utils/event-processor';
+import { deleteOldMainBandDrafts } from './utils/main-band-draft-processor';
 import { requireAuth } from './middleware/auth';
 import { createRegistrationOptions, verifyRegistration, createAuthenticationOptions, verifyAuthentication, nowISO, futureISO, encodeBase64Url } from './utils/passkey';
 
@@ -31,6 +34,7 @@ export type Bindings = {
   FRONTEND_URL: string;
   NODE_ENV: string;
   AUTH_URL: string;
+  BAND_DRAFT_ROOM: DurableObjectNamespace;
 };
 
 export type Variables = {
@@ -781,6 +785,7 @@ app.route('/events', eventRoutes);
 app.route('/entries', entriesRoutes);
 app.route('/setlist', setlistRoutes);
 app.route('/timeline', timelineRoutes);
+app.route('/band/main/draft', bandMainDraftRoutes);
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
@@ -795,6 +800,7 @@ export default {
         await processTodayReservations(env);
         await deleteExpiredEvents(env);
         await deleteOldReservations(env);
+        await deleteOldMainBandDrafts(env);
         break;
     }
   }

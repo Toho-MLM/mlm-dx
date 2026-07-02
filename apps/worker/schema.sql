@@ -4,6 +4,7 @@
 -- Drop existing tables (for reset functionality)
 DROP TABLE IF EXISTS reservation_limits;
 DROP TABLE IF EXISTS unavailable_periods;
+DROP TABLE IF EXISTS main_band_drafts;
 DROP TABLE IF EXISTS archives;
 DROP TABLE IF EXISTS setlist_items;
 DROP TABLE IF EXISTS entries;
@@ -72,6 +73,16 @@ CREATE TABLE IF NOT EXISTS group_member_instruments (
   FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   UNIQUE(group_id, user_id, instrument)
+);
+
+CREATE TABLE IF NOT EXISTS main_band_drafts (
+  id TEXT PRIMARY KEY,
+  share_token TEXT NOT NULL UNIQUE,
+  state_json TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS reservations (

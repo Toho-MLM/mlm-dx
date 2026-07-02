@@ -20,6 +20,8 @@
     "db:create:prod": "pnpm --filter mlm-dx-worker run db:create",
     "db:migrate:local": "pnpm --filter mlm-dx-worker run db:migrate:local",
     "db:migrate:prod": "pnpm --filter mlm-dx-worker run db:migrate",
+    "db:reset:local": "pnpm --filter mlm-dx-worker run db:reset:local",
+    "db:reset:prod": "pnpm --filter mlm-dx-worker run db:reset",
     "db:setup:local": "pnpm run db:migrate:local",
     "db:setup:prod": "pnpm run db:migrate:prod",
     "seed": "node scripts/seed.js",

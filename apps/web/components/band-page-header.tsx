@@ -4,19 +4,20 @@ import React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { PlusIcon } from 'lucide-react';
+import { ListChecks, PlusIcon } from 'lucide-react';
 import { useAuth } from '@/app/context/AuthContext';
 import { isAdmin } from '../../../lib/shared-schemas';
 
 interface BandPageHeaderProps {
   onAddBand?: () => void;
+  onOpenMainDraft?: () => void;
   onRefresh?: () => void;
   onAdminToggle?: (isAdminMode: boolean) => void;
   isAdminMode?: boolean;
   className?: string;
 }
 
-export function BandPageHeader({ onAddBand, onRefresh, onAdminToggle, isAdminMode = false, className }: BandPageHeaderProps) {
+export function BandPageHeader({ onAddBand, onOpenMainDraft, onRefresh, onAdminToggle, isAdminMode = false, className }: BandPageHeaderProps) {
   const { user } = useAuth();
   const isUserAdmin = user && isAdmin(user.role);
 
@@ -36,6 +37,12 @@ export function BandPageHeader({ onAddBand, onRefresh, onAdminToggle, isAdminMod
           <span className="text-sm text-gray-600">管理者モード</span>
           <Switch checked={isAdminMode} onCheckedChange={handleAdminToggle} />
         </div>
+      )}
+      {isUserAdmin && isAdminMode && onOpenMainDraft && (
+        <Button variant="outline" size="sm" onClick={onOpenMainDraft}>
+          <ListChecks className="h-4 w-4" />
+          本バンド決め
+        </Button>
       )}
       {onAddBand && (
         <Button size="sm" onClick={onAddBand}>

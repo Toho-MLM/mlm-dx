@@ -9,8 +9,10 @@
     "build": "wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
     "db:create": "wrangler d1 create mlm-dx-db",
-    "db:migrate": "wrangler d1 execute mlm-dx-db --file=./schema.sql",
-    "db:migrate:local": "wrangler d1 execute mlm-dx-db --file=./schema.sql --local",
+    "db:migrate": "wrangler d1 migrations apply mlm-dx-db --remote",
+    "db:migrate:local": "wrangler d1 migrations apply mlm-dx-db --local",
+    "db:reset": "wrangler d1 execute mlm-dx-db --file=./schema.sql",
+    "db:reset:local": "wrangler d1 execute mlm-dx-db --file=./schema.sql --local",
     "lint": "eslint src --ext .ts,.tsx",
     "type-check": "tsc --noEmit"
   },
