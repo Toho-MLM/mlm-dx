@@ -11,6 +11,8 @@ import { formatGroups } from '@/lib/utils'
 import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
 
+const stripStudentNumberPrefix = (name: string) => name.replace(/^[A-Z0-9]{6}\s+/, '')
+
 export function BandList() {
   const router = useRouter()
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -30,7 +32,12 @@ export function BandList() {
         apiClient.getMemberOptions(),
       ])
       if (groupsRes.success) setBands(formatGroups(groupsRes.data || []))
-      if (membersRes.success) setMemberOptions(membersRes.data || [])
+      if (membersRes.success) {
+        setMemberOptions((membersRes.data || []).map((member) => ({
+          ...member,
+          name: stripStudentNumberPrefix(member.name),
+        })))
+      }
     } finally {
       setLoading(false)
     }
