@@ -10,6 +10,9 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'RESERVATION_LIMIT_EXCEEDED': 'この期間の予約可能時間を超えています。',
   'RESERVATION_LIMIT_OVERLAP': '同じ対象の予約上限期間が重複しています。',
   'RESERVATION_LIMIT_NOT_FOUND': '予約上限が見つかりません。',
+  'EXTERNAL_NOT_FOUND': '外部スタジオが見つかりません。',
+  'EXTERNAL_PERIOD_CONFLICT': '外部スタジオの利用期間外です。',
+  'MEMBER_RESERVATION_CONFLICT_WARNING': '同じ時間帯に予約済みのメンバーがいます。',
   
   // 認証関連エラー
   'NO_AUTHENTICATION_TOKEN': '認証トークンが見つかりません。',

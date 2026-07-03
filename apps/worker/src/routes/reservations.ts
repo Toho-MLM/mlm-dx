@@ -110,7 +110,18 @@ async function getUsedReservationMinutes(
           AND end_time > ?
       `).bind(targetId, rangeEndTime, rangeStartTime).all<{ start_time: string; end_time: string }>();
 
-  return reservations.results.reduce((total, reservation) => (
+  const externalReservations = scope === 'GROUP'
+    ? await env.DB.prepare(`
+        SELECT start_time, end_time
+        FROM external_reservations
+        WHERE group_id = ?
+          AND state IN ('PENDING', 'CONFIRMED')
+          AND start_time < ?
+          AND end_time > ?
+      `).bind(targetId, rangeEndTime, rangeStartTime).all<{ start_time: string; end_time: string }>()
+    : { results: [] as Array<{ start_time: string; end_time: string }> };
+
+  return [...reservations.results, ...externalReservations.results].reduce((total, reservation) => (
     total + calculateOverlapMinutes(
       reservation.start_time,
       reservation.end_time,
@@ -120,7 +131,7 @@ async function getUsedReservationMinutes(
   ), 0);
 }
 
-async function hasReservationLimitConflict(
+export async function hasReservationLimitConflict(
   env: Bindings,
   userId: string,
   groupId: string | null,

@@ -65,6 +65,40 @@ export const ReservationSchema = z.object({
   cancellable: z.number(),
 });
 
+export const ExternalSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  start_datetime: z.string(),
+  end_datetime: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const ExternalReservationSchema = z.object({
+  id: z.string(),
+  external_studio_id: z.string(),
+  external_name: z.string().nullable(),
+  user_id: z.string(),
+  group_id: z.string(),
+  user_name: z.string().nullable(),
+  group_name: z.string().nullable(),
+  start_time: z.string(),
+  end_time: z.string(),
+  state: z.string(),
+  cancellable: z.number(),
+});
+
+export const ExternalReservationConflictSchema = z.object({
+  member_id: z.string(),
+  member_name: z.string(),
+  reservation_id: z.string(),
+  reservation_type: z.enum(['HALL', 'EXTERNAL']),
+  reservation_name: z.string(),
+  location_name: z.string(),
+  start_time: z.string(),
+  end_time: z.string(),
+});
+
 export const UserWithInstrumentsSchema = UserSchema.extend({
   student_number: z.string(),
 });
@@ -180,6 +214,34 @@ export const CreateReservationRequestSchema = z.object({
   end_time: z.string(),
   group_id: z.string().optional(),
   admin: z.boolean().optional(),
+});
+
+export const CreateExternalRequestSchema = z.object({
+  names: z.array(z.string().trim().min(1)).min(1),
+  start_datetime: z.string(),
+  end_datetime: z.string(),
+}).refine((data) => {
+  const start = new Date(data.start_datetime);
+  const end = new Date(data.end_datetime);
+  return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start;
+}, {
+  message: "終了日時は開始日時より後である必要があります。",
+});
+
+export const CreateExternalReservationRequestSchema = z.object({
+  external_studio_id: z.string().min(1),
+  group_id: z.string().min(1),
+  start_time: z.string(),
+  end_time: z.string(),
+  admin: z.boolean().optional(),
+  acknowledged_member_conflicts: z.boolean().optional(),
+});
+
+export const CheckExternalReservationRequestSchema = z.object({
+  external_studio_id: z.string().min(1),
+  group_id: z.string().min(1),
+  start_time: z.string(),
+  end_time: z.string(),
 });
 
 export function isAdmin(role: string | undefined): boolean {
@@ -455,6 +517,9 @@ export type Group = z.infer<typeof GroupSchema>;
 export type GroupWithMemberRole = z.infer<typeof GroupWithMemberRoleSchema>;
 export type Member = z.infer<typeof MemberSchema>;
 export type Reservation = z.infer<typeof ReservationSchema>;
+export type External = z.infer<typeof ExternalSchema>;
+export type ExternalReservation = z.infer<typeof ExternalReservationSchema>;
+export type ExternalReservationConflict = z.infer<typeof ExternalReservationConflictSchema>;
 export type Archive = z.infer<typeof ArchiveSchema>;
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
 export type UserHolderResponse = z.infer<typeof UserHolderResponseSchema>;
@@ -464,6 +529,9 @@ export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
 export type AddMemberToGroupRequest = z.infer<typeof AddMemberToGroupRequestSchema>;
 export type AssignmentMap = z.infer<typeof AssignmentMapSchema>;
 export type CreateReservationRequest = z.infer<typeof CreateReservationRequestSchema>;
+export type CreateExternalRequest = z.infer<typeof CreateExternalRequestSchema>;
+export type CreateExternalReservationRequest = z.infer<typeof CreateExternalReservationRequestSchema>;
+export type CheckExternalReservationRequest = z.infer<typeof CheckExternalReservationRequestSchema>;
 export type CreateArchiveRequest = z.infer<typeof CreateArchiveRequestSchema>;
 export type UpdateArchiveRequest = z.infer<typeof UpdateArchiveRequestSchema>;
 export type Event = z.infer<typeof EventSchema>;
