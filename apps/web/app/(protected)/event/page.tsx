@@ -112,15 +112,6 @@ export default function Page() {
     }
   }
 
-  const handleRefresh = async () => {
-    try {
-      await fetchEvents()
-      fetchAggregates()
-    } catch (error) {
-      console.error('Failed to refresh events:', error)
-    }
-  }
-
   const handleEntriesChanged = () => {
     fetchAggregates()
   }
@@ -143,7 +134,6 @@ export default function Page() {
       <>
         <EventPageHeader 
           onAddEvent={isUserAdmin ? handleAdd : undefined}
-          onRefresh={handleRefresh}
         />
         <div className="p-4 pt-0 mx-auto">
           <EventProvider value={{ groupOptions: [], userEntries: [], loadingEntries: true, onEntriesChanged: handleEntriesChanged }}>
@@ -162,7 +152,6 @@ export default function Page() {
     <>
       <EventPageHeader 
         onAddEvent={isUserAdmin ? handleAdd : undefined}
-        onRefresh={handleRefresh}
       />
       <div className="p-4 pt-0 mx-auto">
       <EventProvider value={{ groupOptions, userEntries: entries, loadingEntries, onEntriesChanged: handleEntriesChanged, onEdit: isUserAdmin ? handleEdit : undefined, onDelete: isUserAdmin ? handleDeleteClick : undefined }}>
@@ -213,4 +202,3 @@ export default function Page() {
     </>
   )
 }
-
