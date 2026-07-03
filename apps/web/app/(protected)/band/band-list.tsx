@@ -10,15 +10,20 @@ import { BandPageHeader } from '@/components/band-page-header'
 import { formatGroups } from '@/lib/utils'
 import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
+import { useAdminMode } from '@/hooks/use-admin-mode'
+import { useAuth } from '@/app/context/AuthContext'
+import { isAdmin } from '@shared-schemas'
 
 const stripStudentNumberPrefix = (name: string) => name.replace(/^[A-Z0-9]{6}\s+/, '')
 type MemberOption = { id: string; name: string; display_name?: string; real_name?: string; instruments: string[] }
 
 export function BandList() {
   const router = useRouter()
+  const { user } = useAuth()
+  const isUserAdmin = user && isAdmin(user.role)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBand, setEditingBand] = useState<Group | undefined>()
-  const [isAdminMode, setIsAdminMode] = useState(false)
+  const [isAdminMode, setIsAdminMode] = useAdminMode(isUserAdmin)
   const [bands, setBands] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
   const [memberOptions, setMemberOptions] = useState<MemberOption[]>([])
@@ -123,14 +128,6 @@ export function BandList() {
 
   const handleAdminToggle = async (checked: boolean) => {
     setIsAdminMode(checked)
-    try {
-      const response = await apiClient.getUserGroups(checked)
-      if (response.success) {
-        setBands(formatGroups(response.data || []))
-      }
-    } catch (error) {
-      console.error('Failed to refresh groups:', error)
-    }
   }
 
   return (

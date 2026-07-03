@@ -9,6 +9,9 @@ export const {
   GroupWithMemberRoleSchema,
   MemberSchema,
   ReservationSchema,
+  ExternalSchema,
+  ExternalReservationSchema,
+  ExternalReservationConflictSchema,
   ArchiveSchema,
   SessionResponseSchema,
   UserHolderResponseSchema,
@@ -17,6 +20,9 @@ export const {
   UpdateUserRequestSchema,
   AddMemberToGroupRequestSchema,
   CreateReservationRequestSchema,
+  CreateExternalRequestSchema,
+  CreateExternalReservationRequestSchema,
+  CheckExternalReservationRequestSchema,
   CreateArchiveRequestSchema,
   UpdateArchiveRequestSchema,
   ApiResponseSchema,
@@ -41,6 +47,9 @@ export type GroupWithMemberRole = SharedSchemas.GroupWithMemberRole;
 export type Member = SharedSchemas.Member;
 export type MemberListItem = z.infer<typeof MemberListItemSchema>;
 export type Reservation = SharedSchemas.Reservation;
+export type External = SharedSchemas.External;
+export type ExternalReservation = SharedSchemas.ExternalReservation;
+export type ExternalReservationConflict = SharedSchemas.ExternalReservationConflict;
 export type Archive = SharedSchemas.Archive;
 export type SessionResponse = SharedSchemas.SessionResponse;
 export type UserHolderResponse = SharedSchemas.UserHolderResponse;
@@ -49,6 +58,9 @@ export type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest;
 export type UpdateUserRequest = SharedSchemas.UpdateUserRequest;
 export type AddMemberToGroupRequest = SharedSchemas.AddMemberToGroupRequest;
 export type CreateReservationRequest = SharedSchemas.CreateReservationRequest;
+export type CreateExternalRequest = SharedSchemas.CreateExternalRequest;
+export type CreateExternalReservationRequest = SharedSchemas.CreateExternalReservationRequest;
+export type CheckExternalReservationRequest = SharedSchemas.CheckExternalReservationRequest;
 export type CreateArchiveRequest = SharedSchemas.CreateArchiveRequest;
 export type UpdateArchiveRequest = SharedSchemas.UpdateArchiveRequest;
 export type ApiResponse<T> = SharedSchemas.ApiResponse<T>;

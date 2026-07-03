@@ -68,6 +68,7 @@ import { ReservationPageHeader } from '@/components/reservation-page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { useRouter } from 'next/navigation'
+import { useAdminMode } from '@/hooks/use-admin-mode'
 
 
 const locales = {
@@ -156,7 +157,6 @@ ThreeDayView.title = (date: Date) => {
 
 export default function Page() {
   const [isMobile, setIsMobile] = useState(false)
-  const [isAdminMode, setIsAdminMode] = useState(false)
   const [reservationDraft, setReservationDraft] = useState<ReservationDraft>({
     date: startOfDay(new Date()),
     group: null as string | null,
@@ -183,6 +183,7 @@ export default function Page() {
   const [reservationLimits, setReservationLimits] = useState<ReservationLimit[]>([])
   const [reservationLimitRemaining, setReservationLimitRemaining] = useState<ReservationLimitRemaining[]>([])
   const { user, loading: authLoading } = useAuth();
+  const [isAdminMode, setIsAdminMode] = useAdminMode(user && isAdmin(user.role));
   const router = useRouter()
 
   const fetchReservationLimitRemaining = useCallback(async () => {
@@ -922,6 +923,7 @@ export default function Page() {
         onAddReservation={handleAddReservation}
         onRefresh={handleRefresh}
         onAdminToggle={handleAdminToggle}
+        isAdminMode={isAdminMode}
       />
       <div className="h-[calc(100vh-4rem)] flex flex-col" ref={calendarRef} style={{ position: 'relative' }}>
         <div className="flex-1 mx-auto px-5 w-full max-w-none">

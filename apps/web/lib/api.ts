@@ -6,6 +6,9 @@ import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequest
 type User = SharedSchemas.User
 type Group = SharedSchemas.Group
 type Reservation = SharedSchemas.Reservation
+type External = SharedSchemas.External
+type ExternalReservation = SharedSchemas.ExternalReservation
+type ExternalReservationConflict = SharedSchemas.ExternalReservationConflict
 type ReservationLimit = SharedSchemas.ReservationLimit
 type ReservationLimitRemaining = SharedSchemas.ReservationLimitRemaining
 type ReservationLimitScope = SharedSchemas.ReservationLimitScope
@@ -14,6 +17,9 @@ type CreateGroupRequest = SharedSchemas.CreateGroupRequest
 type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest
 type UpdateUserRequest = SharedSchemas.UpdateUserRequest
 type CreateReservationRequest = SharedSchemas.CreateReservationRequest
+type CreateExternalRequest = SharedSchemas.CreateExternalRequest
+type CreateExternalReservationRequest = SharedSchemas.CreateExternalReservationRequest
+type CheckExternalReservationRequest = SharedSchemas.CheckExternalReservationRequest
 type CreateReservationLimitRequest = SharedSchemas.CreateReservationLimitRequest
 type UpdateReservationLimitRequest = SharedSchemas.UpdateReservationLimitRequest
 type CreateArchiveRequest = SharedSchemas.CreateArchiveRequest
@@ -247,6 +253,46 @@ class ApiClient {
   async cancelReservation(reservationId: string, admin: boolean = false): Promise<ApiResponse<void>> {
     const params = admin ? '?admin=true' : '';
     return httpClient.post<ApiResponse<void>>(`/reservations/${reservationId}/cancel${params}`)
+  }
+
+  async getExternals(): Promise<ApiResponse<External[]>> {
+    return httpClient.get<ApiResponse<External[]>>('/reservation/external/studios')
+  }
+
+  async createExternals(data: CreateExternalRequest): Promise<ApiResponse<void>> {
+    SharedSchemas.CreateExternalRequestSchema.parse(data)
+    return httpClient.post<ApiResponse<void>>('/reservation/external/studios/bulk', data)
+  }
+
+  async deleteExternal(id: string): Promise<ApiResponse<void>> {
+    return httpClient.delete<ApiResponse<void>>(`/reservation/external/studios/${id}`)
+  }
+
+  async getExternalReservations(admin: boolean = false): Promise<ApiResponse<ExternalReservation[]>> {
+    const params = admin ? '?admin=true' : ''
+    return httpClient.get<ApiResponse<ExternalReservation[]>>(`/reservations/external${params}`)
+  }
+
+  async checkExternalReservation(data: CheckExternalReservationRequest): Promise<ApiResponse<ExternalReservationConflict[]>> {
+    SharedSchemas.CheckExternalReservationRequestSchema.parse(data)
+    return httpClient.post<ApiResponse<ExternalReservationConflict[]>>('/reservations/external/check', data)
+  }
+
+  async createExternalReservation(data: CreateExternalReservationRequest): Promise<ApiResponse<ExternalReservationConflict[]>> {
+    SharedSchemas.CreateExternalReservationRequestSchema.parse(data)
+    try {
+      return await httpClient.post<ApiResponse<ExternalReservationConflict[]>>('/reservations/external', data)
+    } catch (error) {
+      if (error instanceof Error) {
+        return { success: false, error: error.message }
+      }
+      return { success: false, error: 'UNKNOWN_ERROR' }
+    }
+  }
+
+  async cancelExternalReservation(reservationId: string, admin: boolean = false): Promise<ApiResponse<void>> {
+    const params = admin ? '?admin=true' : ''
+    return httpClient.post<ApiResponse<void>>(`/reservations/external/${reservationId}/cancel${params}`)
   }
 
   async getReservationLimits(): Promise<ApiResponse<ReservationLimit[]>> {

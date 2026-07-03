@@ -3,10 +3,10 @@
 import React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { ListChecks, PlusIcon } from 'lucide-react';
 import { useAuth } from '@/app/context/AuthContext';
 import { isAdmin } from '../../../lib/shared-schemas';
+import { AdminModeToggle } from '@/components/admin-mode-toggle';
 
 interface BandPageHeaderProps {
   onAddBand?: () => void;
@@ -40,10 +40,7 @@ export function BandPageHeader({
         </Button>
       )}
       {isUserAdmin && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">管理者モード</span>
-          <Switch checked={isAdminMode} onCheckedChange={handleAdminToggle} />
-        </div>
+        <AdminModeToggle checked={isAdminMode} onCheckedChange={handleAdminToggle} />
       )}
       {isUserAdmin && isAdminMode && onOpenMainDraft && (
         <Button variant="outline" size="sm" onClick={onOpenMainDraft}>

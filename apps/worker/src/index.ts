@@ -10,6 +10,7 @@ import { userRoutes } from './routes/users';
 import { groupRoutes } from './routes/groups';
 import { memberRoutes } from './routes/members';
 import { reservationRoutes } from './routes/reservations';
+import { externalReservationRoutes, externalStudioRoutes } from './routes/external';
 import { archiveRoutes } from './routes/archive';
 import { eventRoutes } from './routes/events';
 import { entriesRoutes } from './routes/entries';
@@ -21,6 +22,7 @@ export { ReservationRoom } from './durable-objects/reservation-room';
 import type { User } from './types';
 import { UserSchema } from './schemas';
 import { processTodayReservations, processPastReservations, deleteOldReservations } from './utils/reservation-processor';
+import { deleteExpiredExternals, processPastExternalReservations, processTodayExternalReservations } from './utils/external-processor';
 import { deleteExpiredEvents } from './utils/event-processor';
 import { deleteOldMainBandDrafts } from './utils/main-band-draft-processor';
 import { requireAuth } from './middleware/auth';
@@ -782,6 +784,8 @@ app.route('/me', userRoutes);
 app.route('/groups', groupRoutes);
 app.route('/members', memberRoutes);
 app.route('/reservations', reservationRoutes);
+app.route('/reservation/external', externalStudioRoutes);
+app.route('/reservations/external', externalReservationRoutes);
 app.route('/archive', archiveRoutes);
 app.route('/events', eventRoutes);
 app.route('/entries', entriesRoutes);
@@ -799,9 +803,12 @@ export default {
     switch (event.cron) {
       case "0 15 * * *":
         await processPastReservations(env);
+        await processPastExternalReservations(env);
         await processTodayReservations(env);
+        await processTodayExternalReservations(env);
         await deleteExpiredEvents(env);
         await deleteOldReservations(env);
+        await deleteExpiredExternals(env);
         await deleteOldMainBandDrafts(env);
         break;
     }

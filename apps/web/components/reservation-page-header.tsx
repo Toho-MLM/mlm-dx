@@ -3,16 +3,18 @@
 import React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { CalendarPlus, CalendarX2 } from 'lucide-react';
+import { CalendarPlus, CalendarX2, Building2 } from 'lucide-react';
 import { useAuth } from '@/app/context/AuthContext';
 import { isAdmin } from '../../../lib/shared-schemas';
+import { AdminModeToggle } from '@/components/admin-mode-toggle';
 
 interface ReservationPageHeaderProps {
   onAddReservation?: () => void;
   onRefresh?: () => void;
   onCancelReservation?: () => void;
   onAdminToggle?: (isAdminMode: boolean) => void;
+  onManageExternal?: () => void;
+  isAdminMode?: boolean;
   className?: string;
 }
 
@@ -21,6 +23,8 @@ export function ReservationPageHeader({
   onRefresh, 
   onCancelReservation,
   onAdminToggle,
+  onManageExternal,
+  isAdminMode = false,
   className 
 }: ReservationPageHeaderProps) {
   const { user } = useAuth();
@@ -38,15 +42,18 @@ export function ReservationPageHeader({
         </Button>
       )}
       {isUserAdmin && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">管理者モード</span>
-          <Switch onCheckedChange={handleAdminToggle} />
-        </div>
+        <AdminModeToggle checked={isAdminMode} onCheckedChange={handleAdminToggle} />
       )}
       {onCancelReservation && (
         <Button variant="destructive" size="sm" onClick={onCancelReservation}>
           <CalendarX2 className="h-4 w-4" />
           取消
+        </Button>
+      )}
+      {isUserAdmin && isAdminMode && onManageExternal && (
+        <Button variant="outline" size="sm" onClick={onManageExternal}>
+          <Building2 className="h-4 w-4" />
+          外部スタジオ管理
         </Button>
       )}
       {onAddReservation && (

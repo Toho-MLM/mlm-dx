@@ -24,6 +24,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
 import { showSuccessToast } from '@/lib/utils'
+import { AdminModeToggle } from '@/components/admin-mode-toggle'
+import { useAdminMode } from '@/hooks/use-admin-mode'
 
 interface EntryWithSetlist {
   entry: Entry
@@ -238,7 +240,7 @@ function SetlistContent() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
   const isUserAdmin = user && isAdmin(user.role)
-  const [isAdminMode, setIsAdminMode] = useState(false)
+  const [isAdminMode, setIsAdminMode] = useAdminMode(isUserAdmin)
   const [events, setEvents] = useState<Event[]>([])
   const [eventsLoading, setEventsLoading] = useState(true)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
@@ -478,10 +480,7 @@ function SetlistContent() {
   const rightActions = (
     <div className="flex items-center gap-2">
       {isUserAdmin && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">管理者モード</span>
-          <Switch checked={isAdminMode} onCheckedChange={handleAdminToggle} />
-        </div>
+        <AdminModeToggle checked={isAdminMode} onCheckedChange={handleAdminToggle} />
       )}
       {!isUserAdmin && (
         <Button size="sm" variant="outline" onClick={handleRefresh}>
