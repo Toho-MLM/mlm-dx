@@ -82,20 +82,10 @@ export function EventList({ events }: { events: Event[] }) {
     }
   }
 
-  const handleRefresh = async () => {
-    try {
-      router.refresh()
-    } catch (error) {
-      console.error('Failed to refresh events:', error)
-      router.refresh()
-    }
-  }
-
   return (
     <>
       <EventPageHeader 
         onAddEvent={isUserAdmin ? handleAdd : undefined}
-        onRefresh={handleRefresh}
       />
       <div className="p-5">
       <EventProvider value={{ onEdit: isUserAdmin ? handleEdit : undefined, onDelete: isUserAdmin ? handleDeleteClick : undefined }}>
@@ -146,4 +136,3 @@ export function EventList({ events }: { events: Event[] }) {
     </>
   )
 }
-
