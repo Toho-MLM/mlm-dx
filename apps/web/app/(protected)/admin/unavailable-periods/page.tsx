@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { PageHeader } from '@/components/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -78,7 +78,7 @@ export default function UnavailablePeriodsPage() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!startDate || !endDate) {
       toast.error('開始日と終了日を選択してください')

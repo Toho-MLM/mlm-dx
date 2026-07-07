@@ -17,6 +17,7 @@ import { isAdmin } from '@shared-schemas'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ChevronUp, ChevronDown, X } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 
 type TimelineRow = {
   entry_id: string
@@ -26,6 +27,7 @@ type TimelineRow = {
   end_time: string | null
   position: number | null
   created_at: string
+  is_virtual?: boolean
 }
 
 function toIsoFromEventDateAndTime(eventDateIso: string, hhmm: string): string {
@@ -121,12 +123,14 @@ function TimelineContent() {
   }, [selectedEventId, events])
 
   const startEditing = () => {
-    setEditingConfigured(configured.map(r => ({
-      ...r,
-      start_time: r.start_time ? isoToHHMM(r.start_time) : null,
-      end_time: r.end_time ? isoToHHMM(r.end_time) : null,
-    })))
-    setEditingUnconfigured([...unconfigured])
+    setEditingConfigured(configured
+      .filter(r => !r.is_virtual)
+      .map(r => ({
+        ...r,
+        start_time: r.start_time ? isoToHHMM(r.start_time) : null,
+        end_time: r.end_time ? isoToHHMM(r.end_time) : null,
+      })))
+    setEditingUnconfigured(unconfigured.filter(r => !r.is_virtual))
     setEditing(true)
   }
 
@@ -281,7 +285,10 @@ function TimelineContent() {
                             <div key={r.entry_id} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50">
                               <div className="w-8 text-center text-sm font-semibold">{i + 1}</div>
                               <div className="flex-1 min-w-0">
-                                <div className="font-medium truncate">{r.group_name}</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="font-medium truncate">{r.group_name}</div>
+                                  {r.is_virtual && <Badge variant="outline">本バンド必須</Badge>}
+                                </div>
                                 <div className="text-sm text-gray-600">開始: {formatTimeToHHMM(r.start_time)} / 終了: {formatTimeToHHMM(r.end_time)}</div>
                               </div>
                             </div>
@@ -299,7 +306,10 @@ function TimelineContent() {
                             <div key={r.entry_id} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50">
                               <div className="w-8 text-center text-sm font-semibold">—</div>
                               <div className="flex-1 min-w-0">
-                                <div className="font-medium truncate">{r.group_name}</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="font-medium truncate">{r.group_name}</div>
+                                  {r.is_virtual && <Badge variant="outline">本バンド必須</Badge>}
+                                </div>
                                 <div className="text-sm text-gray-600">開始: 未設定 / 終了: 未設定</div>
                               </div>
                             </div>
@@ -460,4 +470,3 @@ export default function Page() {
     </Suspense>
   )
 }
-

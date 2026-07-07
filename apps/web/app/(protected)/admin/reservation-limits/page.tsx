@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format, addDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
@@ -142,7 +142,7 @@ export default function ReservationLimitsPage() {
     return result
   }
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     if (form.limitType === 'FIXED' && (!form.startDate || !form.endDate)) {
       toast.error('開始日と終了日を選択してください')
