@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react'
+import React, { Suspense, useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
 import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, startOfDay, subDays } from 'date-fns'
@@ -157,6 +157,14 @@ ThreeDayView.title = (date: Date) => {
 }
 
 export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <ReservationContent />
+    </Suspense>
+  )
+}
+
+function ReservationContent() {
   const [isMobile, setIsMobile] = useState(false)
   const [reservationDraft, setReservationDraft] = useState<ReservationDraft>({
     date: startOfDay(new Date()),

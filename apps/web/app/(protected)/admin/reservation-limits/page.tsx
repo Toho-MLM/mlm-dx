@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, type FormEvent } from 'react'
+import { Suspense, useState, useEffect, type FormEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format, addDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
@@ -57,6 +57,14 @@ const typeLabels = {
 } as const
 
 export default function ReservationLimitsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReservationLimitsContent />
+    </Suspense>
+  )
+}
+
+function ReservationLimitsContent() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
