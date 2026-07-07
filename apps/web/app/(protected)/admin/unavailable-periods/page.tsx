@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, type FormEvent } from 'react'
+import { Suspense, useState, useEffect, type FormEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { PageHeader } from '@/components/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -34,6 +34,14 @@ interface UnavailablePeriod {
 }
 
 export default function UnavailablePeriodsPage() {
+  return (
+    <Suspense fallback={null}>
+      <UnavailablePeriodsContent />
+    </Suspense>
+  )
+}
+
+function UnavailablePeriodsContent() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect } from 'react'
+import React, { Suspense, useEffect } from 'react'
 import Image from 'next/image'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { AuthProvider, useAuth } from "./context/AuthContext"
@@ -13,14 +13,7 @@ import { getLoginPath } from '@/lib/auth-redirect'
 function Content({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const searchParams = useSearchParams()
   const { user, loading } = useAuth()
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace(getLoginPath(pathname, searchParams))
-    }
-  }, [loading, user, router, pathname, searchParams])
 
   useEffect(() => {
     if (loading || !user) return
@@ -80,12 +73,30 @@ function Content({ children }: { children: React.ReactNode }) {
           </Sidebar>
         ) : (!userBlocksSidebar && <AppSidebar />)
       )}
+      <Suspense fallback={null}>
+        <AuthRedirect />
+      </Suspense>
       <div className="min-w-0 flex-1">
         {children}
       </div>
       <Toaster />
     </>
   )
+}
+
+function AuthRedirect() {
+  const pathname = usePathname()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { user, loading } = useAuth()
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace(getLoginPath(pathname, searchParams))
+    }
+  }, [loading, user, router, pathname, searchParams])
+
+  return null
 }
 
 export function MainContent({ children }: { children: React.ReactNode }) {
