@@ -2,23 +2,25 @@
 
 import React, { useEffect } from 'react'
 import Image from 'next/image'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { AuthProvider, useAuth } from "./context/AuthContext"
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarFooter } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Toaster } from "@/components/ui/sonner"
+import { getLoginPath } from '@/lib/auth-redirect'
 
 function Content({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, loading } = useAuth()
 
   useEffect(() => {
     if (!loading && !user) {
-      router.replace('/login')
+      router.replace(getLoginPath(pathname, searchParams))
     }
-  }, [loading, user, router])
+  }, [loading, user, router, pathname, searchParams])
 
   useEffect(() => {
     if (loading || !user) return

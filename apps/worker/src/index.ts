@@ -6,6 +6,7 @@ import { logger } from 'hono/logger';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
 import { generateState, generateNonce, generateCodeVerifier, generateCodeChallenge, createGoogleAuthUrl, exchangeCodeForToken, getGoogleUserInfo, verifyGoogleIdToken, generateJWT, verifyJWT } from './auth';
+import type { AuthUser } from './auth';
 import { userRoutes } from './routes/users';
 import { groupRoutes } from './routes/groups';
 import { memberRoutes } from './routes/members';
@@ -84,6 +85,10 @@ type PasskeyChallengeRow = {
   created_at: string;
 };
 
+const OneTapCredentialSchema = z.object({
+  credential: z.string().min(1),
+});
+
 async function fetchPasskeys(env: Bindings, userId: string): Promise<PasskeyRow[]> {
   const rows = await env.DB.prepare('SELECT * FROM passkeys WHERE user_id = ?').bind(userId).all<PasskeyRow>();
   return rows.results ?? [];
@@ -113,6 +118,121 @@ function safeParseTransports(value: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+function formatGoogleName(user: { family_name?: string; given_name?: string; name: string | null }): string {
+  if (user.family_name && user.given_name) {
+    return `${user.family_name} ${user.given_name}`;
+  }
+  if (user.name) {
+    return user.name;
+  }
+
+  throw new Error('No name information available from Google');
+}
+
+async function signInGoogleUser(c: Context<{ Bindings: Bindings; Variables: Variables }>, googleUser: AuthUser): Promise<{ success: true } | { success: false; error: string }> {
+  if (googleUser.emailVerified === false) {
+    return { success: false, error: 'EMAIL_NOT_VERIFIED' };
+  }
+
+  const dbUserRaw = await c.env.DB.prepare(
+    'SELECT * FROM users WHERE email = ?'
+  ).bind(googleUser.email).first<UserRow>();
+
+  if (!dbUserRaw) {
+    return { success: false, error: 'ACCESS_DENIED' };
+  }
+
+  let parsedInstruments: string[] = [];
+  try {
+    parsedInstruments = JSON.parse(String(dbUserRaw.instruments || '[]')) as string[];
+  } catch (error) {
+    console.error('Error parsing instruments:', error);
+    parsedInstruments = [];
+  }
+
+  const dbUser = UserSchema.parse({
+    ...dbUserRaw,
+    instruments: parsedInstruments,
+    grade: Number(dbUserRaw.grade),
+    student_number: dbUserRaw.email.substring(0, 6).toUpperCase(),
+  });
+
+  let formattedName: string;
+  try {
+    formattedName = formatGoogleName(googleUser);
+  } catch (error) {
+    console.error('Name formatting error:', error);
+    return { success: false, error: 'NAME_FORMATTING_FAILED' };
+  }
+
+  const now = new Date().toISOString();
+  const shouldUpdateName = !dbUser.name || dbUser.name !== formattedName;
+  const shouldUpdateAvatar = googleUser.image && (dbUserRaw?.avatar !== googleUser.image);
+
+  if (shouldUpdateName || shouldUpdateAvatar) {
+    if (shouldUpdateName && shouldUpdateAvatar) {
+      await c.env.DB.prepare(
+        'UPDATE users SET name = ?, avatar = ?, updated_at = ? WHERE email = ?'
+      ).bind(
+        formattedName,
+        googleUser.image || null,
+        now,
+        googleUser.email
+      ).run();
+    } else if (shouldUpdateName) {
+      await c.env.DB.prepare(
+        'UPDATE users SET name = ?, updated_at = ? WHERE email = ?'
+      ).bind(
+        formattedName,
+        now,
+        googleUser.email
+      ).run();
+    } else if (shouldUpdateAvatar) {
+      await c.env.DB.prepare(
+        'UPDATE users SET avatar = ?, updated_at = ? WHERE email = ?'
+      ).bind(
+        googleUser.image || null,
+        now,
+        googleUser.email
+      ).run();
+    }
+  }
+
+  const jwt = await generateJWT({
+    id: dbUser.id,
+    email: googleUser.email,
+    name: formattedName,
+    image: googleUser.image,
+  }, dbUser.nickname, c.env.AUTH_SECRET);
+
+  setCookie(c, 'auth_token', jwt, {
+    httpOnly: true,
+    secure: c.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60,
+    path: '/',
+  });
+
+  return { success: true };
+}
+
+function googleSignInErrorToLoginError(error: string): string {
+  const map: Record<string, string> = {
+    EMAIL_NOT_VERIFIED: 'email_not_verified',
+    ACCESS_DENIED: 'access_denied',
+    NAME_FORMATTING_FAILED: 'name_formatting_failed',
+  };
+
+  return map[error] || 'authentication_failed';
+}
+
+function googleSignInErrorStatus(error: string): 400 | 401 | 403 | 500 {
+  if (error === 'EMAIL_NOT_VERIFIED' || error === 'INVALID_CREDENTIAL') return 401;
+  if (error === 'ACCESS_DENIED') return 403;
+  if (error === 'NAME_FORMATTING_FAILED') return 400;
+  return 500;
 }
 
 app.use('*', logger());
@@ -216,103 +336,52 @@ app.get('/auth/callback/google', async (c) => {
     if (!googleUser) {
       return c.redirect(`${c.env.FRONTEND_URL}/login?error=failed_to_get_user_info`);
     }
-    if (googleUser.emailVerified === false) {
-      return c.redirect(`${c.env.FRONTEND_URL}/login?error=email_not_verified`);
+
+    const signInResult = await signInGoogleUser(c, googleUser);
+    if (!signInResult.success) {
+      return c.redirect(`${c.env.FRONTEND_URL}/login?error=${googleSignInErrorToLoginError(signInResult.error)}`);
     }
-
-    const dbUserRaw = await c.env.DB.prepare(
-      'SELECT * FROM users WHERE email = ?'
-    ).bind(googleUser.email).first<UserRow>();
-
-    if (!dbUserRaw) {
-      return c.redirect(`${c.env.FRONTEND_URL}/login?error=access_denied`);
-    }
-
-    let parsedInstruments: string[] = [];
-    try {
-      parsedInstruments = JSON.parse(String(dbUserRaw.instruments || '[]')) as string[];
-    } catch (error) {
-      console.error('Error parsing instruments:', error);
-      parsedInstruments = [];
-    }
-
-    const dbUser = UserSchema.parse({
-      ...dbUserRaw,
-      instruments: parsedInstruments,
-      grade: Number(dbUserRaw.grade),
-      student_number: dbUserRaw.email.substring(0, 6).toUpperCase(),
-    });
-
-    const formatName = (user: { family_name?: string; given_name?: string; name: string | null }): string => {
-      if (user.family_name && user.given_name) {
-        return `${user.family_name} ${user.given_name}`;
-      } else if (user.name) {
-        return user.name;
-      } else {
-        throw new Error('No name information available from Google OAuth');
-      }
-    };
-
-    let formattedName: string;
-    try {
-      formattedName = formatName(googleUser);
-    } catch (error) {
-      console.error('Name formatting error:', error);
-      return c.redirect(`${c.env.FRONTEND_URL}/login?error=name_formatting_failed`);
-    }
-    
-    const now = new Date().toISOString();
-    const shouldUpdateName = !dbUser.name || dbUser.name !== formattedName;
-    const shouldUpdateAvatar = googleUser.image && (dbUserRaw?.avatar !== googleUser.image);
-    
-    if (shouldUpdateName || shouldUpdateAvatar) {
-      if (shouldUpdateName && shouldUpdateAvatar) {
-        await c.env.DB.prepare(
-          'UPDATE users SET name = ?, avatar = ?, updated_at = ? WHERE email = ?'
-        ).bind(
-          formattedName,
-          googleUser.image || null,
-          now,
-          googleUser.email
-        ).run();
-      } else if (shouldUpdateName) {
-        await c.env.DB.prepare(
-          'UPDATE users SET name = ?, updated_at = ? WHERE email = ?'
-        ).bind(
-          formattedName,
-          now,
-          googleUser.email
-        ).run();
-      } else if (shouldUpdateAvatar) {
-        await c.env.DB.prepare(
-          'UPDATE users SET avatar = ?, updated_at = ? WHERE email = ?'
-        ).bind(
-          googleUser.image || null,
-          now,
-          googleUser.email
-        ).run();
-      }
-    }
-
-    const jwt = await generateJWT({
-      id: dbUser.id,
-      email: googleUser.email,
-      name: formattedName,
-      image: googleUser.image,
-    }, dbUser.nickname, c.env.AUTH_SECRET);
-
-    setCookie(c, 'auth_token', jwt, {
-      httpOnly: true,
-      secure: c.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60,
-      path: '/',
-    });
 
     return c.redirect(`${c.env.FRONTEND_URL}/auth/callback`);
   } catch (error) {
     console.error('Auth callback error:', error);
     return c.redirect(`${c.env.FRONTEND_URL}/login?error=authentication_failed`);
+  }
+});
+
+app.post('/auth/signin/google/onetap', async (c) => {
+  try {
+    const { credential } = OneTapCredentialSchema.parse(await c.req.json());
+    const payload = await verifyGoogleIdToken(credential, c.env.GOOGLE_CLIENT_ID);
+
+    if (!payload) {
+      return c.json({ success: false, error: 'INVALID_CREDENTIAL' }, 401);
+    }
+
+    const signInResult = await signInGoogleUser(c, {
+      id: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      given_name: payload.given_name,
+      family_name: payload.family_name,
+      image: payload.picture,
+      emailVerified: payload.email_verified !== false,
+    });
+
+    if (!signInResult.success) {
+      return c.json(
+        { success: false, error: signInResult.error },
+        googleSignInErrorStatus(signInResult.error)
+      );
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('One Tap signin error:', error);
+    if (error instanceof z.ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+    return c.json({ success: false, error: 'AUTHENTICATION_FAILED' }, 500);
   }
 });
 
@@ -581,9 +650,9 @@ app.post('/auth/passkey/login/finish', async (c) => {
     console.log('[Passkey Login] Credential ID found', { credentialId });
     const matched = await fetchPasskeyByCredential(c.env, credentialId);
     if (!matched) {
-      console.error('[Passkey Login] Passkey not found for credential', { credentialId });
+      console.warn('[Passkey Login] Passkey not found for credential', { credentialId });
       await deleteChallenge(c.env, challenge.id);
-      return c.json({ success: false });
+      return c.json({ success: false, error: 'PASSKEY_NOT_FOUND' });
     }
     console.log('[Passkey Login] Passkey found', { passkeyId: matched.id, userId: matched.user_id });
     const userRow = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(matched.user_id).first<UserRow>();

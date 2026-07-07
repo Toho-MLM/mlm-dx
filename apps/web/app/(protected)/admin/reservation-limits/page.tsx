@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, type FormEvent } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format, addDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import { CalendarIcon, Pencil, Trash2 } from 'lucide-react'
@@ -20,6 +20,7 @@ import { apiClient } from '@/lib/api'
 import { cn, showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
 import { useAuth } from '@/app/context/AuthContext'
+import { getLoginPath } from '@/lib/auth-redirect'
 import { isAdmin, type ReservationLimit, type ReservationLimitScope } from '@shared-schemas'
 import { toast } from 'sonner'
 
@@ -57,6 +58,8 @@ const typeLabels = {
 
 export default function ReservationLimitsPage() {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
   const [limits, setLimits] = useState<ReservationLimit[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,7 +74,7 @@ export default function ReservationLimitsPage() {
   useEffect(() => {
     if (authLoading) return
     if (!user) {
-      router.push('/login')
+      router.push(getLoginPath(pathname, searchParams))
       return
     }
     if (!isAdmin(user.role)) {
@@ -79,7 +82,7 @@ export default function ReservationLimitsPage() {
       return
     }
     fetchLimits()
-  }, [authLoading, user, router])
+  }, [authLoading, user, router, pathname, searchParams])
 
   const fetchLimits = async () => {
     try {
@@ -139,7 +142,7 @@ export default function ReservationLimitsPage() {
     return result
   }
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     if (form.limitType === 'FIXED' && (!form.startDate || !form.endDate)) {
       toast.error('開始日と終了日を選択してください')

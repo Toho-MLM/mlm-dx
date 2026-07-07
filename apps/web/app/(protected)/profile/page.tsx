@@ -6,7 +6,7 @@ import { LoadingButton } from '@/components/ui/loading-button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { motion } from 'framer-motion'
 import { UserData, instrumentNames, roleNames, Role, Instrument } from '@/app/types'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/app/context/AuthContext'
 import { SetupWizard } from './setup-wizard'
 import { PageHeader } from '@/components/page-header'
@@ -18,6 +18,7 @@ import { toast } from 'sonner'
 import { showSuccessToast } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { httpClient } from '@/lib/http-client'
+import { getLoginPath, getRedirectPath, storeRedirectPath } from '@/lib/auth-redirect'
 
 export default function Page() {
   const [isEditing, setIsEditing] = useState(false)
@@ -32,6 +33,8 @@ export default function Page() {
   const [isRefreshingAvatar, setIsRefreshingAvatar] = useState(false)
   const [confirmingAvatarRefresh, setConfirmingAvatarRefresh] = useState(false)
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { signOut, user, loading: authLoading } = useAuth()
 
   const fetchPasskeys = useCallback(async () => {
@@ -55,7 +58,7 @@ export default function Page() {
     const init = async () => {
       if (authLoading) return
       if (!user) {
-        router.push('/login')
+        router.push(getLoginPath(pathname, searchParams))
         return
       }
       try {
@@ -84,7 +87,7 @@ export default function Page() {
       }
     }
     init()
-  }, [authLoading, user, router, fetchPasskeys])
+  }, [authLoading, user, router, fetchPasskeys, pathname, searchParams])
 
   const handleResetProfile = useCallback(() => {
     setIsEditing(true)
@@ -221,6 +224,7 @@ export default function Page() {
     try {
       const res = await apiClient.resetAvatar()
       if (res.success) {
+        storeRedirectPath(getRedirectPath(pathname, searchParams) || '/profile')
         await signOut()
         const data = await httpClient.post('/auth/signin/google') as { authUrl?: string }
         if (data.authUrl) {
@@ -237,7 +241,7 @@ export default function Page() {
     } finally {
       setIsRefreshingAvatar(false)
     }
-  }, [isRefreshingAvatar, signOut])
+  }, [isRefreshingAvatar, signOut, pathname, searchParams])
 
   const handleAvatarRefreshDialogOpenChange = useCallback((open: boolean) => {
     if (!open && !isRefreshingAvatar) {

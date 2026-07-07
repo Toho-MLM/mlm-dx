@@ -1,12 +1,12 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Calendar as BigCalendar, dateFnsLocalizer, Navigate, Views, type View } from 'react-big-calendar'
+import { Calendar as BigCalendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar'
 import { format, getDay, parse, startOfDay, startOfWeek, addDays, subDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, Loader2, Plus, Trash2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ import { Card, CardContent, CardDescription } from '@/components/ui/card'
 import { cn, showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
 import { apiClient } from '@/lib/api'
+import { getLoginPath } from '@/lib/auth-redirect'
 import { useAuth } from '@/app/context/AuthContext'
 import { eventStateNames, ReservationState } from '@/app/types'
 import { isAdmin, validateReservationTime, type External, type ExternalReservation, type ExternalReservationConflict } from '@shared-schemas'
@@ -90,6 +91,8 @@ const generateMinuteOptions = () => Array.from({ length: 12 }, (_, i) => i * 5)
 
 export default function ExternalReservationPage() {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
   const [isAdminMode, setIsAdminMode] = useAdminMode(user && isAdmin(user.role))
   const [loading, setLoading] = useState(true)
@@ -158,7 +161,7 @@ export default function ExternalReservationPage() {
     const init = async () => {
       if (authLoading) return
       if (!user) {
-        router.push('/login')
+        router.push(getLoginPath(pathname, searchParams))
         return
       }
       if (!user.nickname) {
@@ -174,7 +177,7 @@ export default function ExternalReservationPage() {
     }
 
     void init()
-  }, [authLoading, fetchData, router, user])
+  }, [authLoading, fetchData, router, user, pathname, searchParams])
 
   useEffect(() => {
     if (!user) return

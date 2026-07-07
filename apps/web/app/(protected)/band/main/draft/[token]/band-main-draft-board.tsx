@@ -1,6 +1,16 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type CSSProperties,
+  type DragEvent as ReactDragEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Copy, Plus, Trash2, Wifi, WifiOff, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -207,7 +217,7 @@ export function BandMainDraftBoard({ token }: { token: string }) {
     })
   }, [isEditable, publish, state])
 
-  const handleDrop = useCallback((event: React.DragEvent, columnId: string, instrument: Instrument) => {
+  const handleDrop = useCallback((event: ReactDragEvent, columnId: string, instrument: Instrument) => {
     event.preventDefault()
     if (!isEditable) return
     const memberId = event.dataTransfer.getData('text/plain')
@@ -262,7 +272,7 @@ export function BandMainDraftBoard({ token }: { token: string }) {
 
   useEffect(() => {
     const handleResize = () => {
-      const nextBounds = getMeasuredTrayHeightBounds(tableCardRef.current)
+      const nextBounds = getMeasuredTrayHeightBounds()
       setTrayBounds(nextBounds)
       setTrayHeight((current) => clampTrayHeight(current, nextBounds))
     }
@@ -273,7 +283,7 @@ export function BandMainDraftBoard({ token }: { token: string }) {
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      const nextBounds = getMeasuredTrayHeightBounds(tableCardRef.current)
+    const nextBounds = getMeasuredTrayHeightBounds()
       setTrayBounds(nextBounds)
       setTrayHeight((current) => clampTrayHeight(current, nextBounds))
     })
@@ -281,7 +291,7 @@ export function BandMainDraftBoard({ token }: { token: string }) {
     return () => window.cancelAnimationFrame(frame)
   }, [state?.columns.length, state?.unassignedMemberIds.length, loading])
 
-  const handleTrayResizeStart = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+  const handleTrayResizeStart = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault()
     setIsResizingTray(true)
     const startY = event.clientY
@@ -644,7 +654,7 @@ function MemberChip({ member, disabled, onReturn, onTouchDragStart, compact = fa
   )
 }
 
-function getMemberChipStyle(member: BandDraftMember): React.CSSProperties {
+function getMemberChipStyle(member: BandDraftMember): CSSProperties {
   const colors = member.instruments
     .map((instrument) => instrumentChipColor[instrument])
     .filter((color): color is { bg: string; border: string; text: string } => Boolean(color))
@@ -704,7 +714,7 @@ function getDefaultTrayHeightBounds(): TrayHeightBounds {
   return { min, max }
 }
 
-function getMeasuredTrayHeightBounds(_tableElement: HTMLElement | null): TrayHeightBounds {
+function getMeasuredTrayHeightBounds(): TrayHeightBounds {
   const fallback = getDefaultTrayHeightBounds()
   return fallback
 }

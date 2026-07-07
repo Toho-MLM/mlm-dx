@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect } from 'react'
 import { useAuth } from '@/app/context/AuthContext'
 import { Skeleton } from '@/components/ui/skeleton'
+import { consumeStoredRedirectPath } from '@/lib/auth-redirect'
 
 function CallbackContent() {
   const router = useRouter()
@@ -15,9 +16,9 @@ function CallbackContent() {
     if (!loading) {
       const error = searchParams.get('error')
       if (error) {
-        router.replace(`/login?error=${error}`)
+        router.replace(`/login?error=${encodeURIComponent(error)}`)
       } else if (user) {
-        router.replace('/')
+        router.replace(consumeStoredRedirectPath('/'))
       } else {
         router.replace('/login')
       }
