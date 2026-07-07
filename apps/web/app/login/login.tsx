@@ -15,6 +15,7 @@ import { startAuthentication } from '@simplewebauthn/browser'
 import type { AuthenticatorAssertionResponseJSON } from '@simplewebauthn/types'
 import { apiClient } from '@/lib/api'
 import { InAppBrowserGuide } from '@/components/in-app-browser-guide'
+import { clearStoredRedirectPath, consumeStoredRedirectPath, storeRedirectPath } from '@/lib/auth-redirect'
 
 function detectInAppBrowser(ua: string) {
   const isIos = /iPhone|iPad|iPod/i.test(ua)
@@ -41,6 +42,16 @@ function LoginContent() {
   const [showInAppGuide, setShowInAppGuide] = useState(false)
 
   useEffect(() => {
+    const redirect = searchParams.get('redirect')
+    if (redirect === null) return
+
+    const storedRedirect = storeRedirectPath(redirect)
+    if (!storedRedirect) {
+      clearStoredRedirectPath()
+    }
+  }, [searchParams])
+
+  useEffect(() => {
     const error = searchParams.get('error')
     if (error) {
       const errorMessages: Record<string, string> = {
@@ -62,7 +73,7 @@ function LoginContent() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.push('/')
+      router.push(consumeStoredRedirectPath('/'))
     }
   }, [user, loading, router])
 
@@ -76,6 +87,7 @@ function LoginContent() {
       return
     }
     try {
+      storeRedirectPath(searchParams.get('redirect'))
       const data = await httpClient.post('/auth/signin/google') as { authUrl?: string }
       if (data.authUrl) {
         window.location.href = data.authUrl
@@ -109,7 +121,7 @@ function LoginContent() {
         return
       }
       showSuccessToast({ message: 'Passkeyでログインしました' })
-      router.push('/')
+      router.push(consumeStoredRedirectPath('/'))
     } catch (error) {
       console.error('Passkey login failed:', error)
       toast.error('Passkeyでのログインに失敗しました')
