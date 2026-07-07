@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { PageHeader } from '@/components/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import { showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
 import { useAuth } from '@/app/context/AuthContext'
+import { getLoginPath } from '@/lib/auth-redirect'
 import { isAdmin } from '@shared-schemas'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -34,6 +35,8 @@ interface UnavailablePeriod {
 
 export default function UnavailablePeriodsPage() {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
   const [periods, setPeriods] = useState<UnavailablePeriod[]>([])
   const [loading, setLoading] = useState(true)
@@ -51,7 +54,7 @@ export default function UnavailablePeriodsPage() {
   useEffect(() => {
     if (authLoading) return
     if (!user) {
-      router.push('/login')
+      router.push(getLoginPath(pathname, searchParams))
       return
     }
     if (!isAdmin(user.role)) {
@@ -59,7 +62,7 @@ export default function UnavailablePeriodsPage() {
       return
     }
     fetchPeriods()
-  }, [authLoading, user, router])
+  }, [authLoading, user, router, pathname, searchParams])
 
   const fetchPeriods = async () => {
     try {
