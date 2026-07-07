@@ -9,7 +9,7 @@ import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
 import { showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export default function CreateFirstUserPage() {
@@ -40,7 +40,7 @@ export default function CreateFirstUserPage() {
     checkCanCreate()
   }, [router])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setErrorMessage(null)
 

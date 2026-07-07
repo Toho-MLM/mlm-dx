@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Calendar as BigCalendar, dateFnsLocalizer, Navigate, Views, type View } from 'react-big-calendar'
+import { Calendar as BigCalendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar'
 import { format, getDay, parse, startOfDay, startOfWeek, addDays, subDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
