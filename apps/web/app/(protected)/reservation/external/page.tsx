@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar'
 import { format, getDay, parse, startOfDay, startOfWeek, addDays, subDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
@@ -90,6 +90,14 @@ const generateHourOptions = (start: number, count: number) => Array.from({ lengt
 const generateMinuteOptions = () => Array.from({ length: 12 }, (_, i) => i * 5)
 
 export default function ExternalReservationPage() {
+  return (
+    <Suspense fallback={null}>
+      <ExternalReservationContent />
+    </Suspense>
+  )
+}
+
+function ExternalReservationContent() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
