@@ -67,8 +67,9 @@ import { useAuth } from '../../context/AuthContext'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAdminMode } from '@/hooks/use-admin-mode'
+import { getLoginPath } from '@/lib/auth-redirect'
 
 
 const locales = {
@@ -185,6 +186,8 @@ export default function Page() {
   const { user, loading: authLoading } = useAuth();
   const [isAdminMode, setIsAdminMode] = useAdminMode(user && isAdmin(user.role));
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
 
   const fetchReservationLimitRemaining = useCallback(async () => {
     if (!user) return
@@ -210,7 +213,7 @@ export default function Page() {
     const init = async () => {
       if (authLoading) return
       if (!user) {
-        router.push('/login')
+        router.push(getLoginPath(pathname, searchParams))
         return
       }
       if (!user.nickname) {
@@ -297,7 +300,7 @@ export default function Page() {
       }
     }
     init()
-  }, [authLoading, user, router, isAdminMode])
+  }, [authLoading, user, router, isAdminMode, pathname, searchParams])
 
   useEffect(() => {
     const checkMobile = () => {

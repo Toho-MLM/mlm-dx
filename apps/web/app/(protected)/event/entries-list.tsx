@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -21,11 +21,7 @@ export function EntriesList({ eventId, eventTitle }: EntriesListProps) {
   const [loading, setLoading] = useState(true)
   const [groups, setGroups] = useState<Map<string, string>>(new Map())
 
-  useEffect(() => {
-    fetchEntries()
-  }, [eventId])
-
-  const fetchEntries = async () => {
+  const fetchEntries = useCallback(async () => {
     try {
       setLoading(true)
       const [entriesResponse, groupsResponse] = await Promise.all([
@@ -47,14 +43,14 @@ export function EntriesList({ eventId, eventTitle }: EntriesListProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [eventId])
 
-  const handleOpenSetlist = (entry: Entry) => {
-    window.location.href = `/event/setlist?eventId=${eventId}`
-  }
-
-  const handleSetlistSuccess = () => {
+  useEffect(() => {
     fetchEntries()
+  }, [fetchEntries])
+
+  const handleOpenSetlist = () => {
+    window.location.href = `/event/setlist?eventId=${eventId}`
   }
 
   const handleDeleteEntry = async (entryId: string) => {
@@ -123,7 +119,7 @@ export function EntriesList({ eventId, eventTitle }: EntriesListProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleOpenSetlist(entry)}
+                      onClick={handleOpenSetlist}
                       className="flex items-center gap-2"
                     >
                       <Music className="h-4 w-4" />
@@ -149,4 +145,3 @@ export function EntriesList({ eventId, eventTitle }: EntriesListProps) {
     </>
   )
 }
-

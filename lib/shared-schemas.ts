@@ -424,6 +424,7 @@ export const TimelineItemSchema = z.object({
   end_time: z.string().nullable(),
   position: z.number().nullable(),
   created_at: z.string(),
+  is_virtual: z.boolean().optional(),
 });
 
 export const GetTimelineResponseSchema = z.object({

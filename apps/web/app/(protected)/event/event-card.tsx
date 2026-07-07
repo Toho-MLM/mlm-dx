@@ -94,8 +94,8 @@ function Countdown({ targetDate, isAccepting }: { targetDate: string; isAcceptin
 }
 export function EventCard({ event }: EventCardProps) {
   const ctx = useEventContext()
-  const groupOptions = ctx?.groupOptions ?? []
-  const userEntries = ctx?.userEntries ?? []
+  const groupOptions = ctx?.groupOptions
+  const userEntries = ctx?.userEntries
   const loading = ctx?.loadingEntries ?? false
   const onEntriesChanged = ctx?.onEntriesChanged
   const onEdit = ctx?.onEdit
@@ -103,18 +103,20 @@ export function EventCard({ event }: EventCardProps) {
   const [isEntryDialogOpen, setIsEntryDialogOpen] = useState(false)
   
   const userEntryIds = useMemo(() => {
-    const eventEntries = userEntries.filter(e => e.event_id === event.id)
+    const eventEntries = (userEntries ?? []).filter(e => e.event_id === event.id)
     return eventEntries.map(e => e.id)
   }, [userEntries, event.id])
   
   const groupLimit = event.group_limit ?? 2
   
   const enteredGroups = useMemo(() => {
+    const options = groupOptions ?? []
+    const entries = userEntries ?? []
     if (groupLimit === 0) {
-      return groupOptions.filter(g => g.is_main).map(g => g.name)
+      return options.filter(g => g.is_main).map(g => g.name)
     }
-    const groupMap = new Map(groupOptions.map(g => [g.id, g.name]))
-    const eventEntries = userEntries.filter(e => e.event_id === event.id)
+    const groupMap = new Map(options.map(g => [g.id, g.name]))
+    const eventEntries = entries.filter(e => e.event_id === event.id)
     return eventEntries
       .map(entry => groupMap.get(entry.group_id))
       .filter((name): name is string => name !== undefined)
@@ -301,4 +303,3 @@ export function EventCard({ event }: EventCardProps) {
     </Card>
   )
 }
-

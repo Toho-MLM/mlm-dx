@@ -98,8 +98,8 @@ class ApiClient {
     return httpClient.post<PasskeyLoginStartResponse>('/auth/passkey/login/options')
   }
 
-  async finishPasskeyLogin(challengeId: string, response: AuthenticatorAssertionResponseJSON): Promise<{ success: boolean }> {
-    return httpClient.post<{ success: boolean }>('/auth/passkey/login/finish', { challengeId, response })
+  async finishPasskeyLogin(challengeId: string, response: AuthenticatorAssertionResponseJSON): Promise<{ success: boolean; error?: string }> {
+    return httpClient.post<{ success: boolean; error?: string }>('/auth/passkey/login/finish', { challengeId, response })
   }
 
   async getPasskeyCredentials(): Promise<{ success: boolean; passkeys: PasskeyCredential[] }> {
