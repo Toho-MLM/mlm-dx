@@ -31,6 +31,7 @@ Worker は以下の `Bindings` を前提としています。
 | メソッド | パス | 説明 |
 | --- | --- | --- |
 | `POST` | `/auth/signin/google` | PKCE 付き Google サインイン開始。`authUrl` を返し、`oauth_state` `pkce_verifier` `oauth_nonce` Cookie を設定。 |
+| `POST` | `/auth/signin/google/onetap` | Google One Tap の credential JWT を検証し、許可済みユーザーなら `auth_token` Cookie を発行。 |
 | `GET` | `/auth/callback/google` | Google からのコールバック。ユーザー存在確認・JWT 発行後、`FRONTEND_URL/auth/callback` へリダイレクト。 |
 | `GET` | `/auth/session` | 有効な Cookie があればユーザー情報を JSON で返却。未認証時は `{ "user": null }`。 |
 | `POST` | `/auth/signout` | `auth_token` Cookie を削除し `{ "success": true }` を返却。 |

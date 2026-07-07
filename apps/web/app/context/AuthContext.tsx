@@ -1,19 +1,21 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { User } from '@/app/types'
 import { httpClient } from '@/lib/http-client'
+import { disableGoogleAutoSelect } from '@/lib/google-identity'
 
 interface AuthContextType {
   user: User | null
   loading: boolean
-  signOut: () => void
+  signOut: () => Promise<void>
   refreshAuth: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -45,6 +47,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     try {
+      await disableGoogleAutoSelect()
       await httpClient.post('/auth/signout')
       setUser(null)
     } catch (error) {

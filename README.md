@@ -132,6 +132,9 @@ NODE_ENV=development
 
 # API設定
 NEXT_PUBLIC_API_URL=http://localhost:8787
+
+# Google One Tap設定
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-dev-google-client-id
 ```
 
 **本番環境用の設定:**
@@ -141,6 +144,9 @@ NODE_ENV=production
 
 # API設定
 NEXT_PUBLIC_API_URL=https://your-worker-domain.workers.dev
+
+# Google One Tap設定
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id
 ```
 
 #### 4.3 バックエンド（apps/worker/.dev.vars）
@@ -208,6 +214,7 @@ FRONTEND_URL = "http://localhost:3000"
 |--------|------|----------|----------|
 | `NODE_ENV` | 環境設定 | `development` | `production` |
 | `NEXT_PUBLIC_API_URL` | バックエンドAPIのURL | `http://localhost:8787` | `https://your-worker-domain.workers.dev` |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google One Tap 用 OAuth クライアントID | 既存 `GOOGLE_CLIENT_ID` と同じ値 | 既存 `GOOGLE_CLIENT_ID` と同じ値 |
 
 **バックエンド環境変数:**
 

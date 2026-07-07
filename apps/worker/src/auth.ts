@@ -35,7 +35,10 @@ const GoogleIdTokenPayloadSchema = z.object({
   aud: z.string(),
   sub: z.string(),
   email: z.string().email(),
+  email_verified: z.boolean().optional(),
   name: z.string(),
+  given_name: z.string().optional(),
+  family_name: z.string().optional(),
   picture: z.string().url().optional(),
   exp: z.number(),
   iat: z.number(),
@@ -52,8 +55,6 @@ const CustomJWTPayloadSchema = z.object({
   exp: z.number(),
 });
 
-type GoogleUser = z.infer<typeof GoogleUserSchema>;
-type GoogleTokenResponse = z.infer<typeof GoogleTokenResponseSchema>;
 type GoogleJWKS = z.infer<typeof GoogleJWKSchema>;
 type GoogleIdTokenPayload = z.infer<typeof GoogleIdTokenPayloadSchema>;
 
