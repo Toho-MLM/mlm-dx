@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from '@/app/context/AuthContext'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { httpClient } from '@/lib/http-client'
 import { toast } from 'sonner'
@@ -16,6 +16,7 @@ import type { AuthenticatorAssertionResponseJSON } from '@simplewebauthn/types'
 import { apiClient } from '@/lib/api'
 import { InAppBrowserGuide } from '@/components/in-app-browser-guide'
 import { clearStoredRedirectPath, consumeStoredRedirectPath, storeRedirectPath } from '@/lib/auth-redirect'
+import { loadGoogleIdentityScript, type GoogleCredentialResponse } from '@/lib/google-identity'
 
 function detectInAppBrowser(ua: string) {
   const isIos = /iPhone|iPad|iPod/i.test(ua)
@@ -36,10 +37,14 @@ function detectInAppBrowser(ua: string) {
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user, loading } = useAuth()
+  const { user, loading, refreshAuth } = useAuth()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false)
   const [showInAppGuide, setShowInAppGuide] = useState(false)
+  const oneTapInitializedRef = useRef(false)
+  const passkeyAutoPromptedRef = useRef(false)
+  const redirectedAfterLoginRef = useRef(false)
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
   useEffect(() => {
     const redirect = searchParams.get('redirect')
@@ -61,6 +66,7 @@ function LoginContent() {
         failed_to_get_user_info: 'アカウント情報の取得に失敗しました。もう一度お試しください。',
         email_not_verified: 'Googleアカウントのメールアドレスが認証されていません。Googleアカウントの設定でメール認証を完了してから再度お試しください。',
         access_denied: 'このメールアドレスは利用できません。管理者にお問い合わせください。',
+        name_formatting_failed: 'Googleアカウントの名前情報を取得できませんでした。管理者にお問い合わせください。',
         authentication_failed: 'ログインに失敗しました。もう一度お試しください。'
       }
       const message = translateError(errorMessages[error] || 'ログイン中に問題が発生しました。もう一度お試しください。')
@@ -72,10 +78,126 @@ function LoginContent() {
   }, [searchParams])
 
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user && !redirectedAfterLoginRef.current) {
+      redirectedAfterLoginRef.current = true
       router.push(consumeStoredRedirectPath('/'))
     }
   }, [user, loading, router])
+
+  const redirectAfterLogin = useCallback(() => {
+    redirectedAfterLoginRef.current = true
+    router.push(consumeStoredRedirectPath('/'))
+  }, [router])
+
+  const handleOneTapCredential = useCallback(async (response: GoogleCredentialResponse) => {
+    if (!response.credential) {
+      return
+    }
+
+    try {
+      storeRedirectPath(searchParams.get('redirect'))
+      await httpClient.post('/auth/signin/google/onetap', { credential: response.credential })
+      await refreshAuth()
+      redirectAfterLogin()
+    } catch (error) {
+      console.error('One Tap sign in failed:', error)
+      toast.error('Google One Tapでのログインに失敗しました')
+    }
+  }, [redirectAfterLogin, refreshAuth, searchParams])
+
+  useEffect(() => {
+    if (loading || user || !googleClientId || oneTapInitializedRef.current) {
+      return
+    }
+    if (typeof window === 'undefined' || detectInAppBrowser(window.navigator.userAgent)) {
+      return
+    }
+    if (isPasskeyLoading) {
+      return
+    }
+    if (window.PublicKeyCredential && !passkeyAutoPromptedRef.current) {
+      return
+    }
+
+    let cancelled = false
+    oneTapInitializedRef.current = true
+
+    loadGoogleIdentityScript()
+      .then(() => {
+        if (cancelled) return
+        window.google?.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleOneTapCredential,
+          auto_select: true,
+        })
+        window.google?.accounts.id.prompt()
+      })
+      .catch((error) => {
+        oneTapInitializedRef.current = false
+        console.error('Failed to initialize Google One Tap:', error)
+      })
+
+    return () => {
+      cancelled = true
+      window.google?.accounts.id.cancel()
+    }
+  }, [googleClientId, handleOneTapCredential, isPasskeyLoading, loading, user])
+
+  const loginWithPasskey = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (isPasskeyLoading) {
+      return
+    }
+    if (typeof window !== 'undefined' && !window.PublicKeyCredential) {
+      if (!silent) {
+        toast.error('このブラウザはPasskeyに対応していません')
+      }
+      return
+    }
+    setIsPasskeyLoading(true)
+    try {
+      const start = await apiClient.startPasskeyLogin()
+      if (!start.success) {
+        if (!silent) {
+          toast.error('Passkeyでのログインに失敗しました')
+        }
+        return
+      }
+      const assertion = await startAuthentication({
+        optionsJSON: start.options
+      })
+      const finish = await apiClient.finishPasskeyLogin(start.challengeId, assertion as unknown as AuthenticatorAssertionResponseJSON)
+      if (!finish.success) {
+        if (!silent) {
+          toast.error(finish.error === 'PASSKEY_NOT_FOUND'
+            ? 'このPasskeyは現在の環境に登録されていません。ログイン後にPasskeyを登録し直してください。'
+            : 'Passkeyでのログインに失敗しました'
+          )
+        }
+        return
+      }
+      showSuccessToast({ message: 'Passkeyでログインしました' })
+      redirectAfterLogin()
+    } catch (error) {
+      console.error('Passkey login failed:', error)
+      if (!silent) {
+        toast.error('Passkeyでのログインに失敗しました')
+      }
+    } finally {
+      setIsPasskeyLoading(false)
+    }
+  }, [isPasskeyLoading, redirectAfterLogin])
+
+  useEffect(() => {
+    if (loading || user || passkeyAutoPromptedRef.current) {
+      return
+    }
+    if (typeof window === 'undefined' || !window.PublicKeyCredential || detectInAppBrowser(window.navigator.userAgent)) {
+      return
+    }
+
+    passkeyAutoPromptedRef.current = true
+    void loginWithPasskey({ silent: true })
+  }, [loading, loginWithPasskey, user])
 
   if (user) {
     return null
@@ -98,36 +220,7 @@ function LoginContent() {
   }
 
   const handlePasskeyLogin = async () => {
-    if (isPasskeyLoading) {
-      return
-    }
-    if (typeof window !== 'undefined' && !window.PublicKeyCredential) {
-      toast.error('このブラウザはPasskeyに対応していません')
-      return
-    }
-    setIsPasskeyLoading(true)
-    try {
-      const start = await apiClient.startPasskeyLogin()
-      if (!start.success) {
-        toast.error('Passkeyでのログインに失敗しました')
-        return
-      }
-      const assertion = await startAuthentication({
-        optionsJSON: start.options
-      })
-      const finish = await apiClient.finishPasskeyLogin(start.challengeId, assertion as unknown as AuthenticatorAssertionResponseJSON)
-      if (!finish.success) {
-        toast.error('Passkeyでのログインに失敗しました')
-        return
-      }
-      showSuccessToast({ message: 'Passkeyでログインしました' })
-      router.push(consumeStoredRedirectPath('/'))
-    } catch (error) {
-      console.error('Passkey login failed:', error)
-      toast.error('Passkeyでのログインに失敗しました')
-    } finally {
-      setIsPasskeyLoading(false)
-    }
+    await loginWithPasskey()
   }
 
   const isLoading = loading
