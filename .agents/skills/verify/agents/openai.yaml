@@ -1,0 +1,4 @@
+interface:
+  display_name: "MLM-DX 変更検証"
+  short_description: "変更範囲に応じて型・lint・buildを段階的に検証します"
+  default_prompt: "Use $verify to verify the current MLM-DX changes with scoped checks."
