@@ -1,10 +1,16 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
-import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema } from '../schemas';
+import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema, type Group } from '../schemas';
 import { requireAdmin } from '../utils/admin';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+type GroupIdRow = Pick<Group, 'id'>;
+type GroupAssignmentRow = {
+  instrument: string;
+  user_id: string;
+};
 
 function normalizeAssignments(assignmentsInput: unknown): Record<string, string[]> | null {
   const rawAssignments = typeof assignmentsInput === 'string'
@@ -55,9 +61,9 @@ export async function getUserGroupIds(env: Bindings, userId: string): Promise<st
     FROM groups g
     JOIN group_member_instruments gmi ON g.id = gmi.group_id
     WHERE gmi.user_id = ? AND g.is_active = TRUE
-  `).bind(userId).all();
+  `).bind(userId).all<GroupIdRow>();
   
-  return userGroups.results.map((group: any) => group.id);
+  return userGroups.results.map((group) => group.id);
 }
 
 groupRoutes.use('*', requireAuth);
@@ -128,7 +134,7 @@ groupRoutes.get('/', async (c) => {
     }
     
     let query: string;
-    let params: any[];
+    let params: string[];
     
     if (isMainOnly) {
       query = `
@@ -156,18 +162,18 @@ groupRoutes.get('/', async (c) => {
       params = [userId];
     }
     
-    const groups = await c.env.DB.prepare(query).bind(...params).all();
+    const groups = await c.env.DB.prepare(query).bind(...params).all<Group>();
 
     const groupsWithAssignments = await Promise.all(
-      groups.results.map(async (group: any) => {
+      groups.results.map(async (group) => {
         const assignments = await c.env.DB.prepare(`
           SELECT instrument, user_id
           FROM group_member_instruments
           WHERE group_id = ?
-        `).bind(group.id).all();
+        `).bind(group.id).all<GroupAssignmentRow>();
 
         const memberMap: Record<string, string[]> = {};
-        assignments.results.forEach((assignment: any) => {
+        assignments.results.forEach((assignment) => {
           if (!memberMap[assignment.user_id]) {
             memberMap[assignment.user_id] = [];
           }

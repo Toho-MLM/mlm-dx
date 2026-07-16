@@ -251,7 +251,8 @@ export async function verifyGoogleIdToken(idToken: string, clientId: string, exp
     );
     const data = new TextEncoder().encode(`${h}.${p}`);
     const sig = base64urlToUint8Array(s);
-    const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, sig as BufferSource, data as BufferSource);
+    type VerifyData = Parameters<typeof crypto.subtle.verify>[2];
+    const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, sig as VerifyData, data as VerifyData);
     if (!ok) return null;
     const issOk = payload.iss === 'https://accounts.google.com' || payload.iss === 'accounts.google.com';
     if (!issOk) return null;

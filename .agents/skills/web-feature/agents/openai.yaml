@@ -1,0 +1,4 @@
+interface:
+  display_name: "MLM-DX Web機能開発"
+  short_description: "Next.js画面とAPIクライアントを一貫して実装します"
+  default_prompt: "Use $web-feature to implement a frontend feature for MLM-DX consistently."
