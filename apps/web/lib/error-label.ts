@@ -1,6 +1,8 @@
 export const ERROR_MESSAGES: Record<string, string> = {
   // 予約関連エラー
   'INVALID_RESERVATION_TIME': '予約時間が無効です。',
+  'RESERVATION_DATE_IN_PAST': '過去の日付は予約できません。',
+  'RESERVATION_DATE_TOO_FAR': '予約できるのは今日から14日後までです。',
   'GROUP_NOT_FOUND': '指定されたグループが見つからないか、無効です。',
   'NOT_GROUP_MEMBER': '指定されたグループのメンバーではありません。',
   'RESERVATION_CONFLICT': 'この時間帯は既に予約されています。',

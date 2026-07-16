@@ -5,6 +5,7 @@ import { getUserGroupIds } from './groups';
 import { requireAdmin } from '../utils/admin';
 import { z } from 'zod';
 import { CreateSetlistItemRequestSchema, ReplaceSetlistItemsRequestSchema } from '@shared-schemas';
+import { ensureMainBandEntries } from '../utils/main-band-entries';
 
 const setlistRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -98,6 +99,8 @@ setlistRoutes.get('/event/:eventId', async (c) => {
         return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
       }
     }
+
+    await ensureMainBandEntries(c.env, eventId);
 
     let query: string;
     let params: (string | number)[];
@@ -351,4 +354,3 @@ setlistRoutes.put('/', async (c) => {
  
 
 export { setlistRoutes };
-

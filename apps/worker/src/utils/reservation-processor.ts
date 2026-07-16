@@ -23,6 +23,26 @@ export function isTodayInJST(date: Date): boolean {
   return dateJST === todayJST;
 }
 
+export function validateReservationDateRange(
+  reservationDate: Date,
+  now = new Date()
+): { isValid: true } | { isValid: false; error: 'RESERVATION_DATE_IN_PAST' | 'RESERVATION_DATE_TOO_FAR' } {
+  const reservationDateJST = getJSTDateString(reservationDate);
+  const todayJST = getJSTDateString(now);
+  const maxDate = new Date(`${todayJST}T00:00:00+09:00`);
+  maxDate.setUTCDate(maxDate.getUTCDate() + 14);
+  const maxDateJST = getJSTDateString(maxDate);
+
+  if (reservationDateJST < todayJST) {
+    return { isValid: false, error: 'RESERVATION_DATE_IN_PAST' };
+  }
+  if (reservationDateJST > maxDateJST) {
+    return { isValid: false, error: 'RESERVATION_DATE_TOO_FAR' };
+  }
+
+  return { isValid: true };
+}
+
 export function getJSTTimeRange(jstDateString: string, startHour: number, endHour: number, endMinutes: number = 0, endSeconds: number = 0, endMs: number = 0): { startUTC: Date; endUTC: Date } {
   const jstStart = new Date(`${jstDateString}T${String(startHour).padStart(2, '0')}:00:00+09:00`);
   const jstEnd = new Date(`${jstDateString}T${String(endHour).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}:${String(endSeconds).padStart(2, '0')}.${String(endMs).padStart(3, '0')}+09:00`);

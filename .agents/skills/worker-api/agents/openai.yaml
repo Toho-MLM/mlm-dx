@@ -1,0 +1,4 @@
+interface:
+  display_name: "MLM-DX Worker API開発"
+  short_description: "Hono API・共有スキーマ・D1変更を安全に実装します"
+  default_prompt: "Use $worker-api to implement an MLM-DX Worker API and related D1 changes."

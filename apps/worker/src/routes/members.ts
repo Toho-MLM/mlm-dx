@@ -14,6 +14,23 @@ function safeJsonParse<T>(json: string, fallback: T): T {
 
 const memberRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+type MemberListRow = {
+  id: string;
+  name: string;
+  nickname: string | null;
+  email: string;
+  grade: number;
+  instruments: string;
+  role: string;
+  groups: string | null;
+  student_number: string;
+};
+
+type MemberSelectRow = Pick<
+  MemberListRow,
+  'id' | 'name' | 'nickname' | 'grade' | 'instruments' | 'student_number'
+>;
+
 memberRoutes.use('*', requireAuth);
 
 memberRoutes.get('/', async (c) => {
@@ -34,9 +51,9 @@ memberRoutes.get('/', async (c) => {
       LEFT JOIN groups g ON gmi.group_id = g.id AND g.is_active = TRUE
       GROUP BY u.id
       ORDER BY u.grade DESC, UPPER(SUBSTR(u.email, 1, 6)) ASC
-    `).all();
+    `).all<MemberListRow>();
 
-    const processedMembers = members.results.map((member: any) => ({
+    const processedMembers = members.results.map((member) => ({
       ...member,
       groups: member.groups ? member.groups.split(',') : [],
       instruments: safeJsonParse(member.instruments, [])
@@ -354,9 +371,9 @@ memberRoutes.get('/select', async (c) => {
         CASE WHEN u.id = ? THEN 0 ELSE 1 END,
         u.grade DESC,
         UPPER(SUBSTR(u.email, 1, 6)) ASC
-    `).bind(currentUserId).all();
+    `).bind(currentUserId).all<MemberSelectRow>();
 
-    const processedMembers = members.results.map((member: any) => {
+    const processedMembers = members.results.map((member) => {
       const displayName = `${member.student_number} ${member.nickname || member.name}`;
       const realName = `${member.student_number} ${member.name}`;
       const instruments = safeJsonParse<string[]>(member.instruments || '[]', []);

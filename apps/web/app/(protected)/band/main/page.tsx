@@ -264,9 +264,6 @@ export default function BandMainPage() {
         ) : (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-muted-foreground">
-                行をドラッグすると、この画面上だけで順序を変更できます。
-              </p>
               <Button
                 type="button"
                 variant="outline"

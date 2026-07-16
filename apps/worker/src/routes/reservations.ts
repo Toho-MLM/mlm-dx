@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { isUserInGroup } from './groups';
 import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationLimitRemainingSchema, isAdmin } from '../../../../lib/shared-schemas';
-import { processReservationState, isTodayInJST, getJSTDateString, getJSTDayRange } from '../utils/reservation-processor';
+import { processReservationState, isTodayInJST, getJSTDateString, getJSTDayRange, validateReservationDateRange } from '../utils/reservation-processor';
 import { requireAdmin } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
 
@@ -395,6 +395,11 @@ reservationRoutes.post('/', async (c) => {
         success: false,
         error: validation.error || 'INVALID_RESERVATION_TIME'
       }, 400);
+    }
+
+    const dateValidation = validateReservationDateRange(new Date(start_time));
+    if (!dateValidation.isValid) {
+      return c.json({ success: false, error: dateValidation.error }, 400);
     }
 
     if (group_id) {

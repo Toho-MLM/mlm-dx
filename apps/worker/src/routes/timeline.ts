@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { z } from 'zod';
 import { requireAdmin } from '@shared-schemas';
+import { ensureMainBandEntries } from '../utils/main-band-entries';
 
 const UpdateTimelineRequestSchema = z.object({
   items: z.array(z.object({
@@ -29,6 +30,8 @@ timelineRoutes.get('/event/:eventId', async (c) => {
       return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
 
+    await ensureMainBandEntries(c.env, eventId);
+
     type TimelineRow = {
       entry_id: string;
       group_id: string;
@@ -37,7 +40,6 @@ timelineRoutes.get('/event/:eventId', async (c) => {
       position: number | null;
       created_at: string;
       group_name: string | null;
-      is_virtual?: boolean;
     };
 
     const rows = await c.env.DB.prepare(`
@@ -63,15 +65,12 @@ timelineRoutes.get('/event/:eventId', async (c) => {
       end_time: string | null;
       position: number | null;
       created_at: string;
-      is_virtual?: boolean;
     };
 
     const configured: TimelineItem[] = [];
     const unconfigured: TimelineItem[] = [];
-    const entryGroupIds = new Set<string>();
 
     for (const r of rows.results) {
-      entryGroupIds.add(r.group_id);
       const item = {
         entry_id: r.entry_id,
         group_id: r.group_id,
@@ -82,29 +81,6 @@ timelineRoutes.get('/event/:eventId', async (c) => {
         created_at: r.created_at,
       };
       if (item.position === null) unconfigured.push(item); else configured.push(item);
-    }
-
-    if (Number(event.group_limit) === 0) {
-      const mainGroups = await c.env.DB.prepare(`
-        SELECT id, name, created_at
-        FROM groups
-        WHERE is_main = TRUE AND is_active = TRUE
-        ORDER BY created_at ASC
-      `).all<{ id: string; name: string; created_at: string }>();
-
-      for (const group of mainGroups.results) {
-        if (entryGroupIds.has(group.id)) continue;
-        unconfigured.push({
-          entry_id: `main-band:${group.id}`,
-          group_id: group.id,
-          group_name: group.name,
-          start_time: null,
-          end_time: null,
-          position: null,
-          created_at: group.created_at,
-          is_virtual: true,
-        });
-      }
     }
 
     return c.json({ success: true, data: { configured, unconfigured } });
@@ -178,4 +154,3 @@ timelineRoutes.put('/event/:eventId', async (c) => {
 });
 
 export { timelineRoutes };
-
