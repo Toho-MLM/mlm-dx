@@ -10,7 +10,7 @@ declare const WebSocketPair: {
   new(): { 0: CloudflareWebSocket; 1: CloudflareWebSocket };
 };
 
-type WebSocketResponseInit = ResponseInit & {
+type WebSocketResponseInit = NonNullable<ConstructorParameters<typeof Response>[1]> & {
   webSocket: CloudflareWebSocket;
 };
 

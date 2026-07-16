@@ -13,7 +13,6 @@ import {
   ExternalReservationConflictSchema,
   ExternalReservationSchema,
   ExternalSchema,
-  isAdmin,
   validateReservationTime,
 } from '../../../../lib/shared-schemas';
 
