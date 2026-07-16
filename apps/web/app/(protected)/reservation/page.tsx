@@ -23,43 +23,23 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn, showSuccessToast } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ReservationState, eventStateNames, Event } from '../../types'
-import { validateReservationTime, isReservationDateValid, isReservationTimeValid, isAdmin, type Reservation, type UnavailablePeriod, type ReservationLimit, type ReservationLimitRemaining } from '@shared-schemas'
+import { ReservationState, eventStateNames } from '../../types'
+import { validateReservationTime, isReservationDateValid, isReservationTimeValid, isAdmin, type ReservationLimit, type ReservationLimitRemaining } from '@shared-schemas'
+import {
+  adjustReservationDraftForDate,
+  MIN_RESERVATION_MINUTES,
+  toEventCalendarEvents,
+  toReservationCalendarEvents,
+  toUnavailableCalendarEvents,
+  type CalendarEvent,
+  type ReservationDraft,
+} from './reservation-calendar'
 type GroupOption = {
   id: string;
   name: string;
   is_main: boolean;
 }
 
-type ReservationDraft = {
-  date: Date;
-  group: string | null;
-  startHour: number | null;
-  startMinute: number | null;
-  endHour: number | null;
-  endMinute: number | null;
-}
-
-type CalendarEvent = {
-  id: string;
-  title: string;
-  start: Date;
-  end: Date;
-  allDay: boolean;
-  resource: {
-    type: 'reservation' | 'event' | 'unavailable';
-    reservationId?: string;
-    eventId?: string;
-    periodId?: string;
-    reason?: string | null;
-    user_id?: string;
-    group_id?: string | null;
-    user_name?: string;
-    group_name?: string;
-    state?: ReservationState;
-    cancellable?: number;
-  };
-}
 import { apiClient } from '@/lib/api'
 import TimeGrid from 'react-big-calendar/lib/TimeGrid'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -94,9 +74,6 @@ const messages = {
   agenda: 'リスト',
   showMore: (total: number) => `+${total} 件`,
 }
-
-const MIN_RESERVATION_MINUTES = 10
-const TIME_STEP_MINUTES = 5
 
 function ThreeDayView({
   date,
@@ -217,6 +194,32 @@ function ReservationContent() {
     }
   }, [user, reservationDraft.group, reservationDraft.date])
 
+  const fetchReservations = useCallback(async () => {
+    try {
+      const [reservationsResponse, eventsResponse, unavailablePeriodsResponse, reservationLimitsResponse] = await Promise.all([
+        apiClient.getReservations(isAdminMode),
+        apiClient.getEvents(),
+        apiClient.getUnavailablePeriods(),
+        apiClient.getReservationLimits(),
+      ])
+
+      if (reservationsResponse.success && reservationsResponse.data) {
+        setReservationData(toReservationCalendarEvents(reservationsResponse.data))
+      }
+      if (eventsResponse.success && eventsResponse.data) {
+        setEvents(toEventCalendarEvents(eventsResponse.data))
+      }
+      if (unavailablePeriodsResponse.success && unavailablePeriodsResponse.data) {
+        setUnavailablePeriods(toUnavailableCalendarEvents(unavailablePeriodsResponse.data))
+      }
+      if (reservationLimitsResponse.success && reservationLimitsResponse.data) {
+        setReservationLimits(reservationLimitsResponse.data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch reservation data:', error)
+    }
+  }, [isAdminMode])
+
   useEffect(() => {
     const init = async () => {
       if (authLoading) return
@@ -229,86 +232,13 @@ function ReservationContent() {
         return
       }
       try {
-        const [reservationsResponse, eventsResponse, unavailablePeriodsResponse, reservationLimitsResponse] = await Promise.all([
-          apiClient.getReservations(isAdminMode),
-          apiClient.getEvents(),
-          apiClient.getUnavailablePeriods(),
-          apiClient.getReservationLimits()
-        ]);
-        
-        if (reservationsResponse.success && reservationsResponse.data) {
-          const formattedData: CalendarEvent[] = (reservationsResponse.data as Reservation[]).map((item) => ({
-            id: item.id,
-            title: item.group_name || item.user_name || '予約',
-            start: new Date(item.start_time),
-            end: new Date(item.end_time),
-            allDay: false,
-            resource: {
-              type: 'reservation' as const,
-              reservationId: item.id,
-              user_id: item.user_id,
-              group_id: item.group_id,
-              user_name: item.user_name || undefined,
-              group_name: item.group_name || undefined,
-              state: item.state as ReservationState,
-              cancellable: item.cancellable,
-            },
-          }));
-          setReservationData(formattedData);
-        }
-
-        if (eventsResponse.success && eventsResponse.data) {
-          const eventItems: CalendarEvent[] = (eventsResponse.data as Event[]).map((event) => {
-            const eventDate = new Date(event.event_date);
-            const startDate = startOfDay(eventDate);
-            const endDate = new Date(startDate);
-            endDate.setHours(23, 59, 59, 999);
-            
-            return {
-              id: `event-${event.id}`,
-              title: event.title,
-              start: startDate,
-              end: endDate,
-              allDay: true,
-              resource: {
-                type: 'event' as const,
-                eventId: event.id,
-              },
-            };
-          });
-          setEvents(eventItems);
-        }
-
-        if (unavailablePeriodsResponse.success && unavailablePeriodsResponse.data) {
-          const periodItems: CalendarEvent[] = (unavailablePeriodsResponse.data as UnavailablePeriod[]).map((period) => {
-            const start = new Date(period.start_datetime);
-            const end = new Date(period.end_datetime);
-            
-            return {
-                id: `unavailable-${period.id}`,
-              title: `予約不可`,
-                start: start,
-                end: end,
-                allDay: false,
-              resource: {
-                type: 'unavailable',
-                periodId: period.id,
-                reason: period.reason,
-              },
-            };
-          });
-          setUnavailablePeriods(periodItems);
-        }
-
-        if (reservationLimitsResponse.success && reservationLimitsResponse.data) {
-          setReservationLimits(reservationLimitsResponse.data);
-        }
+        await fetchReservations()
       } finally {
         setLoading(false)
       }
     }
     init()
-  }, [authLoading, user, router, isAdminMode, pathname, searchParams])
+  }, [authLoading, user, router, pathname, searchParams, fetchReservations])
 
   useEffect(() => {
     const checkMobile = () => {
@@ -352,132 +282,13 @@ function ReservationContent() {
     })
   }
 
-  const dateWithTime = (date: Date, hour: number, minute: number) => {
-    const result = new Date(date)
-    result.setHours(hour, minute, 0, 0)
-    return result
-  }
-
-  const setDraftTime = (draft: ReservationDraft, start: Date, end: Date): ReservationDraft => ({
-    ...draft,
-    startHour: start.getHours(),
-    startMinute: start.getMinutes(),
-    endHour: end.getHours(),
-    endMinute: end.getMinutes(),
-  })
-
-  const clearDraftTime = (draft: ReservationDraft): ReservationDraft => ({
-    ...draft,
-    startHour: null,
-    startMinute: null,
-    endHour: null,
-    endMinute: null,
-  })
-
-  const roundUpToTimeStep = (date: Date) => {
-    const result = new Date(date)
-    result.setSeconds(0, 0)
-    const remainder = result.getMinutes() % TIME_STEP_MINUTES
-    if (remainder !== 0) {
-      result.setMinutes(result.getMinutes() + TIME_STEP_MINUTES - remainder)
-    }
-    return result
-  }
-
-  const roundDownToTimeStep = (date: Date) => {
-    const result = new Date(date)
-    result.setSeconds(0, 0)
-    const remainder = result.getMinutes() % TIME_STEP_MINUTES
-    if (remainder !== 0) {
-      result.setMinutes(result.getMinutes() - remainder)
-    }
-    return result
-  }
-
-  const getUnavailableIntervals = (rangeStart: Date, rangeEnd: Date) => {
-    if (isAdminMode) return []
-    return unavailablePeriods
-      .filter((period) => period.start < rangeEnd && period.end > rangeStart)
-      .map((period) => ({
-        start: new Date(Math.max(period.start.getTime(), rangeStart.getTime())),
-        end: new Date(Math.min(period.end.getTime(), rangeEnd.getTime())),
-      }))
-      .sort((a, b) => a.start.getTime() - b.start.getTime())
-  }
-
-  const selectLongestAvailableInterval = (desiredStart: Date, desiredEnd: Date) => {
-    const latestEnd = dateWithTime(desiredStart, 23, 0)
-    let rangeStart = new Date(desiredStart)
-    let rangeEnd = new Date(Math.min(desiredEnd.getTime(), latestEnd.getTime()))
-
-    const now = new Date()
-    if (startOfDay(rangeStart).getTime() === startOfDay(now).getTime() && rangeStart < now) {
-      rangeStart = roundUpToTimeStep(now)
-    }
-
-    rangeStart = roundUpToTimeStep(rangeStart)
-    rangeEnd = roundDownToTimeStep(rangeEnd)
-
-    if (rangeEnd.getTime() - rangeStart.getTime() < MIN_RESERVATION_MINUTES * 60 * 1000) {
-      return null
-    }
-
-    const available = getUnavailableIntervals(rangeStart, rangeEnd).reduce(
-      (intervals, blocked) => intervals.flatMap((interval) => {
-        if (blocked.end <= interval.start || blocked.start >= interval.end) return [interval]
-        return [
-          blocked.start > interval.start ? { start: interval.start, end: blocked.start } : null,
-          blocked.end < interval.end ? { start: blocked.end, end: interval.end } : null,
-        ].filter((item): item is { start: Date; end: Date } => item !== null)
-      }),
-      [{ start: rangeStart, end: rangeEnd }]
-    )
-
-    return available
-      .map((interval) => ({
-        start: roundUpToTimeStep(interval.start),
-        end: roundDownToTimeStep(interval.end),
-      }))
-      .filter((interval) => interval.end.getTime() - interval.start.getTime() >= MIN_RESERVATION_MINUTES * 60 * 1000)
-      .reduce<{ start: Date; end: Date } | null>((longest, interval) => {
-        if (!longest) return interval
-        const longestDuration = longest.end.getTime() - longest.start.getTime()
-        const intervalDuration = interval.end.getTime() - interval.start.getTime()
-        return intervalDuration > longestDuration ? interval : longest
-      }, null)
-  }
-
-  const adjustDraftForDate = (draft: ReservationDraft, date: Date): ReservationDraft => {
-    const nextDraft = { ...draft, date }
-
-    if (
-      draft.startHour !== null &&
-      draft.startMinute !== null &&
-      draft.endHour !== null &&
-      draft.endMinute !== null
-    ) {
-      const desiredStart = dateWithTime(date, draft.startHour, draft.startMinute)
-      const desiredEnd = dateWithTime(date, draft.endHour, draft.endMinute)
-      const adjusted = selectLongestAvailableInterval(desiredStart, desiredEnd)
-      return adjusted ? setDraftTime(nextDraft, adjusted.start, adjusted.end) : clearDraftTime(nextDraft)
-    }
-
-    if (draft.startHour !== null && draft.startMinute !== null) {
-      const desiredStart = dateWithTime(date, draft.startHour, draft.startMinute)
-      const latestEndTime = dateWithTime(date, 23, 0)
-      if (
-        !isReservationTimeValid(date, draft.startHour, draft.startMinute) ||
-        addMinutes(desiredStart, MIN_RESERVATION_MINUTES).getTime() > latestEndTime.getTime()
-      ) {
-        return clearDraftTime(nextDraft)
-      }
-    }
-
-    return nextDraft
-  }
-
   const handleReservationDateSelect = (date: Date) => {
-    setReservationDraft((prev) => adjustDraftForDate(prev, date))
+    setReservationDraft((prev) => adjustReservationDraftForDate(
+      prev,
+      date,
+      unavailablePeriods,
+      isAdminMode
+    ))
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -597,7 +408,7 @@ function ReservationContent() {
     startDate.setHours(hour, minute, 0, 0)
     const latestEndTime = new Date(reservationDraft.date)
     latestEndTime.setHours(23, 0, 0, 0)
-    return addMinutes(startDate, 10).getTime() <= latestEndTime.getTime()
+    return addMinutes(startDate, MIN_RESERVATION_MINUTES).getTime() <= latestEndTime.getTime()
   }
 
   const isStartHourSelectable = (hour: number) => {
@@ -615,7 +426,7 @@ function ReservationContent() {
     startDate.setHours(reservationDraft.startHour, reservationDraft.startMinute, 0, 0)
     const endDate = new Date(reservationDraft.date)
     endDate.setHours(hour, minute, 0, 0)
-    const minEndTime = addMinutes(startDate, 10)
+    const minEndTime = addMinutes(startDate, MIN_RESERVATION_MINUTES)
     const maxEndTime = addHours(startDate, 4)
     if (isBefore(endDate, minEndTime)) return true
     if (endDate.getTime() > maxEndTime.getTime()) return true
@@ -681,87 +492,6 @@ function ReservationContent() {
     }
   };
 
-  const fetchReservations = async () => {
-    try {
-      const [reservationsResponse, eventsResponse, unavailablePeriodsResponse, reservationLimitsResponse] = await Promise.all([
-        apiClient.getReservations(isAdminMode),
-        apiClient.getEvents(),
-        apiClient.getUnavailablePeriods(),
-        apiClient.getReservationLimits()
-      ]);
-      
-      if (reservationsResponse.success && reservationsResponse.data) {
-        const formattedData: CalendarEvent[] = (reservationsResponse.data as Reservation[]).map((item) => ({
-          id: item.id,
-          title: item.group_name || item.user_name || '予約',
-          start: new Date(item.start_time),
-          end: new Date(item.end_time),
-          allDay: false,
-          resource: {
-            type: 'reservation' as const,
-            reservationId: item.id,
-            user_id: item.user_id,
-            group_id: item.group_id,
-            user_name: item.user_name || undefined,
-            group_name: item.group_name || undefined,
-            state: item.state as ReservationState,
-            cancellable: item.cancellable,
-          },
-        }));
-        setReservationData(formattedData);
-      }
-
-      if (eventsResponse.success && eventsResponse.data) {
-        const eventItems: CalendarEvent[] = (eventsResponse.data as Event[]).map((event) => {
-          const eventDate = new Date(event.event_date);
-          const startDate = startOfDay(eventDate);
-          const endDate = new Date(startDate);
-          endDate.setHours(23, 59, 59, 999);
-          
-          return {
-            id: `event-${event.id}`,
-            title: event.title,
-            start: startDate,
-            end: endDate,
-            allDay: true,
-            resource: {
-              type: 'event' as const,
-              eventId: event.id,
-            },
-          };
-        });
-        setEvents(eventItems);
-      }
-
-      if (unavailablePeriodsResponse.success && unavailablePeriodsResponse.data) {
-        const periodItems: CalendarEvent[] = (unavailablePeriodsResponse.data as UnavailablePeriod[]).map((period) => {
-          const start = new Date(period.start_datetime);
-          const end = new Date(period.end_datetime);
-          
-          return {
-              id: `unavailable-${period.id}`,
-              title: `予約不可${period.reason ? ': ' + period.reason : ''}`,
-              start: start,
-              end: end,
-              allDay: false,
-            resource: {
-              type: 'unavailable',
-              periodId: period.id,
-              reason: period.reason,
-            },
-          };
-        });
-        setUnavailablePeriods(periodItems);
-      }
-
-      if (reservationLimitsResponse.success && reservationLimitsResponse.data) {
-        setReservationLimits(reservationLimitsResponse.data);
-      }
-    } catch (err) {
-      console.error('Failed to refetch reservation data:', err);
-    }
-  }
-
   const fetchRealtimeReservationData = useCallback(async (includeReservationLimits: boolean) => {
     try {
       const [reservationsResponse, reservationLimitsResponse] = await Promise.all([
@@ -770,24 +500,7 @@ function ReservationContent() {
       ])
 
       if (reservationsResponse.success && reservationsResponse.data) {
-        const formattedData: CalendarEvent[] = (reservationsResponse.data as Reservation[]).map((item) => ({
-          id: item.id,
-          title: item.group_name || item.user_name || '予約',
-          start: new Date(item.start_time),
-          end: new Date(item.end_time),
-          allDay: false,
-          resource: {
-            type: 'reservation' as const,
-            reservationId: item.id,
-            user_id: item.user_id,
-            group_id: item.group_id,
-            user_name: item.user_name || undefined,
-            group_name: item.group_name || undefined,
-            state: item.state as ReservationState,
-            cancellable: item.cancellable,
-          },
-        }))
-        setReservationData(formattedData)
+        setReservationData(toReservationCalendarEvents(reservationsResponse.data))
       }
 
       if (reservationLimitsResponse?.success && reservationLimitsResponse.data) {
