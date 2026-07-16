@@ -124,13 +124,12 @@ function TimelineContent() {
 
   const startEditing = () => {
     setEditingConfigured(configured
-      .filter(r => !r.is_virtual)
       .map(r => ({
         ...r,
         start_time: r.start_time ? isoToHHMM(r.start_time) : null,
         end_time: r.end_time ? isoToHHMM(r.end_time) : null,
       })))
-    setEditingUnconfigured(unconfigured.filter(r => !r.is_virtual))
+    setEditingUnconfigured(unconfigured)
     setEditing(true)
   }
 
