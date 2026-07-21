@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { getUserGroupIds } from './groups';
 import { EntrySchema, CreateEntryRequestSchema, UpdateEntryRequestSchema } from '@shared-schemas';
 import { requireAdmin } from '../utils/admin';
+import { parseUuid } from '../utils/uuid';
 
 const entriesRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -175,7 +176,11 @@ entriesRoutes.post('/', async (c) => {
 entriesRoutes.get('/', async (c) => {
   try {
     const user = c.get('user');
-    const eventId = c.req.query('event_id');
+    const eventIdParam = c.req.query('event_id');
+    const eventId = eventIdParam ? parseUuid(eventIdParam) : undefined;
+    if (eventIdParam && !eventId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
 
     let query: string;
     let params: string[];
@@ -223,7 +228,10 @@ entriesRoutes.get('/', async (c) => {
 entriesRoutes.delete('/:id', async (c) => {
   try {
     const user = c.get('user');
-    const entryId = c.req.param('id');
+    const entryId = parseUuid(c.req.param('id'));
+    if (!entryId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
 
     const entry = await c.env.DB.prepare(`
       SELECT group_id FROM entries WHERE id = ?
@@ -253,7 +261,10 @@ entriesRoutes.delete('/:id', async (c) => {
 entriesRoutes.put('/:id', async (c) => {
   try {
     const user = c.get('user');
-    const entryId = c.req.param('id');
+    const entryId = parseUuid(c.req.param('id'));
+    if (!entryId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const body = await c.req.json();
     const { note } = UpdateEntryRequestSchema.parse(body);
 
@@ -284,4 +295,3 @@ entriesRoutes.put('/:id', async (c) => {
 });
 
 export { entriesRoutes };
-

@@ -276,6 +276,10 @@ class ApiClient {
     return httpClient.post<ApiResponse<void>>(`/reservations/${reservationId}/cancel${params}`)
   }
 
+  async deleteReservation(reservationId: string): Promise<ApiResponse<void>> {
+    return httpClient.delete<ApiResponse<void>>(`/reservations/${reservationId}`)
+  }
+
   async getExternals(): Promise<ApiResponse<External[]>> {
     return httpClient.get<ApiResponse<External[]>>('/reservation/external/studios')
   }

@@ -29,6 +29,8 @@ export const {
   ApiResponseSchema,
 } = SharedSchemas;
 
+const UuidSchema = z.string().uuid();
+
 export const GoogleUserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
@@ -41,9 +43,9 @@ export const GoogleUserSchema = z.object({
 });
 
 export const GroupMemberSchema = z.object({
-  id: z.string(),
-  group_id: z.string(),
-  user_id: z.string(),
+  id: UuidSchema,
+  group_id: UuidSchema,
+  user_id: UuidSchema,
   role: z.string().nullable(),
   created_at: z.string(),
 });

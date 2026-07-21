@@ -4,6 +4,7 @@ import type { Bindings, Variables } from '../index';
 import { requireAdmin } from '../utils/admin';
 import { z } from 'zod';
 import { EventSchema, CreateEventRequestSchema, UpdateEventRequestSchema } from '@shared-schemas';
+import { parseUuid } from '../utils/uuid';
 
 function validateEventDates(entryDeadline: string, setlistDeadline: string, eventDate: string): boolean {
   const entry = new Date(entryDeadline)
@@ -87,7 +88,10 @@ eventRoutes.put('/:id', async (c) => {
   try {
     requireAdmin(c.get('user').role);
 
-    const eventId = c.req.param('id');
+    const eventId = parseUuid(c.req.param('id'));
+    if (!eventId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const requestData = UpdateEventRequestSchema.parse(await c.req.json());
 
     if (!validateEventDates(requestData.entry_deadline, requestData.setlist_deadline, requestData.event_date)) {
@@ -218,7 +222,10 @@ eventRoutes.delete('/:id', async (c) => {
   try {
     requireAdmin(c.get('user').role);
 
-    const eventId = c.req.param('id');
+    const eventId = parseUuid(c.req.param('id'));
+    if (!eventId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
 
     await c.env.DB.prepare(`
       DELETE FROM events WHERE id = ?
@@ -235,4 +242,3 @@ eventRoutes.delete('/:id', async (c) => {
 });
 
 export { eventRoutes };
-
