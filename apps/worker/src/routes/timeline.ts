@@ -4,10 +4,13 @@ import type { Bindings, Variables } from '../index';
 import { z } from 'zod';
 import { requireAdmin } from '@shared-schemas';
 import { ensureMainBandEntries } from '../utils/main-band-entries';
+import { parseUuid } from '../utils/uuid';
+
+const UuidSchema = z.string().uuid();
 
 const UpdateTimelineRequestSchema = z.object({
   items: z.array(z.object({
-    entry_id: z.string(),
+    entry_id: UuidSchema,
     position: z.number().int().min(1).nullable(),
     start_time: z.string().datetime().nullable().optional(),
     end_time: z.string().datetime().nullable().optional(),
@@ -20,7 +23,10 @@ timelineRoutes.use('*', requireAuth);
 
 timelineRoutes.get('/event/:eventId', async (c) => {
   try {
-    const eventId = c.req.param('eventId');
+    const eventId = parseUuid(c.req.param('eventId'));
+    if (!eventId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
 
     const event = await c.env.DB.prepare(`
       SELECT group_limit FROM events WHERE id = ?
@@ -94,7 +100,10 @@ timelineRoutes.put('/event/:eventId', async (c) => {
     const user = c.get('user');
     try { requireAdmin(user.role); } catch { return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403); }
 
-    const eventId = c.req.param('eventId');
+    const eventId = parseUuid(c.req.param('eventId'));
+    if (!eventId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const body = UpdateTimelineRequestSchema.parse(await c.req.json());
 
     const items = body.items;

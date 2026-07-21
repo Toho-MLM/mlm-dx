@@ -21,6 +21,8 @@ import {
   ExternalSchema,
   validateReservationTime,
 } from '../../../../lib/shared-schemas';
+import { parseUuid } from '../utils/uuid';
+import { ZodError } from 'zod';
 
 const externalStudioRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 const externalReservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -290,7 +292,10 @@ externalStudioRoutes.delete('/studios/:id', async (c) => {
     const user = c.get('user');
     requireAdmin(user.role);
 
-    const externalId = c.req.param('id');
+    const externalId = parseUuid(c.req.param('id'));
+    if (!externalId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const external = await c.env.DB.prepare('SELECT id FROM external_studios WHERE id = ?').bind(externalId).first();
     if (!external) {
       return c.json({ success: false, error: 'EXTERNAL_NOT_FOUND' }, 404);
@@ -412,6 +417,9 @@ externalReservationRoutes.post('/check', async (c) => {
     return c.json({ success: true, data: conflicts });
   } catch (error) {
     console.error('Error checking external reservation:', error);
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
@@ -486,6 +494,9 @@ externalReservationRoutes.post('/', async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.error('Error creating external reservation:', error);
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
@@ -493,7 +504,10 @@ externalReservationRoutes.post('/', async (c) => {
 externalReservationRoutes.post('/:id/cancel', async (c) => {
   try {
     const user = c.get('user');
-    const reservationId = c.req.param('id');
+    const reservationId = parseUuid(c.req.param('id'));
+    if (!reservationId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const isAdminMode = c.req.query('admin') === 'true';
 
     if (isAdminMode) {

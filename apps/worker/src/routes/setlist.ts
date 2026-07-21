@@ -6,6 +6,7 @@ import { requireAdmin } from '../utils/admin';
 import { z } from 'zod';
 import { CreateSetlistItemRequestSchema, ReplaceSetlistItemsRequestSchema } from '@shared-schemas';
 import { ensureMainBandEntries } from '../utils/main-band-entries';
+import { parseUuid } from '../utils/uuid';
 
 const setlistRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -88,7 +89,10 @@ setlistRoutes.post('/', async (c) => {
 setlistRoutes.get('/event/:eventId', async (c) => {
   try {
     const user = c.get('user');
-    const eventId = c.req.param('eventId');
+    const eventId = parseUuid(c.req.param('eventId'));
+    if (!eventId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const adminParam = c.req.query('admin');
     const isAdminMode = adminParam === 'true';
 
@@ -209,7 +213,7 @@ setlistRoutes.get('/event/:eventId', async (c) => {
 setlistRoutes.put('/', async (c) => {
   try {
     const user = c.get('user');
-    const entryId = c.req.query('entryId');
+    const entryId = parseUuid(c.req.query('entryId'));
 
     if (!entryId) {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
