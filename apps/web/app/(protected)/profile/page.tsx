@@ -10,7 +10,12 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/app/context/AuthContext'
 import { SetupWizard } from './setup-wizard'
 import { PageHeader } from '@/components/page-header'
-import { apiClient, type PasskeyCredential } from '@/lib/api'
+import {
+  apiClient,
+  type EmailNotificationPreferences,
+  type EmailNotificationType,
+  type PasskeyCredential,
+} from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import { startRegistration } from '@simplewebauthn/browser'
 import type { AuthenticatorAttestationResponseJSON } from '@simplewebauthn/types'
@@ -19,6 +24,21 @@ import { showSuccessToast } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { httpClient } from '@/lib/http-client'
 import { getLoginPath, getRedirectPath, storeRedirectPath } from '@/lib/auth-redirect'
+import { Switch } from '@/components/ui/switch'
+
+const emailNotificationOptions: Array<{
+  type: EmailNotificationType
+  label: string
+  description: string
+}> = [
+  { type: 'RESERVATION_RECEIVED', label: '予約受付', description: '予約を受け付けたとき' },
+  { type: 'RESERVATION_CONFIRMED', label: '予約確定', description: '予約が確定したとき' },
+  { type: 'RESERVATION_EDITED', label: '予約者による変更', description: '予約者が予約内容を変更したとき' },
+  { type: 'RESERVATION_ADJUSTED', label: '予約時間の変更', description: '予約者の操作によらず予約時間が変更されたとき' },
+  { type: 'RESERVATION_DECLINED', label: '予約却下', description: '予約が却下されたとき' },
+  { type: 'RESERVATION_CANCELLED', label: '予約取消', description: '予約者が予約を取り消したとき' },
+  { type: 'RESERVATION_REVOKED', label: '予約無効化', description: '管理者操作や予約禁止期間の追加により予約が無効化されたとき' },
+]
 
 export default function Page() {
   return (
@@ -40,6 +60,9 @@ function ProfileContent() {
   const [confirmingPasskeyId, setConfirmingPasskeyId] = useState<string | null>(null)
   const [isRefreshingAvatar, setIsRefreshingAvatar] = useState(false)
   const [confirmingAvatarRefresh, setConfirmingAvatarRefresh] = useState(false)
+  const [emailNotificationPreferences, setEmailNotificationPreferences] = useState<EmailNotificationPreferences | null>(null)
+  const [isEmailNotificationLoading, setIsEmailNotificationLoading] = useState(false)
+  const [updatingEmailNotificationTypes, setUpdatingEmailNotificationTypes] = useState<Set<EmailNotificationType>>(new Set())
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -59,6 +82,23 @@ function ProfileContent() {
       toast.error('Passkeyの取得に失敗しました')
     } finally {
       setIsPasskeyListLoading(false)
+    }
+  }, [])
+
+  const fetchEmailNotificationPreferences = useCallback(async () => {
+    setIsEmailNotificationLoading(true)
+    try {
+      const res = await apiClient.getEmailNotificationPreferences()
+      if (res.success && res.data) {
+        setEmailNotificationPreferences(res.data)
+      } else {
+        toast.error('メール通知設定の取得に失敗しました')
+      }
+    } catch (error) {
+      console.error('Failed to fetch email notification preferences:', error)
+      toast.error('メール通知設定の取得に失敗しました')
+    } finally {
+      setIsEmailNotificationLoading(false)
     }
   }, [])
 
@@ -88,14 +128,38 @@ function ProfileContent() {
             setIsEditing(true)
           }
         }
-        await fetchPasskeys()
+        await Promise.all([fetchPasskeys(), fetchEmailNotificationPreferences()])
       } finally {
         setLoading(false)
         setIsPasskeyLoading(false)
       }
     }
     init()
-  }, [authLoading, user, router, fetchPasskeys, pathname, searchParams])
+  }, [authLoading, user, router, fetchPasskeys, fetchEmailNotificationPreferences, pathname, searchParams])
+
+  const handleEmailNotificationChange = useCallback(async (type: EmailNotificationType, enabled: boolean) => {
+    if (!emailNotificationPreferences || updatingEmailNotificationTypes.has(type)) return
+
+    const previousValue = emailNotificationPreferences[type]
+    setEmailNotificationPreferences((current) => current ? { ...current, [type]: enabled } : current)
+    setUpdatingEmailNotificationTypes((current) => new Set(current).add(type))
+
+    try {
+      const response = await apiClient.updateEmailNotificationPreference(type, enabled)
+      if (!response.success) throw new Error(response.error || 'UPDATE_FAILED')
+      showSuccessToast({ message: 'メール通知設定を更新しました' })
+    } catch (error) {
+      console.error('Failed to update email notification preference:', error)
+      setEmailNotificationPreferences((current) => current ? { ...current, [type]: previousValue } : current)
+      toast.error('メール通知設定の更新に失敗しました')
+    } finally {
+      setUpdatingEmailNotificationTypes((current) => {
+        const next = new Set(current)
+        next.delete(type)
+        return next
+      })
+    }
+  }, [emailNotificationPreferences, updatingEmailNotificationTypes])
 
   const handleResetProfile = useCallback(() => {
     setIsEditing(true)
@@ -273,7 +337,7 @@ function ProfileContent() {
           <div className="mb-5">
             <Skeleton className="h-8 w-40" />
           </div>
-          <Card className="min-w-fit max-w-2xl mx-auto">
+          <Card className="mx-auto w-full max-w-2xl">
             <CardContent className="p-5 space-y-3">
               <div className="space-y-2">
                 <Skeleton className="h-5 w-32" />
@@ -308,7 +372,7 @@ function ProfileContent() {
               transition={{ duration: 0.5 }}
               className ="space-y-5"
             >
-            <Card className="min-w-fit max-w-2xl mx-auto">
+            <Card className="mx-auto w-full max-w-2xl">
               <CardContent className="p-5 space-y-3">
                 <div className="space-y-2">
                   <div className="bg-gray-50 p-2 rounded-lg">
@@ -358,7 +422,44 @@ function ProfileContent() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="min-w-fit max-w-2xl mx-auto">
+            <Card className="mx-auto w-full max-w-2xl">
+              <CardHeader>
+                <CardTitle>メール通知</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isEmailNotificationLoading || !emailNotificationPreferences ? (
+                  <div className="space-y-3">
+                    {emailNotificationOptions.map((option) => (
+                      <Skeleton key={option.type} className="h-16 w-full" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {emailNotificationOptions.map((option) => (
+                      <div
+                        key={option.type}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3"
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-semibold text-gray-900">{option.label}</p>
+                          <p className="text-xs leading-5 text-gray-600">{option.description}</p>
+                        </div>
+                        <Switch
+                          checked={emailNotificationPreferences[option.type]}
+                          onCheckedChange={(enabled) => handleEmailNotificationChange(option.type, enabled)}
+                          disabled={updatingEmailNotificationTypes.has(option.type)}
+                          aria-label={`${option.label}のメール通知`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-6 border-t border-gray-200 pt-4 text-xs leading-5 text-gray-600">
+                  団体予約では、ほかのメンバーが通知を有効にしている場合、予約者の設定がOFFでも宛先（To）として通知メールが送信されます。予約者を含む全員がOFFの場合は送信されません。
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="mx-auto w-full max-w-2xl">
               <CardHeader>
                 <CardTitle>Passkey</CardTitle>
               </CardHeader>

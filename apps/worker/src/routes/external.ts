@@ -6,6 +6,12 @@ import { hasReservationLimitConflict } from './reservations';
 import { requireAdmin } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
 import { processExternalReservationState } from '../utils/external-processor';
+import type { EmailNotificationType } from '../../../../lib/shared-schemas';
+import {
+  prepareAndSendReservationEmail,
+  prepareReservationEmail,
+  sendPreparedReservationEmail,
+} from '../utils/reservation-email';
 import {
   CheckExternalReservationRequestSchema,
   CreateExternalRequestSchema,
@@ -290,9 +296,39 @@ externalStudioRoutes.delete('/studios/:id', async (c) => {
       return c.json({ success: false, error: 'EXTERNAL_NOT_FOUND' }, 404);
     }
 
+    const affectedReservations = await c.env.DB.prepare(`
+      SELECT id
+      FROM external_reservations
+      WHERE external_studio_id = ?
+        AND state IN ('PENDING', 'CONFIRMED')
+    `).bind(externalId).all<{ id: string }>();
+    const preparedEmails = [];
+    for (const reservation of affectedReservations.results) {
+      try {
+        preparedEmails.push(await prepareReservationEmail(c.env, {
+          kind: 'EXTERNAL',
+          reservationId: reservation.id,
+          notificationType: 'RESERVATION_REVOKED',
+          reservationStatusOverride: 'DECLINED',
+        }));
+      } catch (error) {
+        console.error('External reservation email preparation failed before studio deletion', {
+          reservationId: reservation.id,
+          notificationType: 'RESERVATION_REVOKED',
+          error: error instanceof Error ? error.message : 'UNKNOWN_EMAIL_ERROR',
+        });
+      }
+    }
+
     await c.env.DB.prepare('DELETE FROM external_reservations WHERE external_studio_id = ?').bind(externalId).run();
     await c.env.DB.prepare('DELETE FROM external_studios WHERE id = ?').bind(externalId).run();
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+
+    c.executionCtx.waitUntil((async () => {
+      for (const prepared of preparedEmails) {
+        await sendPreparedReservationEmail(c.env, prepared);
+      }
+    })());
 
     return c.json({ success: true });
   } catch (error) {
@@ -413,15 +449,24 @@ externalReservationRoutes.post('/', async (c) => {
     `).bind(reservationId, data.external_studio_id, user.id, data.group_id, data.start_time, data.end_time, 'PENDING', now, now).run();
 
     const processResult = await processExternalReservationState(c.env, data.external_studio_id, reservationId, data.start_time, data.end_time);
+    let notificationType: EmailNotificationType = 'RESERVATION_RECEIVED';
+    let requestedStartTime: string | undefined;
+    let requestedEndTime: string | undefined;
     if (processResult.state !== 'PENDING') {
       const updateTime = new Date().toISOString();
       if (processResult.adjustedStartTime && processResult.adjustedEndTime) {
+        notificationType = 'RESERVATION_ADJUSTED';
+        requestedStartTime = data.start_time;
+        requestedEndTime = data.end_time;
         await c.env.DB.prepare(`
           UPDATE external_reservations
           SET state = ?, start_time = ?, end_time = ?, updated_at = ?
           WHERE id = ?
         `).bind(processResult.state, processResult.adjustedStartTime, processResult.adjustedEndTime, updateTime, reservationId).run();
       } else {
+        notificationType = processResult.state === 'CONFIRMED'
+          ? 'RESERVATION_CONFIRMED'
+          : 'RESERVATION_DECLINED';
         await c.env.DB.prepare(`
           UPDATE external_reservations
           SET state = ?, updated_at = ?
@@ -431,6 +476,13 @@ externalReservationRoutes.post('/', async (c) => {
     }
 
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+    c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
+      kind: 'EXTERNAL',
+      reservationId,
+      notificationType,
+      requestedStartTime,
+      requestedEndTime,
+    }));
     return c.json({ success: true });
   } catch (error) {
     console.error('Error creating external reservation:', error);
@@ -480,6 +532,11 @@ externalReservationRoutes.post('/:id/cancel', async (c) => {
     `).bind(isAdminMode ? 'DECLINED' : 'CANCELLED', new Date().toISOString(), reservationId).run();
 
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+    c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
+      kind: 'EXTERNAL',
+      reservationId,
+      notificationType: isAdminMode ? 'RESERVATION_REVOKED' : 'RESERVATION_CANCELLED',
+    }));
     return c.json({ success: true });
   } catch (error) {
     console.error('Error cancelling external reservation:', error);
