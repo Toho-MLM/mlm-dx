@@ -28,6 +28,34 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Type check Backend
         run: pnpm --filter mlm-dx-worker type-check
+      - name: Validate SMTP configuration
+        env:
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_SECURITY: ${{ vars.SMTP_SECURITY }}
+          SMTP_FROM_EMAIL: ${{ vars.SMTP_FROM_EMAIL }}
+          SMTP_FROM_NAME: ${{ vars.SMTP_FROM_NAME }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          for variable_name in SMTP_HOST SMTP_PORT SMTP_SECURITY SMTP_FROM_EMAIL SMTP_FROM_NAME SMTP_USER SMTP_PASSWORD; do
+            if [ -z "${!variable_name}" ]; then
+              echo "Required SMTP configuration is missing: ${variable_name}"
+              exit 1
+            fi
+          done
+          if [ "$SMTP_PORT" = "465" ] && [ "$SMTP_SECURITY" != "tls" ]; then
+            echo "SMTP port 465 requires SMTP_SECURITY=tls"
+            exit 1
+          fi
+          if [ "$SMTP_PORT" = "587" ] && [ "$SMTP_SECURITY" != "starttls" ]; then
+            echo "SMTP port 587 requires SMTP_SECURITY=starttls"
+            exit 1
+          fi
+          if [ "$SMTP_PORT" != "465" ] && [ "$SMTP_PORT" != "587" ]; then
+            echo "SMTP_PORT must be 465 or 587"
+            exit 1
+          fi
       - name: Update wrangler.toml with environment variables
         working-directory: apps/worker
         run: |
@@ -38,6 +66,11 @@ jobs:
           sed -i "s|GOOGLE_CLIENT_SECRET = \"\"|GOOGLE_CLIENT_SECRET = \"${{ secrets.GOOGLE_CLIENT_SECRET }}\"|" wrangler.toml
           sed -i "s|CORS_ORIGIN = \"\"|CORS_ORIGIN = \"${{ vars.CORS_ORIGIN }}\"|" wrangler.toml
           sed -i "s|FRONTEND_URL = \"\"|FRONTEND_URL = \"${{ vars.FRONTEND_URL }}\"|" wrangler.toml
+          sed -i "s|SMTP_HOST = \"\"|SMTP_HOST = \"${{ vars.SMTP_HOST }}\"|" wrangler.toml
+          sed -i "s|SMTP_PORT = \"\"|SMTP_PORT = \"${{ vars.SMTP_PORT }}\"|" wrangler.toml
+          sed -i "s|SMTP_SECURITY = \"\"|SMTP_SECURITY = \"${{ vars.SMTP_SECURITY }}\"|" wrangler.toml
+          sed -i "s|SMTP_FROM_EMAIL = \"\"|SMTP_FROM_EMAIL = \"${{ vars.SMTP_FROM_EMAIL }}\"|" wrangler.toml
+          sed -i "s|SMTP_FROM_NAME = \"\"|SMTP_FROM_NAME = \"${{ vars.SMTP_FROM_NAME }}\"|" wrangler.toml
           sed -i "/^\[\[env\.production\.d1_databases\]\]/,/^\[/{s|database_id = \"\"|database_id = \"${{ vars.D1_DATABASE_ID }}\"|}" wrangler.toml
       - name: Check for D1 migration files
         id: d1_migrations
@@ -82,6 +115,13 @@ jobs:
           workingDirectory: apps/worker
           command: deploy --env production
           packageManager: pnpm
+          environment: production
+          secrets: |
+            SMTP_USER
+            SMTP_PASSWORD
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
 
   deploy_frontend:
     name: Deploy Frontend
