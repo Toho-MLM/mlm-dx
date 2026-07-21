@@ -17,6 +17,8 @@ type CreateGroupRequest = SharedSchemas.CreateGroupRequest
 type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest
 type DeleteGroupsRequest = SharedSchemas.DeleteGroupsRequest
 type UpdateUserRequest = SharedSchemas.UpdateUserRequest
+export type EmailNotificationType = SharedSchemas.EmailNotificationType
+export type EmailNotificationPreferences = SharedSchemas.EmailNotificationPreferences
 type CreateReservationRequest = SharedSchemas.CreateReservationRequest
 type CreateExternalRequest = SharedSchemas.CreateExternalRequest
 type CreateExternalReservationRequest = SharedSchemas.CreateExternalReservationRequest
@@ -118,6 +120,19 @@ class ApiClient {
   async updateUserData(data: UpdateUserRequest): Promise<ApiResponse<void>> {
     SharedSchemas.UpdateUserRequestSchema.parse(data)
     return httpClient.put<ApiResponse<void>>('/me', data)
+  }
+
+  async getEmailNotificationPreferences(): Promise<ApiResponse<EmailNotificationPreferences>> {
+    return httpClient.get<ApiResponse<EmailNotificationPreferences>>('/me/email-notification-preferences')
+  }
+
+  async updateEmailNotificationPreference(
+    type: EmailNotificationType,
+    enabled: boolean
+  ): Promise<ApiResponse<void>> {
+    SharedSchemas.EmailNotificationTypeSchema.parse(type)
+    SharedSchemas.UpdateEmailNotificationPreferenceRequestSchema.parse({ enabled })
+    return httpClient.put<ApiResponse<void>>(`/me/email-notification-preferences/${type}`, { enabled })
   }
 
   async resetAvatar(): Promise<ApiResponse<void>> {
