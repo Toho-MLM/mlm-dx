@@ -10,17 +10,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface BandCardProps {
   band: Group
   memberOptions?: { id: string; name: string; instruments: string[] }[]
   onEdit: (id: string) => void
   onToggleActive?: (id: string) => void
+  onDelete?: (id: string) => void
+  isSelected?: boolean
+  onSelectionChange?: (id: string, selected: boolean) => void
   isAdminMode?: boolean
   loading?: boolean
 }
 
-export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, isAdminMode = false, loading = false }: BandCardProps) {
+export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, onDelete, isSelected = false, onSelectionChange, isAdminMode = false, loading = false }: BandCardProps) {
   const sortedAssignments = useMemo(() => {
     return [...band.assignments].sort((a, b) => {
       const instrumentComparison = compareInstrumentLists(a.instruments, b.instruments)
@@ -35,7 +39,16 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, isA
 
   return (
     <div className={`grid w-full grid-cols-[1fr_auto] items-center gap-x-2 rounded-md border px-3 py-2.5 transition-colors sm:grid-cols-[minmax(150px,220px)_1fr_auto] sm:gap-x-3 ${band.isActive ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 opacity-70'}`}>
-      <div className="min-w-0 pr-1">
+      <div className="flex min-w-0 items-start gap-2 pr-1">
+        {!loading && isAdminMode && onSelectionChange && (
+          <Checkbox
+            className="mt-0.5"
+            checked={isSelected}
+            onCheckedChange={(checked) => onSelectionChange(band.id, checked === true)}
+            aria-label={`${band.name}を選択`}
+          />
+        )}
+        <div className="min-w-0">
         {loading ? (
           <div className="space-y-2">
             <Skeleton className="h-5 w-36" />
@@ -61,6 +74,7 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, isA
             )}
           </>
         )}
+        </div>
       </div>
 
       <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1">
@@ -143,6 +157,14 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, isA
                     有効化
                   </DropdownMenuItem>
                 )
+              )}
+              {isAdminMode && onDelete && (
+                <DropdownMenuItem
+                  onClick={() => onDelete(band.id)}
+                  className="flex items-center gap-2 text-destructive focus:text-destructive"
+                >
+                  完全に削除
+                </DropdownMenuItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>

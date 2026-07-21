@@ -27,7 +27,7 @@ export function formatGroups(raw: unknown[]): Group[] {
         instruments: [...assignment.instruments].sort(compareInstruments) as Instrument[],
       })),
     }
-  }).sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+  })
 }
 
 type SuccessToastParams = {

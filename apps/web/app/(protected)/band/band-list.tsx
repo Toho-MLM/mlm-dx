@@ -13,6 +13,15 @@ import { translateError } from '@/lib/error-label'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 const stripStudentNumberPrefix = (name: string) => name.replace(/^[A-Z0-9]{6}\s+/, '')
 type MemberOption = { id: string; name: string; display_name?: string; real_name?: string; instruments: string[] }
@@ -27,6 +36,10 @@ export function BandList() {
   const [bands, setBands] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
   const [memberOptions, setMemberOptions] = useState<MemberOption[]>([])
+  const [deletingBand, setDeletingBand] = useState<Group | null>(null)
+  const [deletingBands, setDeletingBands] = useState<Group[]>([])
+  const [selectedBandIds, setSelectedBandIds] = useState<Set<string>>(new Set())
+  const [isDeleting, setIsDeleting] = useState(false)
   const placeholderMain: Group = { id: 'placeholder-main', name: '', isMain: true, isActive: true, assignments: [] }
   const placeholderFree: Group = { id: 'placeholder-free', name: '', isMain: false, isActive: true, assignments: [] }
 
@@ -51,6 +64,7 @@ export function BandList() {
 
   useEffect(() => {
     fetchBandsAndMembers(isAdminMode)
+    if (!isAdminMode) setSelectedBandIds(new Set())
   }, [fetchBandsAndMembers, isAdminMode])
 
   const handleEdit = (id: string) => {
@@ -130,6 +144,37 @@ export function BandList() {
     setIsAdminMode(checked)
   }
 
+  const handleDeleteConfirm = async () => {
+    const targets = deletingBands.length > 0 ? deletingBands : deletingBand ? [deletingBand] : []
+    if (targets.length === 0 || isDeleting) return
+
+    try {
+      setIsDeleting(true)
+      const response = targets.length === 1
+        ? await apiClient.deleteGroup(targets[0].id)
+        : await apiClient.deleteGroups({ ids: targets.map(band => band.id) })
+      if (!response.success) {
+        toast.error('バンドを削除できませんでした', {
+          description: response.error ? translateError(response.error) : undefined,
+        })
+        return
+      }
+
+      const deletedIds = new Set(targets.map(band => band.id))
+      setBands(prev => prev.filter(band => !deletedIds.has(band.id)))
+      setSelectedBandIds(prev => new Set([...prev].filter(id => !deletedIds.has(id))))
+      setDeletingBand(null)
+      setDeletingBands([])
+      toast.success(targets.length === 1 ? 'バンドを完全に削除しました' : `${targets.length}件のバンドを完全に削除しました`)
+    } catch (error) {
+      toast.error('バンドを削除できませんでした', {
+        description: translateError((error as Error).message),
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <>
       <BandPageHeader 
@@ -140,6 +185,26 @@ export function BandList() {
         isAdminMode={isAdminMode}
       />
       <div className="p-3 sm:p-4">
+        {!loading && isAdminMode && bands.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={selectedBandIds.size === bands.length ? true : selectedBandIds.size > 0 ? 'indeterminate' : false}
+                onCheckedChange={(checked) => setSelectedBandIds(checked === true ? new Set(bands.map(band => band.id)) : new Set())}
+                aria-label="すべてのバンドを選択"
+              />
+              {selectedBandIds.size > 0 ? `${selectedBandIds.size}件選択中` : 'すべて選択'}
+            </label>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={selectedBandIds.size === 0}
+              onClick={() => setDeletingBands(bands.filter(band => selectedBandIds.has(band.id)))}
+            >
+              選択したバンドを完全に削除
+            </Button>
+          </div>
+        )}
         <div className="space-y-2">
           {loading ? (
             <>
@@ -170,6 +235,14 @@ export function BandList() {
                   memberOptions={memberOptions}
                   onEdit={handleEdit}
                   onToggleActive={handleToggleActive}
+                  onDelete={isAdminMode ? (id) => setDeletingBand(bands.find(b => b.id === id) || null) : undefined}
+                  isSelected={selectedBandIds.has(band.id)}
+                  onSelectionChange={isAdminMode ? (id, selected) => setSelectedBandIds(prev => {
+                    const next = new Set(prev)
+                    if (selected) next.add(id)
+                    else next.delete(id)
+                    return next
+                  }) : undefined}
                   isAdminMode={isAdminMode}
                 />
               </div>
@@ -184,6 +257,34 @@ export function BandList() {
           onSuccess={handleSuccess}
           isAdminMode={isAdminMode}
         />
+        <Dialog open={deletingBand !== null || deletingBands.length > 0} onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setDeletingBand(null)
+            setDeletingBands([])
+          }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>バンドを完全に削除</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2 py-4 text-sm text-muted-foreground">
+              <p>
+                {deletingBands.length > 0
+                  ? <><strong className="text-foreground">選択した{deletingBands.length}件のバンド</strong>を削除しますか？</>
+                  : <><strong className="text-foreground">{deletingBand?.name}</strong> を削除しますか？</>}
+              </p>
+              <p>関連する予約、外部スタジオ予約、イベント出演、セットリスト、メンバー情報も削除されます。この操作は取り消せません。</p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setDeletingBand(null); setDeletingBands([]) }} disabled={isDeleting}>
+                キャンセル
+              </Button>
+              <Button variant="destructive" onClick={handleDeleteConfirm} disabled={isDeleting}>
+                {isDeleting ? '削除中...' : '完全に削除'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </>
   )
