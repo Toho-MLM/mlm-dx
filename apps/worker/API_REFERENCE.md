@@ -245,6 +245,11 @@ Worker は以下の `Bindings` を前提としています。
 - `PENDING` または `CONFIRMED` の予約のみキャンセル可能。予約者本人か、同じグループに所属しているユーザーが実行できます。
 - 制限に抵触する場合は `403 RESERVATION_CANNOT_BE_CANCELLED` を返します。
 
+#### DELETE `/reservations/:id`
+- 管理者のみ実行できます。
+- 予約の状態を変更するのではなく、対象レコードをDBから完全に削除します。
+- 存在しない予約は `404 RESERVATION_NOT_FOUND`、UUID形式でないIDは `400 INVALID_INPUT` を返します。
+
 #### POST `/reservations/unavailable`
 - 管理者のみ実行できます。
 - 新しい予約禁止期間と既存の `PENDING` / `CONFIRMED` 予約が一部だけ重なる場合、禁止部分を除いた最長の時間帯へ予約を短縮し、状態は維持します。この変更は `RESERVATION_ADJUSTED` 通知の対象です。
