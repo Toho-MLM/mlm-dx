@@ -429,7 +429,7 @@ reservationRoutes.post('/', async (c) => {
       WHERE start_datetime < ? AND end_datetime > ?
     `).bind(end_time, start_time).all();
 
-    if (!isAdminMode && unavailablePeriods.results.length > 0) {
+    if (unavailablePeriods.results.length > 0) {
       return c.json({
         success: false,
         error: 'BLOCKED_PERIOD_CONFLICT'
@@ -737,27 +737,23 @@ reservationRoutes.post('/unavailable', async (c) => {
     const validatedData = CreateUnavailablePeriodRequestSchema.parse(requestData);
     const { start_datetime, end_datetime, reason } = validatedData;
 
-    const conflictingReservations = await c.env.DB.prepare(`
-      SELECT id, start_time, end_time
-      FROM reservations
-      WHERE state IN ('PENDING', 'CONFIRMED')
-        AND start_time < ? AND end_time > ?
-    `).bind(end_datetime, start_datetime).all();
-
-    if (conflictingReservations.results.length > 0) {
-      return c.json({
-        success: false,
-        error: 'RESERVATION_CONFLICT'
-      }, 400);
-    }
-
     const now = new Date().toISOString();
     const periodId = crypto.randomUUID();
 
-    await c.env.DB.prepare(`
-      INSERT INTO unavailable_periods (id, start_datetime, end_datetime, reason, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(periodId, start_datetime, end_datetime, reason || null, now, now).run();
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        INSERT INTO unavailable_periods (id, start_datetime, end_datetime, reason, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(periodId, start_datetime, end_datetime, reason || null, now, now),
+      c.env.DB.prepare(`
+        UPDATE reservations
+        SET state = 'DECLINED', updated_at = ?
+        WHERE state IN ('PENDING', 'CONFIRMED')
+          AND start_time < ? AND end_time > ?
+      `).bind(now, end_datetime, start_datetime),
+    ]);
+
+    await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
 
     return c.json({ success: true });
   } catch (error) {
