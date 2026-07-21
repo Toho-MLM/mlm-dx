@@ -1,6 +1,7 @@
 import type { Bindings } from '../index';
 import { broadcastReservationRealtimeEvent } from './reservation-realtime';
 import { getJSTDateString, getJSTDayRange, getJSTTimeRange, isTodayInJST, selectLongestInterval, type AvailableInterval, type ProcessResult } from './reservation-processor';
+import { prepareAndSendReservationEmail } from './reservation-email';
 
 export async function getAvailableExternalIntervals(
   env: Bindings,
@@ -131,6 +132,18 @@ export async function processTodayExternalReservations(env: Bindings): Promise<n
       `).bind(processResult.state, now, reservation.id).run();
     }
     changedCount += 1;
+
+    await prepareAndSendReservationEmail(env, {
+      kind: 'EXTERNAL',
+      reservationId: reservation.id,
+      notificationType: processResult.adjustedStartTime && processResult.adjustedEndTime
+        ? 'RESERVATION_ADJUSTED'
+        : processResult.state === 'CONFIRMED'
+          ? 'RESERVATION_CONFIRMED'
+          : 'RESERVATION_DECLINED',
+      requestedStartTime: processResult.adjustedStartTime ? reservation.start_time : undefined,
+      requestedEndTime: processResult.adjustedEndTime ? reservation.end_time : undefined,
+    });
   }
 
   if (changedCount > 0) {

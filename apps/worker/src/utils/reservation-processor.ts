@@ -1,5 +1,6 @@
 import type { Bindings } from '../index';
 import { broadcastReservationRealtimeEvent } from './reservation-realtime';
+import { prepareAndSendReservationEmail } from './reservation-email';
 
 export interface ProcessResult {
   state: string;
@@ -217,6 +218,18 @@ export async function processTodayReservations(env: Bindings): Promise<number> {
           
           console.log(`Updated reservation ${reservation.id} to ${processResult.state}`);
         }
+
+        await prepareAndSendReservationEmail(env, {
+          kind: 'HALL',
+          reservationId: String(reservation.id),
+          notificationType: processResult.adjustedStartTime && processResult.adjustedEndTime
+            ? 'RESERVATION_ADJUSTED'
+            : processResult.state === 'CONFIRMED'
+              ? 'RESERVATION_CONFIRMED'
+              : 'RESERVATION_DECLINED',
+          requestedStartTime: processResult.adjustedStartTime ? reservation.start_time : undefined,
+          requestedEndTime: processResult.adjustedEndTime ? reservation.end_time : undefined,
+        });
       }
     } catch (error) {
       console.error(`Error processing reservation ${reservation.id}:`, error);

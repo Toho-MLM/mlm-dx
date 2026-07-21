@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
   instruments TEXT NOT NULL DEFAULT '[]', -- JSON array of instrument codes: ["VO","GT","KEY","DR","BA"]
   grade INTEGER NOT NULL,
   role TEXT NOT NULL DEFAULT 'MBR' CHECK (role IN ('MGR','CHF','MAC','MBR','ADM','NHD','NAC')),
+  email_notification_preference_code INTEGER NOT NULL DEFAULT 510510 CHECK (email_notification_preference_code >= 1),
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL
 );
