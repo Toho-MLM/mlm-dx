@@ -198,6 +198,10 @@ export const UpdateGroupRequestSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
+export const DeleteGroupsRequestSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100),
+});
+
 export const UpdateUserRequestSchema = z.object({
   nickname: z.string(),
   instruments: z.array(z.string()),
@@ -526,6 +530,7 @@ export type SessionResponse = z.infer<typeof SessionResponseSchema>;
 export type UserHolderResponse = z.infer<typeof UserHolderResponseSchema>;
 export type CreateGroupRequest = z.infer<typeof CreateGroupRequestSchema>;
 export type UpdateGroupRequest = z.infer<typeof UpdateGroupRequestSchema>;
+export type DeleteGroupsRequest = z.infer<typeof DeleteGroupsRequestSchema>;
 export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
 export type AddMemberToGroupRequest = z.infer<typeof AddMemberToGroupRequestSchema>;
 export type AssignmentMap = z.infer<typeof AssignmentMapSchema>;

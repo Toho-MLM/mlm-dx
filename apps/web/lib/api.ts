@@ -15,6 +15,7 @@ type ReservationLimitScope = SharedSchemas.ReservationLimitScope
 type Archive = SharedSchemas.Archive
 type CreateGroupRequest = SharedSchemas.CreateGroupRequest
 type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest
+type DeleteGroupsRequest = SharedSchemas.DeleteGroupsRequest
 type UpdateUserRequest = SharedSchemas.UpdateUserRequest
 type CreateReservationRequest = SharedSchemas.CreateReservationRequest
 type CreateExternalRequest = SharedSchemas.CreateExternalRequest
@@ -157,6 +158,11 @@ class ApiClient {
 
   async deleteGroup(id: string): Promise<ApiResponse<void>> {
     return httpClient.delete<ApiResponse<void>>(`/groups/${id}`)
+  }
+
+  async deleteGroups(data: DeleteGroupsRequest): Promise<ApiResponse<void>> {
+    SharedSchemas.DeleteGroupsRequestSchema.parse(data)
+    return httpClient.delete<ApiResponse<void>>('/groups', data)
   }
 
   async createBandMainDraft(): Promise<ApiResponse<{ shareToken: string }>> {

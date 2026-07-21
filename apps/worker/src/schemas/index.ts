@@ -15,6 +15,7 @@ export const {
   ArchiveSchema,
   CreateGroupRequestSchema,
   UpdateGroupRequestSchema,
+  DeleteGroupsRequestSchema,
   UpdateUserRequestSchema,
   AddMemberToGroupRequestSchema,
   CreateReservationRequestSchema,
@@ -87,6 +88,7 @@ export type ReservationLimitRemaining = SharedSchemas.ReservationLimitRemaining;
 export type Archive = SharedSchemas.Archive;
 export type CreateGroupRequest = SharedSchemas.CreateGroupRequest;
 export type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest;
+export type DeleteGroupsRequest = SharedSchemas.DeleteGroupsRequest;
 export type UpdateUserRequest = SharedSchemas.UpdateUserRequest;
 export type AddMemberToGroupRequest = SharedSchemas.AddMemberToGroupRequest;
 export type CreateReservationRequest = SharedSchemas.CreateReservationRequest;
