@@ -934,6 +934,41 @@ reservationRoutes.delete('/unavailable/:id', async (c) => {
   }
 });
 
+reservationRoutes.delete('/:id', async (c) => {
+  try {
+    const user = c.get('user');
+    requireAdmin(user.role);
+
+    const reservationId = parseUuid(c.req.param('id'));
+    if (!reservationId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+    const reservation = await c.env.DB.prepare(
+      'SELECT id FROM reservations WHERE id = ?'
+    ).bind(reservationId).first();
+
+    if (!reservation) {
+      return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
+    }
+
+    await c.env.DB.prepare(
+      'DELETE FROM reservations WHERE id = ?'
+    ).bind(reservationId).run();
+
+    await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting reservation:', error);
+
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
 reservationRoutes.post('/:id/cancel', async (c) => {
   try {
     const user = c.get('user');

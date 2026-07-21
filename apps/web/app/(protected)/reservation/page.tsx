@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, CalendarRangeIcon } from 'lucide-react'
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, CalendarRangeIcon, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
 import {
@@ -158,6 +158,8 @@ function ReservationContent() {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [isFormDatePickerOpen, setIsFormDatePickerOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false)
   const [currentView, setCurrentView] = useState<View>(Views.WEEK)
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
   const [reservationData, setReservationData] = useState<CalendarEvent[]>([])
@@ -380,7 +382,33 @@ function ReservationContent() {
     }
   }
 
+  const handleDelete = async (id: string) => {
+    setIsDeleting(true)
+    try {
+      const response = await apiClient.deleteReservation(id)
+
+      if (response.success) {
+        setIsEventDetailOpen(false)
+        setSelectedReservation(null)
+        setIsDeleteConfirming(false)
+        await fetchReservations()
+        showSuccessToast({ message: '予約を完全に削除しました' })
+      } else {
+        toast.error('予約の削除中にエラーが発生しました', {
+          description: translateError(response.error || 'UNKNOWN_ERROR')
+        })
+      }
+    } catch (err) {
+      toast.error('予約の削除中にエラーが発生しました', {
+        description: translateError((err as Error).message)
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const handleSelectEvent = (event: CalendarEvent) => {
+    setIsDeleteConfirming(false)
     setSelectedReservation(event)
     setIsEventDetailOpen(true)
   }
@@ -804,6 +832,7 @@ function ReservationContent() {
         setIsEventDetailOpen(open)
         if (!open) {
           setSelectedReservation(null)
+          setIsDeleteConfirming(false)
         }
       }}>
         <DialogContent>
@@ -848,9 +877,55 @@ function ReservationContent() {
                       variant="destructive" 
                       className="w-full" 
                       isLoading={isSending}
+                      disabled={isDeleting || isDeleteConfirming}
                     >
                       キャンセル
                     </LoadingButton>
+                  )}
+                  {isAdminMode && selectedReservation.resource.reservationId && (
+                    <div className="space-y-3">
+                      {!isDeleteConfirming && (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          className="w-full"
+                          onClick={() => setIsDeleteConfirming(true)}
+                          disabled={isSending || isDeleting}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          完全に削除
+                        </Button>
+                      )}
+                      {isDeleteConfirming && (
+                        <Alert variant="destructive">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertTitle>この予約を完全に削除しますか？</AlertTitle>
+                          <AlertDescription className="mt-2 space-y-3">
+                            <p>キャンセルや拒否ではなく、DBからレコードを削除します。この操作は取り消せません。</p>
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setIsDeleteConfirming(false)}
+                                disabled={isDeleting}
+                              >
+                                戻る
+                              </Button>
+                              <LoadingButton
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDelete(selectedReservation.resource.reservationId!)}
+                                isLoading={isDeleting}
+                              >
+                                DBから削除
+                              </LoadingButton>
+                            </div>
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </div>
                   )}
                 </>
               )}
