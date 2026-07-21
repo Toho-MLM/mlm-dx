@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
-import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema, type Group } from '../schemas';
+import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema, DeleteGroupsRequestSchema, type Group } from '../schemas';
 import { requireAdmin } from '../utils/admin';
+import { ZodError } from 'zod';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -141,14 +142,14 @@ groupRoutes.get('/', async (c) => {
         SELECT DISTINCT g.*
         FROM groups g
         WHERE g.is_main = TRUE AND g.is_active = TRUE
-        ORDER BY g.name ASC
+        ORDER BY g.created_at DESC, g.id DESC
       `;
       params = [];
     } else if (isAdminMode) {
       query = `
         SELECT DISTINCT g.*
         FROM groups g
-        ORDER BY g.is_active DESC, g.is_main DESC, g.created_at DESC
+        ORDER BY g.created_at DESC, g.id DESC
       `;
       params = [];
     } else {
@@ -157,7 +158,7 @@ groupRoutes.get('/', async (c) => {
         FROM groups g
         JOIN group_member_instruments gmi ON g.id = gmi.group_id
         WHERE gmi.user_id = ?
-        ORDER BY g.is_active DESC, g.is_main DESC, g.created_at DESC
+        ORDER BY g.created_at DESC, g.id DESC
       `;
       params = [userId];
     }
@@ -250,6 +251,84 @@ groupRoutes.put('/:id', async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.error('Error updating group:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+groupRoutes.delete('/', async (c) => {
+  try {
+    try {
+      requireAdmin(c.get('user').role);
+    } catch {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const { ids } = DeleteGroupsRequestSchema.parse(await c.req.json());
+    const uniqueIds = [...new Set(ids)];
+    const placeholders = uniqueIds.map(() => '?').join(',');
+    const existingGroups = await c.env.DB.prepare(`
+      SELECT id FROM groups WHERE id IN (${placeholders})
+    `).bind(...uniqueIds).all<GroupIdRow>();
+
+    if (existingGroups.results.length !== uniqueIds.length) {
+      return c.json({ success: false, error: 'GROUP_NOT_FOUND' }, 404);
+    }
+
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        DELETE FROM setlist_items
+        WHERE entry_id IN (SELECT id FROM entries WHERE group_id IN (${placeholders}))
+      `).bind(...uniqueIds),
+      c.env.DB.prepare(`DELETE FROM entries WHERE group_id IN (${placeholders})`).bind(...uniqueIds),
+      c.env.DB.prepare(`DELETE FROM external_reservations WHERE group_id IN (${placeholders})`).bind(...uniqueIds),
+      c.env.DB.prepare(`DELETE FROM reservations WHERE group_id IN (${placeholders})`).bind(...uniqueIds),
+      c.env.DB.prepare(`DELETE FROM group_member_instruments WHERE group_id IN (${placeholders})`).bind(...uniqueIds),
+      c.env.DB.prepare(`DELETE FROM groups WHERE id IN (${placeholders})`).bind(...uniqueIds),
+    ]);
+
+    return c.json({ success: true });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_REQUEST' }, 400);
+    }
+    console.error('Error deleting groups:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+groupRoutes.delete('/:id', async (c) => {
+  try {
+    try {
+      requireAdmin(c.get('user').role);
+    } catch {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const groupId = c.req.param('id');
+    const group = await c.env.DB.prepare(`
+      SELECT id FROM groups WHERE id = ?
+    `).bind(groupId).first<GroupIdRow>();
+
+    if (!group) {
+      return c.json({ success: false, error: 'GROUP_NOT_FOUND' }, 404);
+    }
+
+    // D1 の外部キー設定に依存せず、バンドに紐づくデータを完全に削除する。
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        DELETE FROM setlist_items
+        WHERE entry_id IN (SELECT id FROM entries WHERE group_id = ?)
+      `).bind(groupId),
+      c.env.DB.prepare('DELETE FROM entries WHERE group_id = ?').bind(groupId),
+      c.env.DB.prepare('DELETE FROM external_reservations WHERE group_id = ?').bind(groupId),
+      c.env.DB.prepare('DELETE FROM reservations WHERE group_id = ?').bind(groupId),
+      c.env.DB.prepare('DELETE FROM group_member_instruments WHERE group_id = ?').bind(groupId),
+      c.env.DB.prepare('DELETE FROM groups WHERE id = ?').bind(groupId),
+    ]);
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting group:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
