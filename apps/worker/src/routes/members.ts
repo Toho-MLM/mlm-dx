@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireAdmin } from '../utils/admin';
 import type { Bindings, Variables } from '../index';
 import { z } from 'zod';
+import { parseUuid } from '../utils/uuid';
 
 function safeJsonParse<T>(json: string, fallback: T): T {
   try {
@@ -127,7 +128,10 @@ memberRoutes.put('/:id', async (c) => {
     const user = c.get('user');
     requireAdmin(user.role);
 
-    const memberId = c.req.param('id');
+    const memberId = parseUuid(c.req.param('id'));
+    if (!memberId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const requestData = z.object({
       nickname: z.string().min(1),
       grade: z.number().min(1).max(6),
@@ -331,7 +335,10 @@ memberRoutes.delete('/:id', async (c) => {
     const user = c.get('user');
     requireAdmin(user.role);
 
-    const memberId = c.req.param('id');
+    const memberId = parseUuid(c.req.param('id'));
+    if (!memberId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
 
     const existingMember = await c.env.DB.prepare(
       'SELECT id FROM users WHERE id = ?'

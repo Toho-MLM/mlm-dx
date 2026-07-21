@@ -4,6 +4,7 @@ import type { Bindings, Variables } from '../index';
 import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema, DeleteGroupsRequestSchema, type Group } from '../schemas';
 import { requireAdmin } from '../utils/admin';
 import { ZodError } from 'zod';
+import { parseUuid } from '../utils/uuid';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -26,15 +27,17 @@ function normalizeAssignments(assignmentsInput: unknown): Record<string, string[
 
   for (const [instrument, memberUserIds] of Object.entries(rawAssignments)) {
     if (Array.isArray(memberUserIds)) {
-      if (!memberUserIds.every(memberUserId => typeof memberUserId === 'string')) {
+      const parsedMemberUserIds = memberUserIds.map(parseUuid);
+      if (parsedMemberUserIds.some(memberUserId => memberUserId === null)) {
         return null;
       }
-      normalizedAssignments[instrument] = memberUserIds;
+      normalizedAssignments[instrument] = parsedMemberUserIds as string[];
       continue;
     }
 
-    if (typeof memberUserIds === 'string') {
-      normalizedAssignments[instrument] = [memberUserIds];
+    const parsedMemberUserId = parseUuid(memberUserIds);
+    if (parsedMemberUserId) {
+      normalizedAssignments[instrument] = [parsedMemberUserId];
       continue;
     }
 
@@ -111,6 +114,9 @@ groupRoutes.post('/', async (c) => {
     
     return c.json({ success: true });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     console.error('Error creating group:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
@@ -205,7 +211,10 @@ groupRoutes.get('/', async (c) => {
 
 groupRoutes.put('/:id', async (c) => {
   try {
-    const groupId = c.req.param('id');
+    const groupId = parseUuid(c.req.param('id'));
+    if (!groupId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const requestData = UpdateGroupRequestSchema.parse(await c.req.json());
 
     const now = new Date().toISOString();
@@ -250,6 +259,9 @@ groupRoutes.put('/:id', async (c) => {
 
     return c.json({ success: true });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     console.error('Error updating group:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
@@ -304,7 +316,10 @@ groupRoutes.delete('/:id', async (c) => {
       return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const groupId = c.req.param('id');
+    const groupId = parseUuid(c.req.param('id'));
+    if (!groupId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const group = await c.env.DB.prepare(`
       SELECT id FROM groups WHERE id = ?
     `).bind(groupId).first<GroupIdRow>();

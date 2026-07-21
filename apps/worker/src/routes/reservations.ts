@@ -8,6 +8,8 @@ import { requireAdmin } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
 import type { EmailNotificationType } from '../../../../lib/shared-schemas';
 import { prepareAndSendReservationEmail } from '../utils/reservation-email';
+import { parseUuid } from '../utils/uuid';
+import { ZodError } from 'zod';
 
 const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -554,6 +556,10 @@ reservationRoutes.post('/', async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.error('Error creating reservation:', error);
+
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     
     if (error instanceof Error) {
       if (error.message.includes('UNIQUE constraint failed')) {
@@ -591,7 +597,7 @@ reservationRoutes.get('/limits/remaining', async (c) => {
   try {
     const user = c.get('user');
     const scope = c.req.query('scope');
-    const targetId = c.req.query('target_id');
+    const targetId = parseUuid(c.req.query('target_id'));
     const referenceTime = c.req.query('reference_time') || new Date().toISOString();
 
     if ((scope !== 'PERSONAL' && scope !== 'GROUP') || !targetId || Number.isNaN(new Date(referenceTime).getTime())) {
@@ -680,7 +686,10 @@ reservationRoutes.put('/limits/:id', async (c) => {
     const user = c.get('user');
     requireAdmin(user.role);
 
-    const limitId = c.req.param('id');
+    const limitId = parseUuid(c.req.param('id'));
+    if (!limitId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const requestData = await c.req.json();
     const validatedData = UpdateReservationLimitRequestSchema.parse(requestData);
     const { scope, limit_type, start_datetime, end_datetime, window_days, max_minutes } = validatedData;
@@ -743,7 +752,10 @@ reservationRoutes.delete('/limits/:id', async (c) => {
     const user = c.get('user');
     requireAdmin(user.role);
 
-    const limitId = c.req.param('id');
+    const limitId = parseUuid(c.req.param('id'));
+    if (!limitId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
 
     const existingLimit = await c.env.DB.prepare(
       'SELECT id FROM reservation_limits WHERE id = ?'
@@ -891,7 +903,10 @@ reservationRoutes.delete('/unavailable/:id', async (c) => {
     const user = c.get('user');
     requireAdmin(user.role);
 
-    const periodId = c.req.param('id');
+    const periodId = parseUuid(c.req.param('id'));
+    if (!periodId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
 
     const period = await c.env.DB.prepare(
       'SELECT id FROM unavailable_periods WHERE id = ?'
@@ -922,7 +937,10 @@ reservationRoutes.delete('/unavailable/:id', async (c) => {
 reservationRoutes.post('/:id/cancel', async (c) => {
   try {
     const user = c.get('user');
-    const reservationId = c.req.param('id');
+    const reservationId = parseUuid(c.req.param('id'));
+    if (!reservationId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const adminParam = c.req.query('admin');
     const isAdminMode = adminParam === 'true';
 
