@@ -38,6 +38,13 @@ export type Bindings = {
   FRONTEND_URL: string;
   NODE_ENV: string;
   AUTH_URL: string;
+  SMTP_HOST?: string;
+  SMTP_PORT?: string;
+  SMTP_SECURITY?: string;
+  SMTP_USER?: string;
+  SMTP_PASSWORD?: string;
+  SMTP_FROM_EMAIL?: string;
+  SMTP_FROM_NAME?: string;
   BAND_DRAFT_ROOM: DurableObjectNamespace;
   RESERVATION_ROOM: DurableObjectNamespace;
 };

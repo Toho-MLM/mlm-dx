@@ -3,9 +3,11 @@ import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { isUserInGroup } from './groups';
 import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationLimitRemainingSchema, isAdmin } from '../../../../lib/shared-schemas';
-import { processReservationState, isTodayInJST, getJSTDateString, getJSTDayRange, validateReservationDateRange } from '../utils/reservation-processor';
+import { processReservationState, isTodayInJST, getJSTDateString, getJSTDayRange, selectLongestInterval, validateReservationDateRange } from '../utils/reservation-processor';
 import { requireAdmin } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
+import type { EmailNotificationType } from '../../../../lib/shared-schemas';
+import { prepareAndSendReservationEmail } from '../utils/reservation-email';
 
 const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -21,6 +23,47 @@ type ReservationLimitRow = {
   window_days: number | null;
   max_minutes: number;
 };
+
+type AffectedReservationRow = {
+  id: string;
+  start_time: string;
+  end_time: string;
+};
+
+function getRemainingIntervalAfterUnavailablePeriod(
+  reservationStartTime: string,
+  reservationEndTime: string,
+  unavailableStartTime: string,
+  unavailableEndTime: string
+): { startTime: string; endTime: string } | null {
+  const reservationStart = new Date(reservationStartTime);
+  const reservationEnd = new Date(reservationEndTime);
+  const unavailableStart = new Date(unavailableStartTime);
+  const unavailableEnd = new Date(unavailableEndTime);
+  const remainingIntervals = [];
+
+  if (reservationStart < unavailableStart) {
+    const beforeEnd = new Date(Math.min(reservationEnd.getTime(), unavailableStart.getTime()));
+    if (reservationStart < beforeEnd) {
+      remainingIntervals.push({ start: reservationStart, end: beforeEnd });
+    }
+  }
+
+  if (unavailableEnd < reservationEnd) {
+    const afterStart = new Date(Math.max(reservationStart.getTime(), unavailableEnd.getTime()));
+    if (afterStart < reservationEnd) {
+      remainingIntervals.push({ start: afterStart, end: reservationEnd });
+    }
+  }
+
+  const longestInterval = selectLongestInterval(remainingIntervals);
+  if (!longestInterval) return null;
+
+  return {
+    startTime: longestInterval.start.toISOString(),
+    endTime: longestInterval.end.toISOString(),
+  };
+}
 
 async function isReservationCancellable(
   env: Bindings, 
@@ -458,6 +501,9 @@ reservationRoutes.post('/', async (c) => {
     `).bind(reservationId, userId, groupId, start_time, end_time, 'PENDING', now, now).run();
 
     const isSameDay = isTodayInJST(new Date(start_time));
+    let notificationType: EmailNotificationType | null = isSameDay ? null : 'RESERVATION_RECEIVED';
+    let requestedStartTime: string | undefined;
+    let requestedEndTime: string | undefined;
 
     if (isSameDay) {
       const processResult = await processReservationState(c.env, reservationId, start_time, end_time);
@@ -466,6 +512,9 @@ reservationRoutes.post('/', async (c) => {
         const updateTime = new Date().toISOString();
         
         if (processResult.adjustedStartTime && processResult.adjustedEndTime) {
+          notificationType = 'RESERVATION_ADJUSTED';
+          requestedStartTime = start_time;
+          requestedEndTime = end_time;
           await c.env.DB.prepare(`
             UPDATE reservations 
             SET state = ?, start_time = ?, end_time = ?, updated_at = ?
@@ -478,6 +527,9 @@ reservationRoutes.post('/', async (c) => {
             reservationId
           ).run();
         } else {
+          notificationType = processResult.state === 'CONFIRMED'
+            ? 'RESERVATION_CONFIRMED'
+            : 'RESERVATION_DECLINED';
           await c.env.DB.prepare(`
             UPDATE reservations 
             SET state = ?, updated_at = ?
@@ -488,6 +540,16 @@ reservationRoutes.post('/', async (c) => {
     }
 
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+
+    if (notificationType) {
+      c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
+        kind: 'HALL',
+        reservationId,
+        notificationType,
+        requestedStartTime,
+        requestedEndTime,
+      }));
+    }
 
     return c.json({ success: true });
   } catch (error) {
@@ -739,21 +801,76 @@ reservationRoutes.post('/unavailable', async (c) => {
 
     const now = new Date().toISOString();
     const periodId = crypto.randomUUID();
+    const affectedReservations = await c.env.DB.prepare(`
+      SELECT id, start_time, end_time
+      FROM reservations
+      WHERE state IN ('PENDING', 'CONFIRMED')
+        AND start_time < ? AND end_time > ?
+    `).bind(end_datetime, start_datetime).all<AffectedReservationRow>();
 
-    await c.env.DB.batch([
+    const notificationJobs: Array<{
+      reservationId: string;
+      notificationType: EmailNotificationType;
+      requestedStartTime?: string;
+      requestedEndTime?: string;
+    }> = [];
+    const statements = [
       c.env.DB.prepare(`
         INSERT INTO unavailable_periods (id, start_datetime, end_datetime, reason, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
       `).bind(periodId, start_datetime, end_datetime, reason || null, now, now),
-      c.env.DB.prepare(`
-        UPDATE reservations
-        SET state = 'DECLINED', updated_at = ?
-        WHERE state IN ('PENDING', 'CONFIRMED')
-          AND start_time < ? AND end_time > ?
-      `).bind(now, end_datetime, start_datetime),
-    ]);
+    ];
+
+    for (const reservation of affectedReservations.results) {
+      const remainingInterval = getRemainingIntervalAfterUnavailablePeriod(
+        reservation.start_time,
+        reservation.end_time,
+        start_datetime,
+        end_datetime
+      );
+
+      if (remainingInterval) {
+        statements.push(c.env.DB.prepare(`
+          UPDATE reservations
+          SET start_time = ?, end_time = ?, updated_at = ?
+          WHERE id = ? AND state IN ('PENDING', 'CONFIRMED')
+        `).bind(
+          remainingInterval.startTime,
+          remainingInterval.endTime,
+          now,
+          reservation.id
+        ));
+        notificationJobs.push({
+          reservationId: reservation.id,
+          notificationType: 'RESERVATION_ADJUSTED',
+          requestedStartTime: reservation.start_time,
+          requestedEndTime: reservation.end_time,
+        });
+      } else {
+        statements.push(c.env.DB.prepare(`
+          UPDATE reservations
+          SET state = 'DECLINED', updated_at = ?
+          WHERE id = ? AND state IN ('PENDING', 'CONFIRMED')
+        `).bind(now, reservation.id));
+        notificationJobs.push({
+          reservationId: reservation.id,
+          notificationType: 'RESERVATION_REVOKED',
+        });
+      }
+    }
+
+    await c.env.DB.batch(statements);
 
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+
+    c.executionCtx.waitUntil((async () => {
+      for (const job of notificationJobs) {
+        await prepareAndSendReservationEmail(c.env, {
+          kind: 'HALL',
+          ...job,
+        });
+      }
+    })());
 
     return c.json({ success: true });
   } catch (error) {
@@ -838,6 +955,12 @@ reservationRoutes.post('/:id/cancel', async (c) => {
 
       await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
 
+      c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
+        kind: 'HALL',
+        reservationId,
+        notificationType: 'RESERVATION_REVOKED',
+      }));
+
       return c.json({ success: true });
     } else {
       const cancellable = await isReservationCancellable(c.env, user.id, reservation);
@@ -852,6 +975,12 @@ reservationRoutes.post('/:id/cancel', async (c) => {
       ).bind('CANCELLED', now, reservationId).run();
 
       await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+
+      c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
+        kind: 'HALL',
+        reservationId,
+        notificationType: 'RESERVATION_CANCELLED',
+      }));
 
       return c.json({ success: true });
     }

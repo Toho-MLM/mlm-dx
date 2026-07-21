@@ -122,6 +122,33 @@ Worker は以下の `Bindings` を前提としています。
 - `nickname` 変更時は新しい JWT が再発行され Cookie にセットされます。
 - レスポンス: `{ "success": true }` のみ。
 
+#### GET `/me/email-notification-preferences`
+- 認証必須。
+- 内部・外部予約で共通のメール通知設定を返却します。
+- レスポンス例:
+```json
+{
+  "success": true,
+  "data": {
+    "RESERVATION_RECEIVED": true,
+    "RESERVATION_CONFIRMED": true,
+    "RESERVATION_EDITED": true,
+    "RESERVATION_ADJUSTED": true,
+    "RESERVATION_DECLINED": true,
+    "RESERVATION_CANCELLED": true,
+    "RESERVATION_REVOKED": true
+  }
+}
+```
+
+#### PUT `/me/email-notification-preferences/:type`
+- 認証必須。
+- `type` は上記7種類のいずれかを指定します。
+- `RESERVATION_EDITED` は予約者自身による予約変更、`RESERVATION_ADJUSTED` は予約者の意思によらない変更を表します。
+- リクエストボディ: `{ "enabled": boolean }`。
+- レスポンス: `{ "success": true }` のみ。
+- 団体予約では、予約者が対象通知をOFFにしていても、通知ONの団体メンバーがいる場合は予約者を `To`、対象メンバーを `Cc` として送信します。全員OFFの場合は送信しません。
+
 #### GET `/me/groups/select`
 - 認証必須。
 - ログインユーザーが所属する有効 (`is_active = true`) なグループを軽量形式で返却します。
@@ -204,7 +231,7 @@ Worker は以下の `Bindings` を前提としています。
   - 日付をまたがないこと
   - 利用時間は最短10分 / 最長4時間
   - 利用時間帯は 06:00〜23:00（JST 基準）
-  - `group_id` を指定した場合は、そのグループが `is_active = true` であり、ログインユーザーが所属している必要があります。`admin: true` を指定した管理者は所属していないアクティブグループや予約禁止期間内の時間帯も指定できます
+  - `group_id` を指定した場合は、そのグループが `is_active = true` であり、ログインユーザーが所属している必要があります。`admin: true` を指定した管理者は所属していないアクティブグループを指定できますが、予約禁止期間内の時間帯は指定できません
 - 同日内の予約は送信直後に `processReservationState` が実行され、空きがあれば `CONFIRMED`、部分的な空きは時間帯を調整したうえで `CONFIRMED`、空きがなければ `DECLINED` で保存されます。未来日の予約は `PENDING` で登録され、予約日の午前0時（JST）のバッチで判定されます。
 - 正常時のレスポンスは `{ "success": true }`。主なエラー:
   - `INVALID_RESERVATION_TIME`: 時刻バリデーション違反
@@ -216,6 +243,11 @@ Worker は以下の `Bindings` を前提としています。
 - 認証必須。
 - `PENDING` または `CONFIRMED` の予約のみキャンセル可能。予約者本人か、同じグループに所属しているユーザーが実行できます。
 - 制限に抵触する場合は `403 RESERVATION_CANNOT_BE_CANCELLED` を返します。
+
+#### POST `/reservations/unavailable`
+- 管理者のみ実行できます。
+- 新しい予約禁止期間と既存の `PENDING` / `CONFIRMED` 予約が一部だけ重なる場合、禁止部分を除いた最長の時間帯へ予約を短縮し、状態は維持します。この変更は `RESERVATION_ADJUSTED` 通知の対象です。
+- 予約全体が禁止期間に含まれ、利用可能な時間が残らない場合は `DECLINED` に更新し、`RESERVATION_REVOKED` 通知の対象にします。
 
 ### Entries
 

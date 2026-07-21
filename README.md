@@ -165,6 +165,15 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 # CORS設定
 CORS_ORIGIN=http://localhost:3000
 FRONTEND_URL=http://localhost:3000
+
+# SMTP通知設定（465はtls、587はstarttls）
+SMTP_HOST=smtp.example.com
+SMTP_PORT=465
+SMTP_SECURITY=tls
+SMTP_USER=your-smtp-user
+SMTP_PASSWORD=your-smtp-password
+SMTP_FROM_EMAIL=no-reply@example.com
+SMTP_FROM_NAME=MLM-DX
 ```
 
 #### 4.4 バックエンド（apps/worker/wrangler.toml）
@@ -197,6 +206,11 @@ FRONTEND_URL = "https://your-frontend-domain.com"
 [env.production.vars]
 CORS_ORIGIN = "https://your-frontend-domain.com"
 FRONTEND_URL = "https://your-frontend-domain.com"
+SMTP_HOST = "smtp.example.com"
+SMTP_PORT = "465"
+SMTP_SECURITY = "tls"
+SMTP_FROM_EMAIL = "no-reply@example.com"
+SMTP_FROM_NAME = "MLM-DX"
 
 # 開発環境設定（機密情報は.dev.varsファイルで管理）
 [env.development.vars]
@@ -227,6 +241,13 @@ FRONTEND_URL = "http://localhost:3000"
 | `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | `.dev.vars`ファイル | `wrangler secret put` |
 | `CORS_ORIGIN` | CORS許可オリジン | `http://localhost:3000` | `https://your-frontend-domain.com` |
 | `FRONTEND_URL` | フロントエンドのURL | `http://localhost:3000` | `https://your-frontend-domain.com` |
+| `SMTP_HOST` | SMTPサーバーのホスト名 | `.dev.vars`ファイル | GitHub Repository Variable |
+| `SMTP_PORT` | SMTPポート（`465`または`587`） | `.dev.vars`ファイル | GitHub Repository Variable |
+| `SMTP_SECURITY` | 暗号化方式（`tls`または`starttls`） | `.dev.vars`ファイル | GitHub Repository Variable |
+| `SMTP_USER` | SMTP認証ユーザー名 | `.dev.vars`ファイル | GitHub Repository Secret |
+| `SMTP_PASSWORD` | SMTP認証パスワード | `.dev.vars`ファイル | GitHub Repository Secret |
+| `SMTP_FROM_EMAIL` | 通知メールの送信元アドレス | `.dev.vars`ファイル | GitHub Repository Variable |
+| `SMTP_FROM_NAME` | 通知メールの送信者名 | `.dev.vars`ファイル | GitHub Repository Variable |
 
 #### 4.6 機密情報の管理方法
 
@@ -238,6 +259,8 @@ FRONTEND_URL = "http://localhost:3000"
 wrangler secret put AUTH_SECRET --env production
 wrangler secret put GOOGLE_CLIENT_ID --env production
 wrangler secret put GOOGLE_CLIENT_SECRET --env production
+wrangler secret put SMTP_USER --env production
+wrangler secret put SMTP_PASSWORD --env production
 ```
 
 **開発環境（.dev.varsファイル）:**
@@ -247,7 +270,53 @@ wrangler secret put GOOGLE_CLIENT_SECRET --env production
 AUTH_SECRET=your-dev-auth-secret-here-min-32-chars-long
 GOOGLE_CLIENT_ID=your-dev-google-client-id
 GOOGLE_CLIENT_SECRET=your-dev-google-client-secret
+SMTP_HOST=smtp.example.com
+SMTP_PORT=465
+SMTP_SECURITY=tls
+SMTP_USER=your-dev-smtp-user
+SMTP_PASSWORD=your-dev-smtp-password
+SMTP_FROM_EMAIL=no-reply@example.com
+SMTP_FROM_NAME=MLM-DX
 ```
+
+GitHub Actionsから本番デプロイする場合は、リポジトリ設定へ次を登録します。
+
+**Repository Variables（必須）:**
+
+| 変数名 | 設定内容 |
+|--------|----------|
+| `NODE_ENV` | `production` |
+| `AUTH_URL` | Workerの本番URL |
+| `CORS_ORIGIN` | Webフロントエンドの本番URL |
+| `FRONTEND_URL` | Webフロントエンドの本番URL |
+| `D1_DATABASE_ID` | 本番D1データベースID |
+| `CLOUDFLARE_ACCOUNT_ID` | CloudflareアカウントID |
+| `NEXT_PUBLIC_API_URL` | ブラウザからアクセスするWorkerの本番URL |
+| `SMTP_HOST` | SMTPサーバーのホスト名 |
+| `SMTP_PORT` | `465`または`587` |
+| `SMTP_SECURITY` | 465の場合は`tls`、587の場合は`starttls` |
+| `SMTP_FROM_EMAIL` | 通知メールの送信元アドレス |
+| `SMTP_FROM_NAME` | 通知メールに表示する送信者名 |
+
+**Repository Variables（任意）:**
+
+| 変数名 | 設定内容 |
+|--------|----------|
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google One Tap用クライアントID。未設定時は`GOOGLE_CLIENT_ID` Secretを使用 |
+
+**Repository Secrets（必須）:**
+
+| Secret名 | 設定内容 |
+|----------|----------|
+| `CLOUDFLARE_API_TOKEN` | WorkersとD1をデプロイできるCloudflare APIトークン |
+| `AUTH_SECRET` | JWT署名用の32文字以上のランダム値 |
+| `GOOGLE_CLIENT_ID` | Google OAuthクライアントID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuthクライアントシークレット |
+| `SMTP_USER` | SMTP認証ユーザー名 |
+| `SMTP_PASSWORD` | SMTP認証パスワード |
+
+`.github/workflows/deploy.yml` はデプロイ前にSMTPの必須値とポート・暗号化方式の組み合わせを検証し、`SMTP_USER`と`SMTP_PASSWORD`をWorker Secretsとしてproduction環境へ登録します。
+`GITHUB_TOKEN`はGitHub Actionsが自動発行するため、手動登録は不要です。
 
 **注意事項:**
 - `AUTH_SECRET`は最低32文字以上のランダムな文字列である必要があります

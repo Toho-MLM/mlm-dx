@@ -207,6 +207,25 @@ export const UpdateUserRequestSchema = z.object({
   instruments: z.array(z.string()),
 });
 
+export const EmailNotificationTypeSchema = z.enum([
+  'RESERVATION_RECEIVED',
+  'RESERVATION_CONFIRMED',
+  'RESERVATION_EDITED',
+  'RESERVATION_ADJUSTED',
+  'RESERVATION_DECLINED',
+  'RESERVATION_CANCELLED',
+  'RESERVATION_REVOKED',
+]);
+
+export const EmailNotificationPreferencesSchema = z.record(
+  EmailNotificationTypeSchema,
+  z.boolean()
+);
+
+export const UpdateEmailNotificationPreferenceRequestSchema = z.object({
+  enabled: z.boolean(),
+});
+
 export const AddMemberToGroupRequestSchema = z.object({
   user_id: z.string(),
   instrument: z.string(),
@@ -532,6 +551,9 @@ export type CreateGroupRequest = z.infer<typeof CreateGroupRequestSchema>;
 export type UpdateGroupRequest = z.infer<typeof UpdateGroupRequestSchema>;
 export type DeleteGroupsRequest = z.infer<typeof DeleteGroupsRequestSchema>;
 export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
+export type EmailNotificationType = z.infer<typeof EmailNotificationTypeSchema>;
+export type EmailNotificationPreferences = z.infer<typeof EmailNotificationPreferencesSchema>;
+export type UpdateEmailNotificationPreferenceRequest = z.infer<typeof UpdateEmailNotificationPreferenceRequestSchema>;
 export type AddMemberToGroupRequest = z.infer<typeof AddMemberToGroupRequestSchema>;
 export type AssignmentMap = z.infer<typeof AssignmentMapSchema>;
 export type CreateReservationRequest = z.infer<typeof CreateReservationRequestSchema>;

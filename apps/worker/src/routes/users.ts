@@ -1,9 +1,16 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
-import { UserWithInstrumentsSchema, UpdateUserRequestSchema } from '../schemas';
+import {
+  EmailNotificationPreferencesSchema,
+  EmailNotificationTypeSchema,
+  UpdateEmailNotificationPreferenceRequestSchema,
+  UserWithInstrumentsSchema,
+  UpdateUserRequestSchema,
+} from '../schemas';
 import { requireAdmin } from '../utils/admin';
 import { z } from 'zod';
+import { getEmailNotificationPrime } from '../utils/email-notification-preferences';
 
 const userRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -88,6 +95,91 @@ userRoutes.get('/groups/select', async (c) => {
   }
 });
 
+userRoutes.get('/email-notification-preferences', async (c) => {
+  try {
+    const user = c.get('user');
+    const row = await c.env.DB.prepare(`
+      SELECT
+        email_notification_preference_code % 2 = 0 AS reservation_received,
+        email_notification_preference_code % 3 = 0 AS reservation_confirmed,
+        email_notification_preference_code % 5 = 0 AS reservation_edited,
+        email_notification_preference_code % 7 = 0 AS reservation_adjusted,
+        email_notification_preference_code % 11 = 0 AS reservation_declined,
+        email_notification_preference_code % 13 = 0 AS reservation_cancelled,
+        email_notification_preference_code % 17 = 0 AS reservation_revoked
+      FROM users
+      WHERE id = ?
+    `).bind(user.id).first<{
+      reservation_received: number;
+      reservation_confirmed: number;
+      reservation_edited: number;
+      reservation_adjusted: number;
+      reservation_declined: number;
+      reservation_cancelled: number;
+      reservation_revoked: number;
+    }>();
+
+    if (!row) {
+      return c.json({ success: false, error: 'USER_NOT_FOUND' }, 404);
+    }
+
+    const preferences = EmailNotificationPreferencesSchema.parse({
+      RESERVATION_RECEIVED: Boolean(row.reservation_received),
+      RESERVATION_CONFIRMED: Boolean(row.reservation_confirmed),
+      RESERVATION_EDITED: Boolean(row.reservation_edited),
+      RESERVATION_ADJUSTED: Boolean(row.reservation_adjusted),
+      RESERVATION_DECLINED: Boolean(row.reservation_declined),
+      RESERVATION_CANCELLED: Boolean(row.reservation_cancelled),
+      RESERVATION_REVOKED: Boolean(row.reservation_revoked),
+    });
+
+    return c.json({ success: true, data: preferences });
+  } catch (error) {
+    console.error('Error fetching email notification preferences:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+userRoutes.put('/email-notification-preferences/:type', async (c) => {
+  try {
+    const user = c.get('user');
+    const type = EmailNotificationTypeSchema.parse(c.req.param('type'));
+    const { enabled } = UpdateEmailNotificationPreferenceRequestSchema.parse(await c.req.json());
+    const prime = getEmailNotificationPrime(type);
+    const now = new Date().toISOString();
+
+    if (enabled) {
+      await c.env.DB.prepare(`
+        UPDATE users
+        SET email_notification_preference_code = CASE
+              WHEN email_notification_preference_code % ? = 0 THEN email_notification_preference_code
+              ELSE email_notification_preference_code * ?
+            END,
+            updated_at = ?
+        WHERE id = ?
+      `).bind(prime, prime, now, user.id).run();
+    } else {
+      await c.env.DB.prepare(`
+        UPDATE users
+        SET email_notification_preference_code = CASE
+              WHEN email_notification_preference_code % ? = 0 THEN email_notification_preference_code / ?
+              ELSE email_notification_preference_code
+            END,
+            updated_at = ?
+        WHERE id = ?
+      `).bind(prime, prime, now, user.id).run();
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ success: false, error: 'INVALID_EMAIL_NOTIFICATION_PREFERENCE' }, 400);
+    }
+    console.error('Error updating email notification preference:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
 userRoutes.put('/', async (c) => {
   try {
     const user = c.get('user');
@@ -144,4 +236,3 @@ userRoutes.post('/avatar/reset', async (c) => {
 });
 
 export { userRoutes };
-
