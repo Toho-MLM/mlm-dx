@@ -1,6 +1,8 @@
 import { sign, verify } from 'hono/jwt';
 import { z } from 'zod';
 
+const UuidSchema = z.string().uuid();
+
 const GoogleUserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
@@ -46,7 +48,7 @@ const GoogleIdTokenPayloadSchema = z.object({
 });
 
 const CustomJWTPayloadSchema = z.object({
-  sub: z.string(),
+  sub: UuidSchema,
   email: z.string().email(),
   name: z.string(),
   nickname: z.string().nullable(),

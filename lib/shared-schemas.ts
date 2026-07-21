@@ -4,6 +4,8 @@ import { isBefore, startOfDay, addDays } from 'date-fns';
 const JAPAN_TIME_OFFSET_HOURS = 9;
 const JAPAN_TIME_OFFSET_MS = JAPAN_TIME_OFFSET_HOURS * 60 * 60 * 1000;
 
+export const UuidSchema = z.string().uuid();
+
 const getJSTHours = (date: Date): number => {
   const utcMs = date.getTime();
   const jstMs = utcMs + JAPAN_TIME_OFFSET_MS;
@@ -27,7 +29,7 @@ const getJSTDateString = (date: Date): string => {
 
 
 export const UserSchema = z.object({
-  id: z.string(),
+  id: UuidSchema,
   email: z.string().email(),
   name: z.string(),
   nickname: z.string().nullable(),
@@ -39,12 +41,12 @@ export const UserSchema = z.object({
 });
 
 export const GroupMemberSchema = z.object({
-  id: z.string(),
+  id: UuidSchema,
   instruments: z.array(z.string()),
 });
 
 export const GroupSchema = z.object({
-  id: z.string(),
+  id: UuidSchema,
   name: z.string(),
   assignments: z.array(GroupMemberSchema),
   is_main: z.union([z.boolean(), z.number()]).transform(val => Boolean(val)),
@@ -54,9 +56,9 @@ export const GroupSchema = z.object({
 });
 
 export const ReservationSchema = z.object({
-  id: z.string(),
-  user_id: z.string(),
-  group_id: z.string().nullable(),
+  id: UuidSchema,
+  user_id: UuidSchema,
+  group_id: UuidSchema.nullable(),
   user_name: z.string().nullable(),
   group_name: z.string().nullable(),
   start_time: z.string(),
@@ -66,7 +68,7 @@ export const ReservationSchema = z.object({
 });
 
 export const ExternalSchema = z.object({
-  id: z.string(),
+  id: UuidSchema,
   name: z.string(),
   start_datetime: z.string(),
   end_datetime: z.string(),
@@ -75,11 +77,11 @@ export const ExternalSchema = z.object({
 });
 
 export const ExternalReservationSchema = z.object({
-  id: z.string(),
-  external_studio_id: z.string(),
+  id: UuidSchema,
+  external_studio_id: UuidSchema,
   external_name: z.string().nullable(),
-  user_id: z.string(),
-  group_id: z.string(),
+  user_id: UuidSchema,
+  group_id: UuidSchema,
   user_name: z.string().nullable(),
   group_name: z.string().nullable(),
   start_time: z.string(),
@@ -89,9 +91,9 @@ export const ExternalReservationSchema = z.object({
 });
 
 export const ExternalReservationConflictSchema = z.object({
-  member_id: z.string(),
+  member_id: UuidSchema,
   member_name: z.string(),
-  reservation_id: z.string(),
+  reservation_id: UuidSchema,
   reservation_type: z.enum(['HALL', 'EXTERNAL']),
   reservation_name: z.string(),
   location_name: z.string(),
@@ -108,7 +110,7 @@ export const GroupWithMemberRoleSchema = GroupSchema.extend({
 });
 
 export const MemberSchema = z.object({
-  id: z.string(),
+  id: UuidSchema,
   email: z.string().email(),
   name: z.string(),
   nickname: z.string().nullable(),
@@ -118,7 +120,7 @@ export const MemberSchema = z.object({
 
 export const SessionResponseSchema = z.object({
   user: z.object({
-    id: z.string(),
+    id: UuidSchema,
     email: z.string().email(),
     name: z.string(),
     nickname: z.string().nullable(),
@@ -132,7 +134,7 @@ export const UserHolderResponseSchema = z.object({
 });
 
 export const ArchiveSchema = z.object({
-  id: z.string(),
+  id: UuidSchema,
   title: z.string(),
   youtube_url: z.string().nullable(),
   year: z.number(),
@@ -141,7 +143,7 @@ export const ArchiveSchema = z.object({
 });
 
 export const EventSchema = z.object({
-  id: z.string(),
+  id: UuidSchema,
   title: z.string(),
   event_date: z.string(),
   entry_deadline: z.string(),
@@ -155,7 +157,7 @@ export const EventSchema = z.object({
 });
 
 export const UnavailablePeriodSchema = z.object({
-  id: z.string(),
+  id: UuidSchema,
   start_datetime: z.string(),
   end_datetime: z.string(),
   reason: z.string().nullable(),
@@ -167,7 +169,7 @@ export const ReservationLimitScopeSchema = z.enum(['PERSONAL', 'GROUP']);
 export const ReservationLimitTypeSchema = z.enum(['FIXED', 'ROLLING']);
 
 export const ReservationLimitSchema = z.object({
-  id: z.string(),
+  id: UuidSchema,
   scope: ReservationLimitScopeSchema,
   limit_type: ReservationLimitTypeSchema,
   start_datetime: z.string().nullable(),
@@ -183,7 +185,7 @@ export const ReservationLimitRemainingSchema = ReservationLimitSchema.extend({
   remaining_minutes: z.number(),
 });
 
-export const AssignmentMapSchema = z.record(z.string(), z.array(z.string()));
+export const AssignmentMapSchema = z.record(z.string(), z.array(UuidSchema));
 
 export const CreateGroupRequestSchema = z.object({
   name: z.string().min(1),
@@ -199,7 +201,7 @@ export const UpdateGroupRequestSchema = z.object({
 });
 
 export const DeleteGroupsRequestSchema = z.object({
-  ids: z.array(z.string().min(1)).min(1).max(100),
+  ids: z.array(UuidSchema).min(1).max(100),
 });
 
 export const UpdateUserRequestSchema = z.object({
@@ -227,7 +229,7 @@ export const UpdateEmailNotificationPreferenceRequestSchema = z.object({
 });
 
 export const AddMemberToGroupRequestSchema = z.object({
-  user_id: z.string(),
+  user_id: UuidSchema,
   instrument: z.string(),
   role: z.string().optional(),
 });
@@ -235,7 +237,7 @@ export const AddMemberToGroupRequestSchema = z.object({
 export const CreateReservationRequestSchema = z.object({
   start_time: z.string(),
   end_time: z.string(),
-  group_id: z.string().optional(),
+  group_id: UuidSchema.optional(),
   admin: z.boolean().optional(),
 });
 
@@ -252,8 +254,8 @@ export const CreateExternalRequestSchema = z.object({
 });
 
 export const CreateExternalReservationRequestSchema = z.object({
-  external_studio_id: z.string().min(1),
-  group_id: z.string().min(1),
+  external_studio_id: UuidSchema,
+  group_id: UuidSchema,
   start_time: z.string(),
   end_time: z.string(),
   admin: z.boolean().optional(),
@@ -261,8 +263,8 @@ export const CreateExternalReservationRequestSchema = z.object({
 });
 
 export const CheckExternalReservationRequestSchema = z.object({
-  external_studio_id: z.string().min(1),
-  group_id: z.string().min(1),
+  external_studio_id: UuidSchema,
+  group_id: UuidSchema,
   start_time: z.string(),
   end_time: z.string(),
 });
@@ -422,16 +424,16 @@ export const CreateReservationLimitRequestSchema = ReservationLimitRequestSchema
 export const UpdateReservationLimitRequestSchema = ReservationLimitRequestSchemaBase;
 
 export const EntrySchema = z.object({
-  id: z.string(),
-  event_id: z.string(),
-  group_id: z.string(),
+  id: UuidSchema,
+  event_id: UuidSchema,
+  group_id: UuidSchema,
   note: z.string().nullable(),
   created_at: z.string(),
 });
 
 export const CreateEntryRequestSchema = z.object({
-  event_id: z.string(),
-  group_ids: z.array(z.string()),
+  event_id: UuidSchema,
+  group_ids: z.array(UuidSchema),
   admin: z.boolean().optional(),
 });
 
@@ -440,8 +442,8 @@ export const UpdateEntryRequestSchema = z.object({
 });
 
 export const TimelineItemSchema = z.object({
-  entry_id: z.string(),
-  group_id: z.string(),
+  entry_id: UuidSchema,
+  group_id: UuidSchema,
   group_name: z.string(),
   start_time: z.string().nullable(),
   end_time: z.string().nullable(),
@@ -457,7 +459,7 @@ export const GetTimelineResponseSchema = z.object({
 
 export const UpdateTimelineRequestSchema = z.object({
   items: z.array(z.object({
-    entry_id: z.string(),
+    entry_id: UuidSchema,
     position: z.number().int().min(1).nullable(),
     start_time: z.string().datetime().nullable().optional(),
     end_time: z.string().datetime().nullable().optional(),
@@ -465,8 +467,8 @@ export const UpdateTimelineRequestSchema = z.object({
 });
 
 export const SetlistItemSchema = z.object({
-  id: z.string(),
-  entry_id: z.string(),
+  id: UuidSchema,
+  entry_id: UuidSchema,
   position: z.number(),
   title: z.string(),
   artist: z.string(),
@@ -475,7 +477,7 @@ export const SetlistItemSchema = z.object({
 });
 
 export const CreateSetlistItemRequestSchema = z.object({
-  entry_id: z.string(),
+  entry_id: UuidSchema,
   position: z.number(),
   title: z.string().min(1),
   artist: z.string().min(1),
@@ -500,9 +502,9 @@ export const ReplaceSetlistItemsRequestSchema = z.object({
 
 export const EventSetlistBundleItemSchema = z.object({
   entry: z.object({
-    id: z.string(),
-    event_id: z.string(),
-    group_id: z.string(),
+    id: UuidSchema,
+    event_id: UuidSchema,
+    group_id: UuidSchema,
     note: z.string().nullable().optional(),
   }),
   group_name: z.string(),

@@ -4,6 +4,7 @@ import type { Bindings, Variables } from '../index';
 import { requireAuth } from '../middleware/auth';
 import { requireAdmin } from '../utils/admin';
 import type { ApiResponse, Archive } from '../types';
+import { parseUuid } from '../utils/uuid';
 
 const archiveRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -78,7 +79,10 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings; Variables: Var
   try {
     requireAdmin(c.get('user').role);
     
-    const archiveId = c.req.param('id');
+    const archiveId = parseUuid(c.req.param('id'));
+    if (!archiveId) {
+      return c.json<ApiResponse>({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     const { title, youtube_url, year } = await c.req.json<Partial<Archive>>();
 
     const archive = await c.env.DB.prepare(
@@ -123,7 +127,10 @@ archiveRoutes.delete('/:id', async (c: Context<{ Bindings: Bindings; Variables: 
   try {
     requireAdmin(c.get('user').role);
     
-    const archiveId = c.req.param('id');
+    const archiveId = parseUuid(c.req.param('id'));
+    if (!archiveId) {
+      return c.json<ApiResponse>({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
 
     const archive = await c.env.DB.prepare(
       'SELECT * FROM archives WHERE id = ?'

@@ -28,6 +28,9 @@ import { deleteExpiredEvents } from './utils/event-processor';
 import { deleteOldMainBandDrafts } from './utils/main-band-draft-processor';
 import { requireAuth } from './middleware/auth';
 import { createRegistrationOptions, verifyRegistration, createAuthenticationOptions, verifyAuthentication, nowISO, futureISO, encodeBase64Url } from './utils/passkey';
+import { parseUuid } from './utils/uuid';
+
+const UuidSchema = z.string().uuid();
 
 export type Bindings = {
   DB: D1Database;
@@ -502,7 +505,7 @@ app.post('/auth/passkey/register/finish', requireAuth, async (c) => {
     const user = c.get('user');
     const body = await c.req.json();
     const parsed = z.object({
-      challengeId: z.string(),
+      challengeId: UuidSchema,
       response: z.any(),
     }).parse(body);
     const challenge = await fetchChallenge(c.env, parsed.challengeId);
@@ -623,7 +626,7 @@ app.post('/auth/passkey/login/finish', async (c) => {
   try {
     const body = await c.req.json();
     const parsed = z.object({
-      challengeId: z.string(),
+      challengeId: UuidSchema,
       response: z.any(),
     }).parse(body);
     console.log('[Passkey Login] Start verification', { challengeId: parsed.challengeId });
@@ -764,7 +767,7 @@ app.get('/auth/passkey/credentials', requireAuth, async (c) => {
 app.delete('/auth/passkey/credentials/:id', requireAuth, async (c) => {
   try {
     const user = c.get('user');
-    const id = c.req.param('id');
+    const id = parseUuid(c.req.param('id'));
     if (!id) {
       return c.json({ success: false });
     }

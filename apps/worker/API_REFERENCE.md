@@ -52,6 +52,7 @@ Worker は以下の `Bindings` を前提としています。
 
 ## 共通レスポンス仕様
 
+- DBエンティティのIDはUUID形式です。パス・クエリ・リクエストボディで数値文字列などUUID以外のIDを指定した場合は、入力エラーとして拒否します。
 - 基本形: `{ "success": boolean, "data"?: any, "message"?: string, "error"?: string }`
 - 作成・更新・キャンセル系エンドポイントは `{ "success": true }` のみを返します（余計なデータやメッセージは返しません）。
 - 失敗時の主なエラーコード: `INTERNAL_SERVER_ERROR`, `INSUFFICIENT_PERMISSIONS`, `INVALID_INPUT`, `RESERVATION_CONFLICT` など。
@@ -243,6 +244,11 @@ Worker は以下の `Bindings` を前提としています。
 - 認証必須。
 - `PENDING` または `CONFIRMED` の予約のみキャンセル可能。予約者本人か、同じグループに所属しているユーザーが実行できます。
 - 制限に抵触する場合は `403 RESERVATION_CANNOT_BE_CANCELLED` を返します。
+
+#### DELETE `/reservations/:id`
+- 管理者のみ実行できます。
+- 予約の状態を変更するのではなく、対象レコードをDBから完全に削除します。
+- 存在しない予約は `404 RESERVATION_NOT_FOUND`、UUID形式でないIDは `400 INVALID_INPUT` を返します。
 
 #### POST `/reservations/unavailable`
 - 管理者のみ実行できます。
