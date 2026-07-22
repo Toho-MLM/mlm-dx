@@ -901,7 +901,7 @@ function ReservationContent() {
                           <AlertCircle className="h-4 w-4" />
                           <AlertTitle>この予約を完全に削除しますか？</AlertTitle>
                           <AlertDescription className="mt-2 space-y-3">
-                            <p>キャンセルや拒否ではなく、DBからレコードを削除します。この操作は取り消せません。</p>
+                            <p>この予約はキャンセルや拒否として残らず、予約情報そのものが完全に削除されます。削除後は元に戻せません。</p>
                             <div className="flex justify-end gap-2">
                               <Button
                                 type="button"
