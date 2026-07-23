@@ -20,8 +20,11 @@ type UpdateUserRequest = SharedSchemas.UpdateUserRequest
 export type EmailNotificationType = SharedSchemas.EmailNotificationType
 export type EmailNotificationPreferences = SharedSchemas.EmailNotificationPreferences
 type CreateReservationRequest = SharedSchemas.CreateReservationRequest
+type UpdateReservationRequest = SharedSchemas.UpdateReservationRequest
+type UpdateReservationStatusRequest = SharedSchemas.UpdateReservationStatusRequest
 type CreateExternalRequest = SharedSchemas.CreateExternalRequest
 type CreateExternalReservationRequest = SharedSchemas.CreateExternalReservationRequest
+type UpdateExternalReservationRequest = SharedSchemas.UpdateExternalReservationRequest
 type CheckExternalReservationRequest = SharedSchemas.CheckExternalReservationRequest
 type CreateReservationLimitRequest = SharedSchemas.CreateReservationLimitRequest
 type UpdateReservationLimitRequest = SharedSchemas.UpdateReservationLimitRequest
@@ -276,6 +279,16 @@ class ApiClient {
     return httpClient.post<ApiResponse<void>>(`/reservations/${reservationId}/cancel${params}`)
   }
 
+  async updateReservation(reservationId: string, data: UpdateReservationRequest): Promise<ApiResponse<void>> {
+    SharedSchemas.UpdateReservationRequestSchema.parse(data)
+    return httpClient.put<ApiResponse<void>>(`/reservations/${reservationId}`, data)
+  }
+
+  async updateReservationStatus(reservationId: string, data: UpdateReservationStatusRequest): Promise<ApiResponse<void>> {
+    SharedSchemas.UpdateReservationStatusRequestSchema.parse(data)
+    return httpClient.put<ApiResponse<void>>(`/reservations/${reservationId}/status`, data)
+  }
+
   async deleteReservation(reservationId: string): Promise<ApiResponse<void>> {
     return httpClient.delete<ApiResponse<void>>(`/reservations/${reservationId}`)
   }
@@ -318,6 +331,25 @@ class ApiClient {
   async cancelExternalReservation(reservationId: string, admin: boolean = false): Promise<ApiResponse<void>> {
     const params = admin ? '?admin=true' : ''
     return httpClient.post<ApiResponse<void>>(`/reservations/external/${reservationId}/cancel${params}`)
+  }
+
+  async updateExternalReservation(
+    reservationId: string,
+    data: UpdateExternalReservationRequest
+  ): Promise<ApiResponse<ExternalReservationConflict[]>> {
+    SharedSchemas.UpdateExternalReservationRequestSchema.parse(data)
+    return httpClient.put<ApiResponse<ExternalReservationConflict[]>>(
+      `/reservations/external/${reservationId}`,
+      data
+    )
+  }
+
+  async updateExternalReservationStatus(
+    reservationId: string,
+    data: UpdateReservationStatusRequest
+  ): Promise<ApiResponse<void>> {
+    SharedSchemas.UpdateReservationStatusRequestSchema.parse(data)
+    return httpClient.put<ApiResponse<void>>(`/reservations/external/${reservationId}/status`, data)
   }
 
   async getReservationLimits(): Promise<ApiResponse<ReservationLimit[]>> {
