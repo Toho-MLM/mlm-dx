@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { isUserInGroup } from './groups';
-import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationLimitRemainingSchema, isAdmin } from '../../../../lib/shared-schemas';
-import { processReservationState, isTodayInJST, getJSTDateString, getJSTDayRange, selectLongestInterval, validateReservationDateRange } from '../utils/reservation-processor';
+import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationLimitRemainingSchema, isAdmin, UpdateReservationRequestSchema, UpdateReservationStatusRequestSchema, type ReservationState } from '../../../../lib/shared-schemas';
+import { processReservationState, isTodayInJST, getJSTDateString, getJSTDayRange, getAvailableIntervals, selectLongestInterval, validateReservationDateRange } from '../utils/reservation-processor';
 import { requireAdmin } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
 import type { EmailNotificationType } from '../../../../lib/shared-schemas';
@@ -134,8 +134,11 @@ async function getUsedReservationMinutes(
   scope: ReservationLimitScope,
   targetId: string,
   rangeStartTime: string,
-  rangeEndTime: string
+  rangeEndTime: string,
+  exclude?: { kind: 'HALL' | 'EXTERNAL'; id: string }
 ): Promise<number> {
+  const excludeHall = exclude?.kind === 'HALL';
+  const excludeExternal = exclude?.kind === 'EXTERNAL';
   const reservations = scope === 'GROUP'
     ? await env.DB.prepare(`
         SELECT start_time, end_time
@@ -144,7 +147,8 @@ async function getUsedReservationMinutes(
           AND state IN ('PENDING', 'CONFIRMED')
           AND start_time < ?
           AND end_time > ?
-      `).bind(targetId, rangeEndTime, rangeStartTime).all<{ start_time: string; end_time: string }>()
+          ${excludeHall ? 'AND id != ?' : ''}
+      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeHall ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>()
     : await env.DB.prepare(`
         SELECT start_time, end_time
         FROM reservations
@@ -153,7 +157,8 @@ async function getUsedReservationMinutes(
           AND state IN ('PENDING', 'CONFIRMED')
           AND start_time < ?
           AND end_time > ?
-      `).bind(targetId, rangeEndTime, rangeStartTime).all<{ start_time: string; end_time: string }>();
+          ${excludeHall ? 'AND id != ?' : ''}
+      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeHall ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>();
 
   const externalReservations = scope === 'GROUP'
     ? await env.DB.prepare(`
@@ -163,7 +168,8 @@ async function getUsedReservationMinutes(
           AND state IN ('PENDING', 'CONFIRMED')
           AND start_time < ?
           AND end_time > ?
-      `).bind(targetId, rangeEndTime, rangeStartTime).all<{ start_time: string; end_time: string }>()
+          ${excludeExternal ? 'AND id != ?' : ''}
+      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeExternal ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>()
     : { results: [] as Array<{ start_time: string; end_time: string }> };
 
   return [...reservations.results, ...externalReservations.results].reduce((total, reservation) => (
@@ -181,7 +187,8 @@ export async function hasReservationLimitConflict(
   userId: string,
   groupId: string | null,
   startTime: string,
-  endTime: string
+  endTime: string,
+  exclude?: { kind: 'HALL' | 'EXTERNAL'; id: string }
 ): Promise<boolean> {
   const scope: ReservationLimitScope = groupId ? 'GROUP' : 'PERSONAL';
   const limits = await env.DB.prepare(`
@@ -221,7 +228,7 @@ export async function hasReservationLimitConflict(
       continue;
     }
 
-    const usedMinutes = await getUsedReservationMinutes(env, scope, targetId, rangeStartTime, rangeEndTime);
+    const usedMinutes = await getUsedReservationMinutes(env, scope, targetId, rangeStartTime, rangeEndTime, exclude);
 
     if (usedMinutes + newMinutesInRange > Number(limit.max_minutes)) {
       return true;
@@ -229,6 +236,32 @@ export async function hasReservationLimitConflict(
   }
 
   return false;
+}
+
+function notificationForStatus(state: ReservationState): EmailNotificationType | null {
+  if (state === 'PENDING') return 'RESERVATION_RECEIVED';
+  if (state === 'CONFIRMED') return 'RESERVATION_CONFIRMED';
+  if (state === 'COMPLETED') return null;
+  return 'RESERVATION_REVOKED';
+}
+
+async function getStartedReservationResult(
+  env: Bindings,
+  reservationId: string,
+  startTime: string,
+  endTime: string
+) {
+  const intervals = await getAvailableIntervals(env, startTime, endTime, reservationId);
+  const startMs = new Date(startTime).getTime();
+  const interval = intervals.find((item) => item.start.getTime() === startMs);
+  if (!interval) return null;
+  return interval.end.getTime() === new Date(endTime).getTime()
+    ? { state: 'CONFIRMED' as const }
+    : {
+        state: 'CONFIRMED' as const,
+        adjustedStartTime: startTime,
+        adjustedEndTime: interval.end.toISOString(),
+      };
 }
 
 async function hasOverlappingReservationLimit(
@@ -570,6 +603,215 @@ reservationRoutes.post('/', async (c) => {
       }
     }
     
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+reservationRoutes.put('/:id', async (c) => {
+  try {
+    const user = c.get('user');
+    const reservationId = parseUuid(c.req.param('id'));
+    if (!reservationId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+
+    const data = UpdateReservationRequestSchema.parse(await c.req.json());
+    const isAdminMode = data.admin === true;
+    if (isAdminMode) {
+      try {
+        requireAdmin(user.role);
+      } catch {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
+
+    const reservation = await c.env.DB.prepare(`
+      SELECT user_id, group_id, start_time, end_time, state
+      FROM reservations
+      WHERE id = ?
+    `).bind(reservationId).first<{
+      user_id: string;
+      group_id: string | null;
+      start_time: string;
+      end_time: string;
+      state: string;
+    }>();
+    if (!reservation) {
+      return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
+    }
+    if (!['PENDING', 'CONFIRMED'].includes(reservation.state)) {
+      return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_EDITED' }, 400);
+    }
+    if (!isAdminMode && !await isReservationCancellable(c.env, user.id, reservation)) {
+      return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_EDITED' }, 403);
+    }
+
+    const now = new Date();
+    const originalStart = new Date(reservation.start_time);
+    const originalEnd = new Date(reservation.end_time);
+    if (now >= originalEnd) {
+      return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_EDITED' }, 400);
+    }
+
+    const nextStart = new Date(data.start_time);
+    const nextEnd = new Date(data.end_time);
+    const isStarted = now >= originalStart;
+    if (
+      isStarted
+      && (nextStart.getTime() !== originalStart.getTime()
+        || getJSTDateString(nextStart) !== getJSTDateString(originalStart))
+    ) {
+      return c.json({ success: false, error: 'RESERVATION_START_CANNOT_BE_CHANGED' }, 400);
+    }
+    if (Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime()) || nextEnd <= now) {
+      return c.json({ success: false, error: 'RESERVATION_END_MUST_BE_IN_FUTURE' }, 400);
+    }
+    const normalizedStartTime = nextStart.toISOString();
+    const normalizedEndTime = nextEnd.toISOString();
+
+    const validation = validateReservationTime(normalizedStartTime, normalizedEndTime);
+    if (!validation.isValid) {
+      return c.json({ success: false, error: validation.error || 'INVALID_RESERVATION_TIME' }, 400);
+    }
+    const dateValidation = validateReservationDateRange(nextStart, now);
+    if (!dateValidation.isValid) {
+      return c.json({ success: false, error: dateValidation.error }, 400);
+    }
+
+    const unavailable = await c.env.DB.prepare(`
+      SELECT id
+      FROM unavailable_periods
+      WHERE start_datetime < ? AND end_datetime > ?
+      LIMIT 1
+    `).bind(normalizedEndTime, normalizedStartTime).first();
+    if (unavailable) {
+      return c.json({ success: false, error: 'BLOCKED_PERIOD_CONFLICT' }, 400);
+    }
+
+    if (!isAdminMode && await hasReservationLimitConflict(
+      c.env,
+      reservation.user_id,
+      reservation.group_id,
+      normalizedStartTime,
+      normalizedEndTime,
+      { kind: 'HALL', id: reservationId }
+    )) {
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 400);
+    }
+
+    if (!isTodayInJST(nextStart)) {
+      const confirmedConflict = await c.env.DB.prepare(`
+        SELECT id
+        FROM reservations
+        WHERE id != ?
+          AND state = 'CONFIRMED'
+          AND start_time < ?
+          AND end_time > ?
+        LIMIT 1
+      `).bind(reservationId, normalizedEndTime, normalizedStartTime).first();
+      if (confirmedConflict) {
+        return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+      }
+    }
+
+    const processResult = isStarted
+      ? await getStartedReservationResult(c.env, reservationId, reservation.start_time, normalizedEndTime)
+      : await processReservationState(c.env, reservationId, normalizedStartTime, normalizedEndTime);
+    if (!processResult) {
+      return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+    }
+
+    const finalStartTime = processResult.adjustedStartTime ?? normalizedStartTime;
+    const finalEndTime = processResult.adjustedEndTime ?? normalizedEndTime;
+    await c.env.DB.prepare(`
+      UPDATE reservations
+      SET start_time = ?, end_time = ?, state = ?, updated_at = ?
+      WHERE id = ?
+    `).bind(
+      finalStartTime,
+      finalEndTime,
+      processResult.state,
+      new Date().toISOString(),
+      reservationId
+    ).run();
+
+    await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+    c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
+      kind: 'HALL',
+      reservationId,
+      notificationType: isAdminMode || processResult.adjustedStartTime || processResult.adjustedEndTime
+        ? 'RESERVATION_ADJUSTED'
+        : 'RESERVATION_EDITED',
+      requestedStartTime: reservation.start_time,
+      requestedEndTime: reservation.end_time,
+    }));
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error updating reservation:', error);
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+reservationRoutes.put('/:id/status', async (c) => {
+  try {
+    const user = c.get('user');
+    requireAdmin(user.role);
+    const reservationId = parseUuid(c.req.param('id'));
+    if (!reservationId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+    const data = UpdateReservationStatusRequestSchema.parse(await c.req.json());
+    const reservation = await c.env.DB.prepare(`
+      SELECT state, start_time, end_time
+      FROM reservations
+      WHERE id = ?
+    `).bind(reservationId).first<{ state: ReservationState; start_time: string; end_time: string }>();
+    if (!reservation) {
+      return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
+    }
+    if (reservation.state === data.state) {
+      return c.json({ success: true });
+    }
+
+    if (data.state === 'CONFIRMED') {
+      const conflict = await c.env.DB.prepare(`
+        SELECT id
+        FROM reservations
+        WHERE id != ?
+          AND state = 'CONFIRMED'
+          AND start_time < ?
+          AND end_time > ?
+        LIMIT 1
+      `).bind(reservationId, reservation.end_time, reservation.start_time).first();
+      if (conflict) {
+        return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+      }
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE reservations SET state = ?, updated_at = ? WHERE id = ?
+    `).bind(data.state, new Date().toISOString(), reservationId).run();
+    await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+    const notificationType = notificationForStatus(data.state);
+    if (notificationType) {
+      c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
+        kind: 'HALL',
+        reservationId,
+        notificationType,
+      }));
+    }
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error updating reservation status:', error);
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });

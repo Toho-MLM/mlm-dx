@@ -55,6 +55,15 @@ export const GroupSchema = z.object({
   updated_at: z.string(),
 });
 
+export const ReservationStateSchema = z.enum([
+  'PENDING',
+  'WITHDRAWN',
+  'DECLINED',
+  'CONFIRMED',
+  'CANCELLED',
+  'COMPLETED',
+]);
+
 export const ReservationSchema = z.object({
   id: UuidSchema,
   user_id: UuidSchema,
@@ -63,7 +72,7 @@ export const ReservationSchema = z.object({
   group_name: z.string().nullable(),
   start_time: z.string(),
   end_time: z.string(),
-  state: z.string(),
+  state: ReservationStateSchema,
   cancellable: z.number(),
 });
 
@@ -86,7 +95,7 @@ export const ExternalReservationSchema = z.object({
   group_name: z.string().nullable(),
   start_time: z.string(),
   end_time: z.string(),
-  state: z.string(),
+  state: ReservationStateSchema,
   cancellable: z.number(),
 });
 
@@ -241,6 +250,16 @@ export const CreateReservationRequestSchema = z.object({
   admin: z.boolean().optional(),
 });
 
+export const UpdateReservationRequestSchema = z.object({
+  start_time: z.string(),
+  end_time: z.string(),
+  admin: z.boolean().optional(),
+});
+
+export const UpdateReservationStatusRequestSchema = z.object({
+  state: ReservationStateSchema,
+});
+
 export const CreateExternalRequestSchema = z.object({
   names: z.array(z.string().trim().min(1)).min(1),
   start_datetime: z.string(),
@@ -256,6 +275,13 @@ export const CreateExternalRequestSchema = z.object({
 export const CreateExternalReservationRequestSchema = z.object({
   external_studio_id: UuidSchema,
   group_id: UuidSchema,
+  start_time: z.string(),
+  end_time: z.string(),
+  admin: z.boolean().optional(),
+  acknowledged_member_conflicts: z.boolean().optional(),
+});
+
+export const UpdateExternalReservationRequestSchema = z.object({
   start_time: z.string(),
   end_time: z.string(),
   admin: z.boolean().optional(),
@@ -543,6 +569,7 @@ export type Group = z.infer<typeof GroupSchema>;
 export type GroupWithMemberRole = z.infer<typeof GroupWithMemberRoleSchema>;
 export type Member = z.infer<typeof MemberSchema>;
 export type Reservation = z.infer<typeof ReservationSchema>;
+export type ReservationState = z.infer<typeof ReservationStateSchema>;
 export type External = z.infer<typeof ExternalSchema>;
 export type ExternalReservation = z.infer<typeof ExternalReservationSchema>;
 export type ExternalReservationConflict = z.infer<typeof ExternalReservationConflictSchema>;
@@ -559,8 +586,11 @@ export type UpdateEmailNotificationPreferenceRequest = z.infer<typeof UpdateEmai
 export type AddMemberToGroupRequest = z.infer<typeof AddMemberToGroupRequestSchema>;
 export type AssignmentMap = z.infer<typeof AssignmentMapSchema>;
 export type CreateReservationRequest = z.infer<typeof CreateReservationRequestSchema>;
+export type UpdateReservationRequest = z.infer<typeof UpdateReservationRequestSchema>;
+export type UpdateReservationStatusRequest = z.infer<typeof UpdateReservationStatusRequestSchema>;
 export type CreateExternalRequest = z.infer<typeof CreateExternalRequestSchema>;
 export type CreateExternalReservationRequest = z.infer<typeof CreateExternalReservationRequestSchema>;
+export type UpdateExternalReservationRequest = z.infer<typeof UpdateExternalReservationRequestSchema>;
 export type CheckExternalReservationRequest = z.infer<typeof CheckExternalReservationRequestSchema>;
 export type CreateArchiveRequest = z.infer<typeof CreateArchiveRequestSchema>;
 export type UpdateArchiveRequest = z.infer<typeof UpdateArchiveRequestSchema>;
