@@ -5,7 +5,7 @@ import { isUserInGroup } from './groups';
 import { hasReservationLimitConflict } from './reservations';
 import { requireAdmin } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
-import { processExternalReservationState } from '../utils/external-processor';
+import { getAvailableExternalIntervals, processExternalReservationState } from '../utils/external-processor';
 import type { EmailNotificationType } from '../../../../lib/shared-schemas';
 import {
   prepareAndSendReservationEmail,
@@ -19,10 +19,14 @@ import {
   ExternalReservationConflictSchema,
   ExternalReservationSchema,
   ExternalSchema,
+  UpdateExternalReservationRequestSchema,
+  UpdateReservationStatusRequestSchema,
   validateReservationTime,
+  type ReservationState,
 } from '../../../../lib/shared-schemas';
 import { parseUuid } from '../utils/uuid';
 import { ZodError } from 'zod';
+import { getJSTDateString, validateReservationDateRange } from '../utils/reservation-processor';
 
 const externalStudioRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 const externalReservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -62,7 +66,8 @@ async function validateExternalReservationBase(
   groupId: string,
   startTime: string,
   endTime: string,
-  isAdminMode: boolean
+  isAdminMode: boolean,
+  excludeReservationId?: string
 ): Promise<{ error?: string; status?: 400 | 403 | 404 | 409 }> {
   if (isAdminMode) {
     try {
@@ -75,6 +80,11 @@ async function validateExternalReservationBase(
   const validation = validateReservationTime(startTime, endTime);
   if (!validation.isValid) {
     return { error: validation.error || 'INVALID_RESERVATION_TIME', status: 400 };
+  }
+
+  const dateValidation = validateReservationDateRange(new Date(startTime));
+  if (!dateValidation.isValid) {
+    return { error: dateValidation.error, status: 400 };
   }
 
   const group = await env.DB.prepare(`
@@ -102,7 +112,10 @@ async function validateExternalReservationBase(
     return { error: 'EXTERNAL_NOT_FOUND', status: 404 };
   }
 
-  if (startTime < external.start_datetime || endTime > external.end_datetime) {
+  if (
+    new Date(startTime) < new Date(external.start_datetime)
+    || new Date(endTime) > new Date(external.end_datetime)
+  ) {
     return { error: 'EXTERNAL_PERIOD_CONFLICT', status: 400 };
   }
 
@@ -113,15 +126,23 @@ async function validateExternalReservationBase(
       AND state IN ('PENDING', 'CONFIRMED')
       AND start_time < ?
       AND end_time > ?
+      ${excludeReservationId ? 'AND id != ?' : ''}
     LIMIT 1
-  `).bind(externalStudioId, endTime, startTime).first<{ id: string }>();
+  `).bind(externalStudioId, endTime, startTime, ...(excludeReservationId ? [excludeReservationId] : [])).first<{ id: string }>();
 
   if (conflictingReservation) {
     return { error: 'RESERVATION_CONFLICT', status: 409 };
   }
 
   if (!isAdminMode) {
-    const isLimitExceeded = await hasReservationLimitConflict(env, userId, groupId, startTime, endTime);
+    const isLimitExceeded = await hasReservationLimitConflict(
+      env,
+      userId,
+      groupId,
+      startTime,
+      endTime,
+      excludeReservationId ? { kind: 'EXTERNAL', id: excludeReservationId } : undefined
+    );
     if (isLimitExceeded) {
       return { error: 'RESERVATION_LIMIT_EXCEEDED', status: 400 };
     }
@@ -134,7 +155,8 @@ async function getMemberConflicts(
   env: Bindings,
   groupId: string,
   startTime: string,
-  endTime: string
+  endTime: string,
+  excludeExternalReservationId?: string
 ) {
   const members = await getGroupMembers(env, groupId);
   if (members.length === 0) {
@@ -197,7 +219,13 @@ async function getMemberConflicts(
       AND er.state IN ('PENDING', 'CONFIRMED')
       AND er.start_time < ?
       AND er.end_time > ?
-  `).bind(...memberIds, endTime, startTime).all<ConflictRow>();
+      ${excludeExternalReservationId ? 'AND er.id != ?' : ''}
+  `).bind(
+    ...memberIds,
+    endTime,
+    startTime,
+    ...(excludeExternalReservationId ? [excludeExternalReservationId] : [])
+  ).all<ConflictRow>();
 
   const seen = new Set<string>();
   return [
@@ -221,6 +249,39 @@ async function getMemberConflicts(
     seen.add(key);
     return true;
   }).map((item) => ExternalReservationConflictSchema.parse(item));
+}
+
+function notificationForStatus(state: ReservationState): EmailNotificationType | null {
+  if (state === 'PENDING') return 'RESERVATION_RECEIVED';
+  if (state === 'CONFIRMED') return 'RESERVATION_CONFIRMED';
+  if (state === 'COMPLETED') return null;
+  return 'RESERVATION_REVOKED';
+}
+
+async function getStartedExternalReservationResult(
+  env: Bindings,
+  externalStudioId: string,
+  reservationId: string,
+  startTime: string,
+  endTime: string
+) {
+  const intervals = await getAvailableExternalIntervals(
+    env,
+    externalStudioId,
+    startTime,
+    endTime,
+    reservationId
+  );
+  const startMs = new Date(startTime).getTime();
+  const interval = intervals.find((item) => item.start.getTime() === startMs);
+  if (!interval) return null;
+  return interval.end.getTime() === new Date(endTime).getTime()
+    ? { state: 'CONFIRMED' as const }
+    : {
+        state: 'CONFIRMED' as const,
+        adjustedStartTime: startTime,
+        adjustedEndTime: interval.end.toISOString(),
+      };
 }
 
 async function isExternalReservationCancellable(
@@ -496,6 +557,219 @@ externalReservationRoutes.post('/', async (c) => {
     console.error('Error creating external reservation:', error);
     if (error instanceof ZodError) {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+externalReservationRoutes.put('/:id', async (c) => {
+  try {
+    const user = c.get('user');
+    const reservationId = parseUuid(c.req.param('id'));
+    if (!reservationId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+    const data = UpdateExternalReservationRequestSchema.parse(await c.req.json());
+    const isAdminMode = data.admin === true;
+    if (isAdminMode) {
+      try {
+        requireAdmin(user.role);
+      } catch {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+      }
+    }
+
+    const reservation = await c.env.DB.prepare(`
+      SELECT external_studio_id, user_id, group_id, start_time, end_time, state
+      FROM external_reservations
+      WHERE id = ?
+    `).bind(reservationId).first<{
+      external_studio_id: string;
+      user_id: string;
+      group_id: string;
+      start_time: string;
+      end_time: string;
+      state: string;
+    }>();
+    if (!reservation) {
+      return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
+    }
+    if (!['PENDING', 'CONFIRMED'].includes(reservation.state)) {
+      return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_EDITED' }, 400);
+    }
+    if (!isAdminMode && !await isExternalReservationCancellable(c.env, user.id, reservation)) {
+      return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_EDITED' }, 403);
+    }
+
+    const now = new Date();
+    const originalStart = new Date(reservation.start_time);
+    const originalEnd = new Date(reservation.end_time);
+    if (now >= originalEnd) {
+      return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_EDITED' }, 400);
+    }
+    const nextStart = new Date(data.start_time);
+    const nextEnd = new Date(data.end_time);
+    const isStarted = now >= originalStart;
+    if (
+      isStarted
+      && (nextStart.getTime() !== originalStart.getTime()
+        || getJSTDateString(nextStart) !== getJSTDateString(originalStart))
+    ) {
+      return c.json({ success: false, error: 'RESERVATION_START_CANNOT_BE_CHANGED' }, 400);
+    }
+    if (Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime()) || nextEnd <= now) {
+      return c.json({ success: false, error: 'RESERVATION_END_MUST_BE_IN_FUTURE' }, 400);
+    }
+    const normalizedStartTime = nextStart.toISOString();
+    const normalizedEndTime = nextEnd.toISOString();
+
+    const baseValidation = await validateExternalReservationBase(
+      c.env,
+      user.id,
+      user.role,
+      reservation.external_studio_id,
+      reservation.group_id,
+      normalizedStartTime,
+      normalizedEndTime,
+      isAdminMode,
+      reservationId
+    );
+    if (baseValidation.error) {
+      return c.json({ success: false, error: baseValidation.error }, baseValidation.status || 400);
+    }
+
+    const conflicts = await getMemberConflicts(
+      c.env,
+      reservation.group_id,
+      normalizedStartTime,
+      normalizedEndTime,
+      reservationId
+    );
+    if (conflicts.length > 0 && data.acknowledged_member_conflicts !== true) {
+      return c.json({
+        success: false,
+        error: 'MEMBER_RESERVATION_CONFLICT_WARNING',
+        data: conflicts,
+      });
+    }
+
+    const processResult = isStarted
+      ? await getStartedExternalReservationResult(
+          c.env,
+          reservation.external_studio_id,
+          reservationId,
+          reservation.start_time,
+          normalizedEndTime
+        )
+      : await processExternalReservationState(
+          c.env,
+          reservation.external_studio_id,
+          reservationId,
+          normalizedStartTime,
+          normalizedEndTime
+        );
+    if (!processResult) {
+      return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE external_reservations
+      SET start_time = ?, end_time = ?, state = ?, updated_at = ?
+      WHERE id = ?
+    `).bind(
+      processResult.adjustedStartTime ?? normalizedStartTime,
+      processResult.adjustedEndTime ?? normalizedEndTime,
+      processResult.state,
+      new Date().toISOString(),
+      reservationId
+    ).run();
+    await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+    c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
+      kind: 'EXTERNAL',
+      reservationId,
+      notificationType: isAdminMode || processResult.adjustedStartTime || processResult.adjustedEndTime
+        ? 'RESERVATION_ADJUSTED'
+        : 'RESERVATION_EDITED',
+      requestedStartTime: reservation.start_time,
+      requestedEndTime: reservation.end_time,
+    }));
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error updating external reservation:', error);
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+externalReservationRoutes.put('/:id/status', async (c) => {
+  try {
+    const user = c.get('user');
+    requireAdmin(user.role);
+    const reservationId = parseUuid(c.req.param('id'));
+    if (!reservationId) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+    const data = UpdateReservationStatusRequestSchema.parse(await c.req.json());
+    const reservation = await c.env.DB.prepare(`
+      SELECT external_studio_id, state, start_time, end_time
+      FROM external_reservations
+      WHERE id = ?
+    `).bind(reservationId).first<{
+      external_studio_id: string;
+      state: ReservationState;
+      start_time: string;
+      end_time: string;
+    }>();
+    if (!reservation) {
+      return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
+    }
+    if (reservation.state === data.state) {
+      return c.json({ success: true });
+    }
+
+    if (data.state === 'CONFIRMED') {
+      const conflict = await c.env.DB.prepare(`
+        SELECT id
+        FROM external_reservations
+        WHERE id != ?
+          AND external_studio_id = ?
+          AND state = 'CONFIRMED'
+          AND start_time < ?
+          AND end_time > ?
+        LIMIT 1
+      `).bind(
+        reservationId,
+        reservation.external_studio_id,
+        reservation.end_time,
+        reservation.start_time
+      ).first();
+      if (conflict) {
+        return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+      }
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE external_reservations SET state = ?, updated_at = ? WHERE id = ?
+    `).bind(data.state, new Date().toISOString(), reservationId).run();
+    await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+    const notificationType = notificationForStatus(data.state);
+    if (notificationType) {
+      c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
+        kind: 'EXTERNAL',
+        reservationId,
+        notificationType,
+      }));
+    }
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error updating external reservation status:', error);
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }

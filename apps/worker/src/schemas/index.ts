@@ -8,6 +8,7 @@ export const {
   GroupWithMemberRoleSchema,
   MemberSchema,
   ReservationSchema,
+  ReservationStateSchema,
   ReservationLimitSchema,
   ReservationLimitRemainingSchema,
   ReservationLimitScopeSchema,
@@ -22,6 +23,8 @@ export const {
   UpdateEmailNotificationPreferenceRequestSchema,
   AddMemberToGroupRequestSchema,
   CreateReservationRequestSchema,
+  UpdateReservationRequestSchema,
+  UpdateReservationStatusRequestSchema,
   CreateReservationLimitRequestSchema,
   UpdateReservationLimitRequestSchema,
   CreateArchiveRequestSchema,
@@ -86,6 +89,7 @@ export type Group = SharedSchemas.Group;
 export type GroupWithMemberRole = SharedSchemas.GroupWithMemberRole;
 export type Member = SharedSchemas.Member;
 export type Reservation = SharedSchemas.Reservation;
+export type ReservationState = SharedSchemas.ReservationState;
 export type ReservationLimitScope = SharedSchemas.ReservationLimitScope;
 export type ReservationLimitType = SharedSchemas.ReservationLimitType;
 export type ReservationLimit = SharedSchemas.ReservationLimit;
@@ -97,6 +101,8 @@ export type DeleteGroupsRequest = SharedSchemas.DeleteGroupsRequest;
 export type UpdateUserRequest = SharedSchemas.UpdateUserRequest;
 export type AddMemberToGroupRequest = SharedSchemas.AddMemberToGroupRequest;
 export type CreateReservationRequest = SharedSchemas.CreateReservationRequest;
+export type UpdateReservationRequest = SharedSchemas.UpdateReservationRequest;
+export type UpdateReservationStatusRequest = SharedSchemas.UpdateReservationStatusRequest;
 export type CreateReservationLimitRequest = SharedSchemas.CreateReservationLimitRequest;
 export type UpdateReservationLimitRequest = SharedSchemas.UpdateReservationLimitRequest;
 export type CreateArchiveRequest = SharedSchemas.CreateArchiveRequest;
