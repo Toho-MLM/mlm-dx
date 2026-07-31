@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from "@/app/context/AuthContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarFooter, useSidebar } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { LogOutIcon, CalendarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, HelpCircleIcon, ListMusicIcon, SpotlightIcon, ListIcon, BanIcon } from "lucide-react"
+import { LogOutIcon, CalendarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, HelpCircleIcon, ListMusicIcon, SpotlightIcon, ListIcon, BanIcon, LayoutDashboardIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { navigationConfig } from "@/lib/navigation";
 import { isAdmin } from "@shared-schemas";
@@ -19,6 +19,7 @@ const iconMap = {
   SpotlightIcon,
   ListIcon,
   BanIcon,
+  LayoutDashboardIcon,
 } as const;
 
 export function AppSidebar() {

@@ -165,6 +165,81 @@ export const EventSchema = z.object({
   updated_at: z.string(),
 });
 
+export const DashboardMemberActionSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('ENTRY_AVAILABLE'),
+    event_id: UuidSchema,
+    event_title: z.string(),
+    due_at: z.string(),
+    eligible_group_count: z.number().int().positive(),
+  }),
+  z.object({
+    kind: z.literal('SETLIST_EMPTY'),
+    event_id: UuidSchema,
+    event_title: z.string(),
+    due_at: z.string(),
+    group_id: UuidSchema,
+    group_name: z.string(),
+  }),
+]);
+
+export const DashboardAdminActionSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('ENTRY_ACCEPTING_AFTER_DEADLINE'),
+    event_id: UuidSchema,
+    event_title: z.string(),
+    due_at: z.string(),
+  }),
+  z.object({
+    kind: z.literal('SETLIST_ACCEPTING_AFTER_DEADLINE'),
+    event_id: UuidSchema,
+    event_title: z.string(),
+    due_at: z.string(),
+  }),
+  z.object({
+    kind: z.literal('TIMELINE_INCOMPLETE'),
+    event_id: UuidSchema,
+    event_title: z.string(),
+    event_date: z.string(),
+    missing_count: z.number().int().positive(),
+  }),
+]);
+
+const DashboardReservationScheduleItemBaseSchema = z.object({
+  reservation_id: UuidSchema,
+  title: z.string(),
+  start_at: z.string(),
+  end_at: z.string(),
+  state: ReservationStateSchema,
+});
+
+export const DashboardScheduleItemSchema = z.discriminatedUnion('kind', [
+  DashboardReservationScheduleItemBaseSchema.extend({
+    kind: z.literal('HALL_RESERVATION'),
+  }),
+  DashboardReservationScheduleItemBaseSchema.extend({
+    kind: z.literal('EXTERNAL_RESERVATION'),
+  }),
+  z.object({
+    kind: z.literal('ENTRY_DEADLINE'),
+    event_id: UuidSchema,
+    event_title: z.string(),
+    due_at: z.string(),
+  }),
+  z.object({
+    kind: z.literal('SETLIST_DEADLINE'),
+    event_id: UuidSchema,
+    event_title: z.string(),
+    due_at: z.string(),
+  }),
+]);
+
+export const DashboardDataSchema = z.object({
+  member_actions: z.array(DashboardMemberActionSchema).max(5),
+  admin_actions: z.array(DashboardAdminActionSchema).max(5),
+  schedule_items: z.array(DashboardScheduleItemSchema).max(5),
+});
+
 export const UnavailablePeriodSchema = z.object({
   id: UuidSchema,
   start_datetime: z.string(),
@@ -595,6 +670,10 @@ export type CheckExternalReservationRequest = z.infer<typeof CheckExternalReserv
 export type CreateArchiveRequest = z.infer<typeof CreateArchiveRequestSchema>;
 export type UpdateArchiveRequest = z.infer<typeof UpdateArchiveRequestSchema>;
 export type Event = z.infer<typeof EventSchema>;
+export type DashboardMemberAction = z.infer<typeof DashboardMemberActionSchema>;
+export type DashboardAdminAction = z.infer<typeof DashboardAdminActionSchema>;
+export type DashboardScheduleItem = z.infer<typeof DashboardScheduleItemSchema>;
+export type DashboardData = z.infer<typeof DashboardDataSchema>;
 export type CreateEventRequest = z.infer<typeof CreateEventRequestSchema>;
 export type UpdateEventRequest = z.infer<typeof UpdateEventRequestSchema>;
 export type UnavailablePeriod = z.infer<typeof UnavailablePeriodSchema>;
