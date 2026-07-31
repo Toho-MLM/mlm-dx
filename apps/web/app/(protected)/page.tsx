@@ -26,7 +26,7 @@ import { PageHeader } from '@/components/page-header'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const dateTimeFormatter = new Intl.DateTimeFormat('ja-JP', {
@@ -55,12 +55,10 @@ function formatDeadline(value: string) {
 
 function SectionCard({
   title,
-  description,
   icon,
   children,
 }: {
   title: string
-  description: string
   icon: ReactNode
   children: ReactNode
 }) {
@@ -69,9 +67,8 @@ function SectionCard({
       <CardHeader className="pb-4">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-muted p-2 text-foreground">{icon}</div>
-          <div className="min-w-0 space-y-1">
+          <div className="min-w-0">
             <CardTitle className="text-lg">{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -271,7 +268,6 @@ export default function DashboardPage() {
               <h1 className="text-2xl font-bold sm:text-3xl">
                 {user?.nickname || user?.name ? `${user.nickname || user.name}さん、おかえりなさい` : 'ダッシュボード'}
               </h1>
-              <p className="mt-2 text-sm text-slate-200 sm:text-base">必要な操作と近い予定をまとめて確認できます。</p>
             </div>
           </CardContent>
         </Card>
@@ -294,7 +290,6 @@ export default function DashboardPage() {
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <SectionCard
               title="あなたの要対応"
-              description="参加できるイベントと登録が必要な内容です。"
               icon={<ClipboardCheck className="h-5 w-5" />}
             >
               {data.member_actions.length === 0 ? (
@@ -314,7 +309,6 @@ export default function DashboardPage() {
             {isUserAdmin && (
               <SectionCard
                 title="管理者向け確認"
-                description="イベント運営の設定漏れを確認できます。"
                 icon={<ListChecks className="h-5 w-5" />}
               >
                 {data.admin_actions.length === 0 ? (
@@ -332,7 +326,6 @@ export default function DashboardPage() {
             <div className={isUserAdmin ? 'lg:col-span-2' : ''}>
               <SectionCard
                 title="直近の予定"
-                description="自分に関係する予約とイベントの締切です。"
                 icon={<CalendarClock className="h-5 w-5" />}
               >
                 {data.schedule_items.length === 0 ? (
