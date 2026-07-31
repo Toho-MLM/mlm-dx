@@ -5,7 +5,7 @@ import { LoadingButton } from "@/components/ui/loading-button"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { format } from 'date-fns'
+import { addDays, format, subDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import { CalendarIcon } from 'lucide-react'
 import { cn, showSuccessToast } from "@/lib/utils"
@@ -33,7 +33,7 @@ interface EventFormProps {
 export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps) {
   const [title, setTitle] = useState(event?.title || '')
   const [date, setDate] = useState<Date | undefined>(event?.event_date ? new Date(event.event_date) : undefined)
-  const [entryDeadline, setEntryDeadline] = useState<Date | undefined>(event?.entry_deadline ? new Date(event.entry_deadline) : undefined)
+  const [entryDeadline, setEntryDeadline] = useState<Date | undefined>(event?.entry_deadline ? subDays(new Date(event.entry_deadline), 1) : undefined)
   const [setlistDeadline, setSetlistDeadline] = useState<Date | undefined>(event?.setlist_deadline ? new Date(event.setlist_deadline) : undefined)
   const [isFreeBand, setIsFreeBand] = useState(event ? event.group_limit !== 0 : true)
   const [freeBandLimit, setFreeBandLimit] = useState(event && event.group_limit > 0 ? event.group_limit.toString() : '2')
@@ -49,7 +49,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
     if (event) {
       setTitle(event.title)
       setDate(new Date(event.event_date))
-      setEntryDeadline(new Date(event.entry_deadline))
+      setEntryDeadline(subDays(new Date(event.entry_deadline), 1))
       setSetlistDeadline(new Date(event.setlist_deadline))
       setIsFreeBand(event.group_limit !== 0)
       setFreeBandLimit(event.group_limit > 0 ? event.group_limit.toString() : '2')
@@ -111,7 +111,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
       String(date.getMonth() + 1).padStart(2, '0'),
       String(date.getDate()).padStart(2, '0'),
     ].join('-')
-    const formattedEntryDeadline = entryDeadline.toISOString()
+    const formattedEntryDeadline = `${format(addDays(entryDeadline, 1), 'yyyy-MM-dd')}T00:00:00+09:00`
     const formattedSetlistDeadline = setlistDeadline.toISOString()
     const groupLimitNum = isFreeBand ? parseInt(freeBandLimit) || 2 : 0
     const songLimitNum = Number.isNaN(songLimit) ? 2 : songLimit
@@ -383,4 +383,3 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
     </Dialog>
   )
 }
-
