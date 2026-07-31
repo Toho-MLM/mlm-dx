@@ -20,7 +20,15 @@ interface EventCardProps {
   event: Event
 }
 
-function Countdown({ targetDate, isAccepting }: { targetDate: string; isAccepting: boolean }) {
+function Countdown({
+  targetDate,
+  isAccepting,
+  isDeadlineInformational = false,
+}: {
+  targetDate: string
+  isAccepting: boolean
+  isDeadlineInformational?: boolean
+}) {
   const [mounted, setMounted] = useState(false)
   const [, setForceUpdate] = useState(0)
 
@@ -43,6 +51,9 @@ function Countdown({ targetDate, isAccepting }: { targetDate: string; isAcceptin
     }
 
     if (diff <= 0) {
+      if (isDeadlineInformational) {
+        return { text: '受付中（締め切り間近）', color: 'text-orange-600 font-bold' }
+      }
       return { text: '期限切れ', color: 'text-red-600 font-bold' }
     }
 
@@ -131,8 +142,11 @@ export function EventCard({ event }: EventCardProps) {
     });
   };
 
-  const formatDeadlineDate = (dateString: string) => {
+  const formatDeadlineDate = (dateString: string, showPreviousDay = false) => {
     const date = new Date(dateString)
+    if (showPreviousDay) {
+      date.setDate(date.getDate() - 1)
+    }
     return date.toLocaleDateString('ja-JP', {
       year: 'numeric',
       month: 'long',
@@ -210,9 +224,13 @@ export function EventCard({ event }: EventCardProps) {
               <>
                 <div className="flex items-baseline justify-between gap-2">
                   <div className="text-sm font-medium text-gray-900">
-                    {formatDeadlineDate(event.entry_deadline)}
+                    {formatDeadlineDate(event.entry_deadline, true)}
                   </div>
-                  <Countdown targetDate={event.entry_deadline} isAccepting={event.is_entry_accepting} />
+                  <Countdown
+                    targetDate={event.entry_deadline}
+                    isAccepting={event.is_entry_accepting}
+                    isDeadlineInformational
+                  />
                 </div>
               </>
             )}
