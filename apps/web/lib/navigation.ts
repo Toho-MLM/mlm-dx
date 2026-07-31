@@ -17,6 +17,12 @@ export interface BreadcrumbItem {
 
 export const navigationConfig: NavigationGroup[] = [
   {
+    label: "ホーム",
+    items: [
+      { iconName: "LayoutDashboardIcon", href: "/", title: "ダッシュボード" }
+    ]
+  },
+  {
     label: "ホール予約",
     items: [
       { iconName: "CalendarIcon", href: "/reservation", title: "予約表" },
@@ -52,7 +58,7 @@ export const navigationConfig: NavigationGroup[] = [
 ];
 
 export const additionalPages: Record<string, string> = {
-  '/': 'ホーム',
+  '/': 'ダッシュボード',
   '/profile': 'プロフィール',
   '/login': 'ログイン',
   '/event': 'イベント管理',
