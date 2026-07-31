@@ -18,6 +18,7 @@ import { entriesRoutes } from './routes/entries';
 import { setlistRoutes } from './routes/setlist';
 import { timelineRoutes } from './routes/timeline';
 import { bandMainDraftRoutes } from './routes/band-main-draft';
+import { dashboardRoutes } from './routes/dashboard';
 export { BandDraftRoom } from './durable-objects/band-draft-room';
 export { ReservationRoom } from './durable-objects/reservation-room';
 import type { User } from './types';
@@ -871,6 +872,7 @@ app.route('/entries', entriesRoutes);
 app.route('/setlist', setlistRoutes);
 app.route('/timeline', timelineRoutes);
 app.route('/band/main/draft', bandMainDraftRoutes);
+app.route('/dashboard', dashboardRoutes);
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {

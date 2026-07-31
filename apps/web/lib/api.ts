@@ -31,6 +31,7 @@ type UpdateReservationLimitRequest = SharedSchemas.UpdateReservationLimitRequest
 type CreateArchiveRequest = SharedSchemas.CreateArchiveRequest
 type UpdateArchiveRequest = SharedSchemas.UpdateArchiveRequest
 type Event = SharedSchemas.Event
+type DashboardData = SharedSchemas.DashboardData
 type CreateEventRequest = SharedSchemas.CreateEventRequest
 type UpdateEventRequest = SharedSchemas.UpdateEventRequest
 type Entry = SharedSchemas.Entry
@@ -411,6 +412,10 @@ class ApiClient {
 
   async getEvents(): Promise<ApiResponse<Event[]>> {
     return httpClient.get<ApiResponse<Event[]>>(`/events`)
+  }
+
+  async getDashboard(): Promise<ApiResponse<DashboardData>> {
+    return httpClient.get<ApiResponse<DashboardData>>('/dashboard')
   }
 
   async createEvent(data: CreateEventRequest): Promise<ApiResponse<void>> {

@@ -24,9 +24,8 @@ function Content({ children }: { children: React.ReactNode }) {
   }, [loading, user, pathname, router])
 
   const isAuthResolving = loading || !user
-  const isLoginOrRoot = pathname === "/" || pathname === "/login"
   const userBlocksSidebar = !!user && (!user.nickname || (user.instruments && user.instruments.length === 0))
-  const shouldRenderSidebarArea = !isLoginOrRoot
+  const shouldRenderSidebarArea = pathname !== "/login"
 
   return (
     <>
