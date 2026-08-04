@@ -68,22 +68,6 @@ CREATE INDEX idx_external_lottery_studio_state
 CREATE INDEX idx_external_lottery_identity_time
   ON external_lottery_applications(group_id, user_id, state, preferred_start_datetime, preferred_end_datetime);
 
-CREATE TRIGGER validate_external_lottery_application_insert
-BEFORE INSERT ON external_lottery_applications
-BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1
-    FROM external_studios es
-    WHERE es.id = NEW.external_studio_id
-      AND (NEW.preferred_start_datetime IS NULL OR (
-        NEW.preferred_start_datetime >= es.start_datetime
-        AND NEW.preferred_end_datetime <= es.end_datetime
-      ))
-      AND date(COALESCE(NEW.preferred_start_datetime, es.start_datetime), '+9 hours')
-        BETWEEN date(NEW.created_at, '+9 hours', '+1 day') AND date(NEW.created_at, '+9 hours', '+14 days')
-  ) THEN RAISE(ABORT, 'INVALID_EXTERNAL_LOTTERY_PERIOD') END;
-END;
-
 CREATE TABLE external_lottery_limit_holds (
   application_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
