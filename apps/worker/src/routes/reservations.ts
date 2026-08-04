@@ -135,10 +135,11 @@ async function getUsedReservationMinutes(
   targetId: string,
   rangeStartTime: string,
   rangeEndTime: string,
-  exclude?: { kind: 'HALL' | 'EXTERNAL'; id: string }
+  exclude?: { kind: 'HALL' | 'EXTERNAL' | 'LOTTERY'; id: string }
 ): Promise<number> {
   const excludeHall = exclude?.kind === 'HALL';
   const excludeExternal = exclude?.kind === 'EXTERNAL';
+  const excludeLottery = exclude?.kind === 'LOTTERY';
   const reservations = scope === 'GROUP'
     ? await env.DB.prepare(`
         SELECT start_time, end_time
@@ -170,9 +171,37 @@ async function getUsedReservationMinutes(
           AND end_time > ?
           ${excludeExternal ? 'AND id != ?' : ''}
       `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeExternal ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>()
-    : { results: [] as Array<{ start_time: string; end_time: string }> };
+    : await env.DB.prepare(`
+        SELECT start_time, end_time
+        FROM external_reservations
+        WHERE user_id = ?
+          AND group_id IS NULL
+          AND state IN ('PENDING', 'CONFIRMED')
+          AND start_time < ?
+          AND end_time > ?
+          ${excludeExternal ? 'AND id != ?' : ''}
+      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeExternal ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>();
 
-  return [...reservations.results, ...externalReservations.results].reduce((total, reservation) => (
+  const lotteryHolds = scope === 'GROUP'
+    ? await env.DB.prepare(`
+        SELECT start_time, end_time
+        FROM external_lottery_limit_holds
+        WHERE group_id = ?
+          AND start_time < ?
+          AND end_time > ?
+          ${excludeLottery ? 'AND application_id != ?' : ''}
+      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeLottery ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>()
+    : await env.DB.prepare(`
+        SELECT start_time, end_time
+        FROM external_lottery_limit_holds
+        WHERE user_id = ?
+          AND group_id IS NULL
+          AND start_time < ?
+          AND end_time > ?
+          ${excludeLottery ? 'AND application_id != ?' : ''}
+      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeLottery ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>();
+
+  return [...reservations.results, ...externalReservations.results, ...lotteryHolds.results].reduce((total, reservation) => (
     total + calculateOverlapMinutes(
       reservation.start_time,
       reservation.end_time,
@@ -188,7 +217,7 @@ export async function hasReservationLimitConflict(
   groupId: string | null,
   startTime: string,
   endTime: string,
-  exclude?: { kind: 'HALL' | 'EXTERNAL'; id: string }
+  exclude?: { kind: 'HALL' | 'EXTERNAL' | 'LOTTERY'; id: string }
 ): Promise<boolean> {
   const scope: ReservationLimitScope = groupId ? 'GROUP' : 'PERSONAL';
   const limits = await env.DB.prepare(`

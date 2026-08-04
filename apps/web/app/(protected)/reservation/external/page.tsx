@@ -2,10 +2,10 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar'
-import { format, getDay, parse, startOfDay, startOfWeek, addDays, subDays } from 'date-fns'
+import { format, getDay, parse, startOfDay, startOfWeek, addDays, subDays, isToday } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, Loader2, Plus, Trash2 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
@@ -44,6 +44,7 @@ type ExternalResource = {
 type ExternalDraft = {
   date: Date
   externalId: string | null
+  roomNumber: number | null
   groupId: string | null
   startHour: number | null
   startMinute: number | null
@@ -133,6 +134,7 @@ function ExternalReservationContent() {
   const [draft, setDraft] = useState<ExternalDraft>({
     date: startOfDay(new Date()),
     externalId: null,
+    roomNumber: null,
     groupId: null,
     startHour: null,
     startMinute: null,
@@ -242,7 +244,10 @@ function ExternalReservationContent() {
   }, [currentDate, externals])
 
   const resources: ExternalResource[] = useMemo(() => (
-    visibleExternals.map((external) => ({ id: external.id, title: external.name }))
+    visibleExternals.flatMap((external) => external.room_names.map((roomName, index) => ({
+      id: `${external.id}:${index + 1}`,
+      title: roomName,
+    })))
   ), [visibleExternals])
 
   const calendarEvents: CalendarEvent[] = useMemo(() => (
@@ -251,11 +256,11 @@ function ExternalReservationContent() {
       title: reservation.group_name || '外部予約',
       start: new Date(reservation.start_time),
       end: new Date(reservation.end_time),
-      resourceId: reservation.external_studio_id,
+      resourceId: `${reservation.external_studio_id}:${reservation.room_number}`,
       allDay: false,
       meta: {
         reservationId: reservation.id,
-        externalName: reservation.external_name || '外部スタジオ',
+        externalName: reservation.room_name || `ルーム ${reservation.room_number}`,
         userName: reservation.user_name || undefined,
         groupName: reservation.group_name || undefined,
         state: reservation.state as ReservationState,
@@ -276,7 +281,11 @@ function ExternalReservationContent() {
   const handleInputChange = (name: keyof ExternalDraft, value: number | Date | string | null) => {
     setDraft((prev) => {
       const next = { ...prev, [name]: value }
-      if (name === 'date') next.externalId = null
+      if (name === 'date') {
+        next.externalId = null
+        next.roomNumber = null
+      }
+      if (name === 'externalId') next.roomNumber = null
       if (name === 'startHour') {
         next.startMinute = null
         next.endHour = null
@@ -309,7 +318,7 @@ function ExternalReservationContent() {
   }
 
   const submitReservation = async (targetDraft: ExternalDraft, acknowledged: boolean) => {
-    if (!targetDraft.externalId || !targetDraft.groupId) return
+    if (!targetDraft.externalId || !targetDraft.roomNumber || !targetDraft.groupId) return
     const times = getDraftTimes(targetDraft)
     if (!times) return
 
@@ -323,7 +332,8 @@ function ExternalReservationContent() {
       setIsSending(true)
       const response = await apiClient.createExternalReservation({
         external_studio_id: targetDraft.externalId,
-        group_id: targetDraft.groupId,
+        room_number: targetDraft.roomNumber,
+        group_id: targetDraft.groupId === '__personal__' ? null : targetDraft.groupId,
         start_time: times.start.toISOString(),
         end_time: times.end.toISOString(),
         admin: isAdminMode || undefined,
@@ -339,6 +349,7 @@ function ExternalReservationContent() {
         setDraft({
           date: startOfDay(new Date()),
           externalId: null,
+          roomNumber: null,
           groupId: null,
           startHour: null,
           startMinute: null,
@@ -479,9 +490,13 @@ function ExternalReservationContent() {
     const [endHour, endMinute] = externalEndTime.split(':').map(Number)
     end.setHours(endHour, endMinute, 0, 0)
 
-    const names = externalNames.map((name) => name.trim()).filter(Boolean)
-    if (names.length === 0) {
-      toast.error('外部スタジオ名を入力してください')
+    const names = externalNames.map((name) => name.trim())
+    if (names.some((name) => !name)) {
+      toast.error('すべてのルーム名を入力してください')
+      return
+    }
+    if (new Set(names).size !== names.length) {
+      toast.error('ルーム名は重複できません')
       return
     }
 
@@ -525,6 +540,7 @@ function ExternalReservationContent() {
 
   const isReservationButtonDisabled = isSending ||
     !draft.externalId ||
+    !draft.roomNumber ||
     !draft.groupId ||
     draft.startHour === null ||
     draft.startMinute === null ||
@@ -545,7 +561,10 @@ function ExternalReservationContent() {
   return (
     <>
       <ReservationPageHeader
-        onAddReservation={() => setIsReservationFormOpen(true)}
+        onAddReservation={isToday(currentDate) ? () => {
+          setDraft((current) => ({ ...current, date: startOfDay(new Date()), externalId: null, roomNumber: null }))
+          setIsReservationFormOpen(true)
+        } : undefined}
         onRefresh={fetchData}
         onAdminToggle={(checked) => {
           setIsAdminMode(checked)
@@ -726,7 +745,7 @@ function ExternalReservationContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新規外部予約</DialogTitle>
-            <DialogDescription>外部スタジオ予約は団体名義のみ作成できます。</DialogDescription>
+            <DialogDescription>本日分の空いているルームを、個人またはバンド名義で予約します。</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -748,44 +767,26 @@ function ExternalReservationContent() {
                       <span className="ml-2 text-sm text-gray-500">読み込み中...</span>
                     </div>
                   ) : (
-                    myGroups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
+                    <>
+                      <SelectItem value="__personal__">個人（{user?.nickname || user?.name}）</SelectItem>
+                      {myGroups.map((group) => (
+                        <SelectItem key={group.id} value={group.id}>
                         <div className="flex items-center justify-between gap-2">
                           <span>{group.name}</span>
                           <Badge variant={group.is_main ? 'default' : 'outline'}>{group.is_main ? '本バンド' : '自由バンド'}</Badge>
                         </div>
-                      </SelectItem>
-                    ))
+                        </SelectItem>
+                      ))}
+                    </>
                   )}
                 </SelectContent>
               </Select>
             </div>
 
-            <div>
-              <Label>予約日</Label>
-              <Popover modal={true}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(draft.date, 'yyyy年M月d日', { locale: jaLocale })}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarPrimitive
-                    mode="single"
-                    selected={draft.date}
-                    onSelect={(date) => {
-                      if (date) handleInputChange('date', date)
-                    }}
-                    initialFocus
-                    locale={jaLocale}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+            <div><Label>予約日</Label><div className="rounded-md border px-3 py-2 text-sm">{format(new Date(), 'yyyy年M月d日', { locale: jaLocale })}</div></div>
 
             <div>
-              <Label>外部スタジオ</Label>
+              <Label>時間枠</Label>
               <Select value={draft.externalId || ''} onValueChange={(value) => handleInputChange('externalId', value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="外部スタジオを選択" />
@@ -793,8 +794,24 @@ function ExternalReservationContent() {
                 <SelectContent className="max-h-[220px]">
                   {selectableExternals.map((external) => (
                     <SelectItem key={external.id} value={external.id}>
-                      {external.name}
+                      {format(new Date(external.start_datetime), 'H:mm')}〜{format(new Date(external.end_datetime), 'H:mm')}（{external.room_names.length}ルーム）
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>ルーム</Label>
+              <Select
+                disabled={!draft.externalId}
+                value={draft.roomNumber ? String(draft.roomNumber) : ''}
+                onValueChange={(value) => handleInputChange('roomNumber', Number(value))}
+              >
+                <SelectTrigger><SelectValue placeholder="ルームを選択" /></SelectTrigger>
+                <SelectContent>
+                  {externals.find((external) => external.id === draft.externalId)?.room_names.map((name, index) => (
+                    <SelectItem key={name} value={String(index + 1)}>{index + 1}. {name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -875,11 +892,11 @@ function ExternalReservationContent() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>外部スタジオ管理</DialogTitle>
-            <DialogDescription>複数の外部スタジオを同じ期間で一括作成します。</DialogDescription>
+            <DialogDescription>利用時間枠と、その時間に利用できるルームをまとめて作成します。</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateExternals} className="space-y-4">
             <div className="space-y-2">
-              <Label>外部スタジオ名</Label>
+              <Label>ルーム名</Label>
               <div className="space-y-2">
                 {externalNames.map((name, index) => (
                   <div key={index} className="flex items-center gap-2">
@@ -890,7 +907,7 @@ function ExternalReservationContent() {
                         nextNames[index] = event.target.value
                         setExternalNames(nextNames)
                       }}
-                      placeholder={`外部スタジオ ${index + 1}`}
+                      placeholder={`ルーム ${index + 1}`}
                     />
                     <Button
                       type="button"
@@ -943,7 +960,7 @@ function ExternalReservationContent() {
             {externals.map((external) => (
               <div key={external.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
                 <div className="min-w-0">
-                  <div className="font-medium">{external.name}</div>
+                  <div className="font-medium">{external.room_names.map((name, index) => `${index + 1}. ${name}`).join(' / ')}</div>
                   <div className="text-xs text-gray-600">
                     {format(new Date(external.start_datetime), 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(new Date(external.end_datetime), 'M月d日 H:mm', { locale: jaLocale })}
                   </div>
