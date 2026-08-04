@@ -18,6 +18,15 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'RESERVATION_LIMIT_NOT_FOUND': '予約上限が見つかりません。',
   'EXTERNAL_NOT_FOUND': '外部スタジオが見つかりません。',
   'EXTERNAL_PERIOD_CONFLICT': '外部スタジオの利用期間外です。',
+  'EXTERNAL_RESERVATION_TODAY_ONLY': '外部スタジオの先着予約は当日分のみ受け付けています。',
+  'INVALID_ROOM_NUMBER': '指定されたルームが見つかりません。',
+  'INVALID_ROOM_NAMES': 'ルーム名に空欄または重複があります。',
+  'INVALID_TIME_UNIT': '希望時刻は5分単位で指定してください。',
+  'EXTERNAL_LOTTERY_DATE_OUT_OF_RANGE': '抽選対象は翌日から14日先までの時間枠です。',
+  'EXTERNAL_LOTTERY_CLOSED': 'この時間枠の抽選受付は終了しました。',
+  'LOTTERY_APPLICATION_CONFLICT': '同じ名義の希望可能時間帯と重なる申込があります。',
+  'LOTTERY_APPLICATION_NOT_FOUND': '抽選申込が見つかりません。',
+  'LOTTERY_APPLICATION_CANNOT_BE_CANCELLED': 'この抽選申込は取り消せません。',
   'MEMBER_RESERVATION_CONFLICT_WARNING': '同じ時間帯に予約済みのメンバーがいます。',
   
   // 認証関連エラー

@@ -25,6 +25,7 @@ import type { User } from './types';
 import { UserSchema } from './schemas';
 import { processTodayReservations, processPastReservations, deleteOldReservations } from './utils/reservation-processor';
 import { deleteExpiredExternals, processPastExternalReservations, processTodayExternalReservations } from './utils/external-processor';
+import { processExternalLotteryForNextDay } from './utils/external-lottery';
 import { deleteExpiredEvents } from './utils/event-processor';
 import { deleteOldMainBandDrafts } from './utils/main-band-draft-processor';
 import { requireAuth } from './middleware/auth';
@@ -882,6 +883,9 @@ export default {
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     void ctx;
     switch (event.cron) {
+      case "0 12 * * *":
+        await processExternalLotteryForNextDay(env);
+        break;
       case "0 15 * * *":
         await processPastReservations(env);
         await processPastExternalReservations(env);

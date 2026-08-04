@@ -78,9 +78,9 @@ export const ReservationSchema = z.object({
 
 export const ExternalSchema = z.object({
   id: UuidSchema,
-  name: z.string(),
   start_datetime: z.string(),
   end_datetime: z.string(),
+  room_names: z.array(z.string().min(1)).min(1),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -88,9 +88,10 @@ export const ExternalSchema = z.object({
 export const ExternalReservationSchema = z.object({
   id: UuidSchema,
   external_studio_id: UuidSchema,
-  external_name: z.string().nullable(),
+  room_number: z.number().int().positive(),
+  room_name: z.string().nullable(),
   user_id: UuidSchema,
-  group_id: UuidSchema,
+  group_id: UuidSchema.nullable(),
   user_name: z.string().nullable(),
   group_name: z.string().nullable(),
   start_time: z.string(),
@@ -345,11 +346,15 @@ export const CreateExternalRequestSchema = z.object({
   return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start;
 }, {
   message: "終了日時は開始日時より後である必要があります。",
+}).refine((data) => new Set(data.names.map((name) => name.trim())).size === data.names.length, {
+  message: "ルーム名は重複できません。",
+  path: ['names'],
 });
 
 export const CreateExternalReservationRequestSchema = z.object({
   external_studio_id: UuidSchema,
-  group_id: UuidSchema,
+  room_number: z.number().int().positive(),
+  group_id: UuidSchema.nullable().optional(),
   start_time: z.string(),
   end_time: z.string(),
   admin: z.boolean().optional(),
@@ -365,9 +370,88 @@ export const UpdateExternalReservationRequestSchema = z.object({
 
 export const CheckExternalReservationRequestSchema = z.object({
   external_studio_id: UuidSchema,
-  group_id: UuidSchema,
+  room_number: z.number().int().positive(),
+  group_id: UuidSchema.nullable().optional(),
   start_time: z.string(),
   end_time: z.string(),
+});
+
+export const ExternalLotteryStateSchema = z.enum(['PENDING', 'WON', 'LOST', 'CANCELLED']);
+
+export const ExternalLotteryApplicationSchema = z.object({
+  id: UuidSchema,
+  external_studio_id: UuidSchema,
+  user_id: UuidSchema,
+  group_id: UuidSchema.nullable(),
+  user_name: z.string().nullable(),
+  group_name: z.string().nullable(),
+  is_main: z.union([z.boolean(), z.number()]).nullable().transform((value) => value === null ? null : Boolean(value)),
+  preferred_start_datetime: z.string().nullable(),
+  preferred_end_datetime: z.string().nullable(),
+  requested_duration_minutes: z.number().int().nullable(),
+  state: ExternalLotteryStateSchema,
+  fairness_score: z.number().nullable(),
+  tie_break_rank: z.number().int().positive().nullable(),
+  assigned_room_number: z.number().int().positive().nullable(),
+  assigned_room_name: z.string().nullable(),
+  assigned_start_datetime: z.string().nullable(),
+  assigned_end_datetime: z.string().nullable(),
+  studio_start_datetime: z.string(),
+  studio_end_datetime: z.string(),
+  room_names: z.array(z.string().min(1)).min(1),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+const ExternalLotteryTimeRequestSchema = z.object({
+  preferred_start_datetime: z.string().nullable(),
+  preferred_end_datetime: z.string().nullable(),
+  requested_duration_minutes: z.number().int().min(10).max(240).multipleOf(5).nullable(),
+}).superRefine((data, ctx) => {
+  const hasStart = data.preferred_start_datetime !== null;
+  const hasEnd = data.preferred_end_datetime !== null;
+  if (hasStart !== hasEnd) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望開始日時と終了日時は両方指定してください。' });
+    return;
+  }
+  if (!hasStart && data.requested_duration_minutes === null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望時間帯または希望利用時間が必要です。' });
+    return;
+  }
+  if (!hasStart || !hasEnd) return;
+
+  const start = new Date(data.preferred_start_datetime as string);
+  const end = new Date(data.preferred_end_datetime as string);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望終了日時は開始日時より後にしてください。' });
+    return;
+  }
+  if (getJSTDateString(start) !== getJSTDateString(end)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望時間帯は同じ日付内で指定してください。' });
+  }
+  const todayJST = getJSTDateString(new Date());
+  const earliest = new Date(`${todayJST}T00:00:00+09:00`);
+  earliest.setUTCDate(earliest.getUTCDate() + 1);
+  const latest = new Date(`${todayJST}T00:00:00+09:00`);
+  latest.setUTCDate(latest.getUTCDate() + 14);
+  const targetDay = new Date(`${getJSTDateString(start)}T00:00:00+09:00`);
+  if (targetDay < earliest || targetDay > latest) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '抽選対象日は翌日から14日先までです。' });
+  }
+  const startMinutes = getJSTHours(start) * 60 + getJSTMinutes(start);
+  const endMinutes = getJSTHours(end) * 60 + getJSTMinutes(end);
+  if (startMinutes < 6 * 60 || endMinutes > 23 * 60) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望時間帯は6:00〜23:00で指定してください。' });
+  }
+  const windowMinutes = (end.getTime() - start.getTime()) / 60000;
+  if (data.requested_duration_minutes !== null && data.requested_duration_minutes > windowMinutes) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望利用時間は希望時間帯以内にしてください。' });
+  }
+});
+
+export const CreateExternalLotteryApplicationRequestSchema = ExternalLotteryTimeRequestSchema.safeExtend({
+  external_studio_id: UuidSchema,
+  group_id: UuidSchema.nullable().optional(),
 });
 
 export function isAdmin(role: string | undefined): boolean {
@@ -648,6 +732,8 @@ export type ReservationState = z.infer<typeof ReservationStateSchema>;
 export type External = z.infer<typeof ExternalSchema>;
 export type ExternalReservation = z.infer<typeof ExternalReservationSchema>;
 export type ExternalReservationConflict = z.infer<typeof ExternalReservationConflictSchema>;
+export type ExternalLotteryState = z.infer<typeof ExternalLotteryStateSchema>;
+export type ExternalLotteryApplication = z.infer<typeof ExternalLotteryApplicationSchema>;
 export type Archive = z.infer<typeof ArchiveSchema>;
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
 export type UserHolderResponse = z.infer<typeof UserHolderResponseSchema>;
@@ -667,6 +753,7 @@ export type CreateExternalRequest = z.infer<typeof CreateExternalRequestSchema>;
 export type CreateExternalReservationRequest = z.infer<typeof CreateExternalReservationRequestSchema>;
 export type UpdateExternalReservationRequest = z.infer<typeof UpdateExternalReservationRequestSchema>;
 export type CheckExternalReservationRequest = z.infer<typeof CheckExternalReservationRequestSchema>;
+export type CreateExternalLotteryApplicationRequest = z.infer<typeof CreateExternalLotteryApplicationRequestSchema>;
 export type CreateArchiveRequest = z.infer<typeof CreateArchiveRequestSchema>;
 export type UpdateArchiveRequest = z.infer<typeof UpdateArchiveRequestSchema>;
 export type Event = z.infer<typeof EventSchema>;

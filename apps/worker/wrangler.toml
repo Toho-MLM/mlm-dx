@@ -8,7 +8,7 @@ globs = ["**/*.html"]
 fallthrough = true
 
 [triggers]
-crons = ["0 15 * * *"]
+crons = ["0 12 * * *", "0 15 * * *"]
 
 [env.development]
 name = "mlm-dx-worker-dev"

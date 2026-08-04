@@ -79,10 +79,10 @@ async function fetchReservationRow(
            u.email AS requester_email,
            u.email_notification_preference_code AS requester_preference_code,
            g.name AS group_name,
-           es.name AS location_name
+           json_extract(es.room_names, '$[' || (er.room_number - 1) || ']') AS location_name
     FROM external_reservations er
     INNER JOIN users u ON u.id = er.user_id
-    INNER JOIN groups g ON g.id = er.group_id
+    LEFT JOIN groups g ON g.id = er.group_id
     INNER JOIN external_studios es ON es.id = er.external_studio_id
     WHERE er.id = ?
   `).bind(reservationId).first<ReservationEmailRow>();
