@@ -182,13 +182,15 @@ dashboardRoutes.get('/', async (c) => {
       c.env.DB.prepare(`
         SELECT
           er.id AS reservation_id,
-          g.name || '（' || es.name || '）' AS title,
+          COALESCE(g.name, COALESCE(u.nickname, u.name), '個人予約') || '（' ||
+            COALESCE(json_extract(es.room_names, '$[' || (er.room_number - 1) || ']'), '外部スタジオ') || '）' AS title,
           er.start_time AS start_at,
           er.end_time AS end_at,
           er.state
         FROM external_reservations er
         INNER JOIN external_studios es ON es.id = er.external_studio_id
-        INNER JOIN groups g ON g.id = er.group_id
+        LEFT JOIN groups g ON g.id = er.group_id
+        LEFT JOIN users u ON u.id = er.user_id
         WHERE er.state IN ('PENDING', 'CONFIRMED')
           AND datetime(er.start_time) >= datetime(?)
           AND datetime(er.start_time) <= datetime(?)

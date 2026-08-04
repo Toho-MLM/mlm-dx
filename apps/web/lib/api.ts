@@ -9,6 +9,7 @@ type Reservation = SharedSchemas.Reservation
 type External = SharedSchemas.External
 type ExternalReservation = SharedSchemas.ExternalReservation
 type ExternalReservationConflict = SharedSchemas.ExternalReservationConflict
+type ExternalLotteryApplication = SharedSchemas.ExternalLotteryApplication
 type ReservationLimit = SharedSchemas.ReservationLimit
 type ReservationLimitRemaining = SharedSchemas.ReservationLimitRemaining
 type ReservationLimitScope = SharedSchemas.ReservationLimitScope
@@ -26,6 +27,7 @@ type CreateExternalRequest = SharedSchemas.CreateExternalRequest
 type CreateExternalReservationRequest = SharedSchemas.CreateExternalReservationRequest
 type UpdateExternalReservationRequest = SharedSchemas.UpdateExternalReservationRequest
 type CheckExternalReservationRequest = SharedSchemas.CheckExternalReservationRequest
+type CreateExternalLotteryApplicationRequest = SharedSchemas.CreateExternalLotteryApplicationRequest
 type CreateReservationLimitRequest = SharedSchemas.CreateReservationLimitRequest
 type UpdateReservationLimitRequest = SharedSchemas.UpdateReservationLimitRequest
 type CreateArchiveRequest = SharedSchemas.CreateArchiveRequest
@@ -298,9 +300,9 @@ class ApiClient {
     return httpClient.get<ApiResponse<External[]>>('/reservation/external/studios')
   }
 
-  async createExternals(data: CreateExternalRequest): Promise<ApiResponse<void>> {
+  async createExternals(data: CreateExternalRequest): Promise<ApiResponse<{ id: string; start_datetime: string; end_datetime: string; room_names: string[] }>> {
     SharedSchemas.CreateExternalRequestSchema.parse(data)
-    return httpClient.post<ApiResponse<void>>('/reservation/external/studios/bulk', data)
+    return httpClient.post<ApiResponse<{ id: string; start_datetime: string; end_datetime: string; room_names: string[] }>>('/reservation/external/studios/bulk', data)
   }
 
   async deleteExternal(id: string): Promise<ApiResponse<void>> {
@@ -351,6 +353,20 @@ class ApiClient {
   ): Promise<ApiResponse<void>> {
     SharedSchemas.UpdateReservationStatusRequestSchema.parse(data)
     return httpClient.put<ApiResponse<void>>(`/reservations/external/${reservationId}/status`, data)
+  }
+
+  async getExternalLotteryApplications(admin: boolean = false): Promise<ApiResponse<ExternalLotteryApplication[]>> {
+    const params = admin ? '?admin=true' : ''
+    return httpClient.get<ApiResponse<ExternalLotteryApplication[]>>(`/reservations/external/lottery${params}`)
+  }
+
+  async createExternalLotteryApplication(data: CreateExternalLotteryApplicationRequest): Promise<ApiResponse<{ id: string }>> {
+    SharedSchemas.CreateExternalLotteryApplicationRequestSchema.parse(data)
+    return httpClient.post<ApiResponse<{ id: string }>>('/reservations/external/lottery', data)
+  }
+
+  async cancelExternalLotteryApplication(id: string): Promise<ApiResponse<void>> {
+    return httpClient.post<ApiResponse<void>>(`/reservations/external/lottery/${id}/cancel`)
   }
 
   async getReservationLimits(): Promise<ApiResponse<ReservationLimit[]>> {
