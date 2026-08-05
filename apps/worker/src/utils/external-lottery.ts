@@ -1,5 +1,5 @@
 import type { Bindings } from '../index';
-import { getJSTDateString, getJSTDayRange, getJSTTimeRange, type AvailableInterval } from './reservation-processor';
+import { getJSTDateString, getJSTDayRange, type AvailableInterval } from './reservation-processor';
 import { recordExternalReservationUsage } from './external-processor';
 import { broadcastReservationRealtimeEvent } from './reservation-realtime';
 import { prepareAndSendReservationEmail } from './reservation-email';
@@ -153,16 +153,15 @@ async function getFairnessScore(env: Bindings, memberIds: string[], rangeEnd: Da
   return memberIds.reduce((sum, id) => sum + (minutesByMember.get(id) ?? 0), 0) / memberIds.length;
 }
 
-function getApplicationRange(application: ApplicationRow, studio: StudioRow, targetDate: string) {
-  const businessHours = getJSTTimeRange(targetDate, 6, 23);
+function getApplicationRange(application: ApplicationRow, studio: StudioRow) {
   const studioStart = new Date(studio.start_datetime);
   const studioEnd = new Date(studio.end_datetime);
   const rangeStart = application.preferred_start_datetime
     ? new Date(application.preferred_start_datetime)
-    : new Date(Math.max(studioStart.getTime(), businessHours.startUTC.getTime()));
+    : studioStart;
   const rangeEnd = application.preferred_end_datetime
     ? new Date(application.preferred_end_datetime)
-    : new Date(Math.min(studioEnd.getTime(), businessHours.endUTC.getTime()));
+    : studioEnd;
   if (rangeStart < studioStart || rangeEnd > studioEnd || rangeEnd <= rangeStart) return null;
   const requestedMinutes = application.requested_duration_minutes
     ?? Math.round((rangeEnd.getTime() - rangeStart.getTime()) / 60000);
@@ -234,7 +233,7 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
     const prepared: PreparedApplication[] = [];
     for (const application of applications.results) {
       const identity = application.group_id ? await getGroup(env, application.group_id) : { isMain: false, memberIds: [application.user_id] };
-      const range = getApplicationRange(application, studio, targetDate);
+      const range = getApplicationRange(application, studio);
       if (!identity || !range || range.requestedMinutes < 10) {
         await markLost(env, application.id, null, null);
         processed += 1;

@@ -336,6 +336,10 @@ class ApiClient {
     return httpClient.post<ApiResponse<void>>(`/reservations/external/${reservationId}/cancel${params}`)
   }
 
+  async deleteExternalReservation(reservationId: string): Promise<ApiResponse<void>> {
+    return httpClient.delete<ApiResponse<void>>(`/reservations/external/${reservationId}`)
+  }
+
   async updateExternalReservation(
     reservationId: string,
     data: UpdateExternalReservationRequest
@@ -355,9 +359,8 @@ class ApiClient {
     return httpClient.put<ApiResponse<void>>(`/reservations/external/${reservationId}/status`, data)
   }
 
-  async getExternalLotteryApplications(admin: boolean = false): Promise<ApiResponse<ExternalLotteryApplication[]>> {
-    const params = admin ? '?admin=true' : ''
-    return httpClient.get<ApiResponse<ExternalLotteryApplication[]>>(`/reservations/external/lottery${params}`)
+  async getExternalLotteryApplications(): Promise<ApiResponse<ExternalLotteryApplication[]>> {
+    return httpClient.get<ApiResponse<ExternalLotteryApplication[]>>('/reservations/external/lottery')
   }
 
   async createExternalLotteryApplication(data: CreateExternalLotteryApplicationRequest): Promise<ApiResponse<{ id: string }>> {

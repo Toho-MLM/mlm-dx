@@ -2,23 +2,21 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar'
-import { format, getDay, parse, startOfDay, startOfWeek, addDays, subDays, isToday } from 'date-fns'
+import { format, getDay, parse, startOfDay, startOfWeek, addDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
-import { ChevronLeftIcon, ChevronRightIcon, Loader2, Plus, Trash2 } from 'lucide-react'
+import { AlertCircle, ChevronLeftIcon, ChevronRightIcon, Loader2, Trash2 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
 import { Button } from '@/components/ui/button'
-import { Calendar as CalendarPrimitive } from '@/components/ui/calendar'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent, CardDescription } from '@/components/ui/card'
 import { cn, showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
@@ -69,6 +67,14 @@ type CalendarEvent = {
   }
 }
 
+type CalendarSegment = {
+  date: Date
+  dateKey: string
+  min: Date
+  max: Date
+  height: number
+}
+
 const locales = { ja: jaLocale }
 
 const localizer = dateFnsLocalizer({
@@ -91,6 +97,74 @@ const messages = {
 const generateHourOptions = (start: number, count: number) => Array.from({ length: count }, (_, i) => i + start)
 const generateMinuteOptions = () => Array.from({ length: 12 }, (_, i) => i * 5)
 
+const getJSTDateString = (value: Date | string) => new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date(value))
+
+const addJSTDays = (dateString: string, days: number) => {
+  const date = new Date(`${dateString}T00:00:00+09:00`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return getJSTDateString(date)
+}
+
+const getJSTTimeParts = (value: Date) => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Tokyo',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(value)
+  const getPart = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value || 0)
+  return {
+    hour: getPart('hour'),
+    minute: getPart('minute'),
+    second: getPart('second'),
+  }
+}
+
+const toCalendarTime = (value: Date) => {
+  const { hour, minute, second } = getJSTTimeParts(value)
+  return new Date(0, 0, 0, hour, minute, second)
+}
+
+const getExternalLabel = (external: External) => (
+  `${format(new Date(external.start_datetime), 'M月d日 H:mm', { locale: jaLocale })} 〜 ${format(new Date(external.end_datetime), 'M月d日 H:mm', { locale: jaLocale })}（${external.room_names.length}部屋）`
+)
+
+const getCalendarSegments = (external: External): CalendarSegment[] => {
+  const externalStart = new Date(external.start_datetime)
+  const externalEnd = new Date(external.end_datetime)
+  if (externalEnd <= externalStart) return []
+
+  const segments: CalendarSegment[] = []
+  let dateKey = getJSTDateString(externalStart)
+  const lastDateKey = getJSTDateString(new Date(externalEnd.getTime() - 1))
+
+  while (dateKey <= lastDateKey) {
+    const nextDateKey = addJSTDays(dateKey, 1)
+    const dayStart = new Date(`${dateKey}T00:00:00+09:00`)
+    const dayEnd = new Date(`${nextDateKey}T00:00:00+09:00`)
+    const segmentStart = externalStart > dayStart ? externalStart : dayStart
+    const segmentEnd = externalEnd < dayEnd ? externalEnd : dayEnd
+    const durationHours = (segmentEnd.getTime() - segmentStart.getTime()) / 3_600_000
+
+    segments.push({
+      date: new Date(`${dateKey}T12:00:00+09:00`),
+      dateKey,
+      min: toCalendarTime(segmentStart),
+      max: segmentEnd >= dayEnd ? new Date(0, 0, 0, 23, 59, 59) : toCalendarTime(segmentEnd),
+      height: Math.max(360, Math.min(960, Math.ceil(durationHours * 48))),
+    })
+    dateKey = nextDateKey
+  }
+
+  return segments
+}
+
 export default function ExternalReservationPage() {
   return (
     <Suspense fallback={null}>
@@ -106,27 +180,20 @@ function ExternalReservationContent() {
   const { user, loading: authLoading } = useAuth()
   const [isAdminMode, setIsAdminMode] = useAdminMode(user && isAdmin(user.role))
   const [loading, setLoading] = useState(true)
-  const [currentDate, setCurrentDate] = useState(new Date())
-  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [externals, setExternals] = useState<External[]>([])
+  const [selectedExternalId, setSelectedExternalId] = useState<string | null>(null)
   const [reservations, setReservations] = useState<ExternalReservation[]>([])
   const [myGroups, setMyGroups] = useState<GroupOption[]>([])
   const [isGroupsLoading, setIsGroupsLoading] = useState(false)
   const [isReservationFormOpen, setIsReservationFormOpen] = useState(false)
-  const [isManageOpen, setIsManageOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<CalendarEvent | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isStatusUpdating, setIsStatusUpdating] = useState(false)
   const [selectedStatus, setSelectedStatus] = useState<ReservationState>(ReservationState.PENDING)
   const [isSending, setIsSending] = useState(false)
-  const [isCreatingExternal, setIsCreatingExternal] = useState(false)
-  const [deletingExternalId, setDeletingExternalId] = useState<string | null>(null)
-  const [externalNames, setExternalNames] = useState<string[]>([''])
-  const [externalStartDate, setExternalStartDate] = useState<Date | undefined>(new Date())
-  const [externalStartTime, setExternalStartTime] = useState('00:00')
-  const [externalEndDate, setExternalEndDate] = useState<Date | undefined>(addDays(new Date(), 1))
-  const [externalEndTime, setExternalEndTime] = useState('00:00')
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false)
   const [conflicts, setConflicts] = useState<ExternalReservationConflict[]>([])
   const [pendingDraft, setPendingDraft] = useState<ExternalDraft | null>(null)
   const [pendingEdit, setPendingEdit] = useState<{ startTime: string; endTime: string } | null>(null)
@@ -165,6 +232,13 @@ function ExternalReservationContent() {
 
     if (externalsResponse.success && externalsResponse.data) {
       setExternals(externalsResponse.data)
+      setSelectedExternalId((currentId) => {
+        if (currentId && externalsResponse.data?.some((external) => external.id === currentId)) return currentId
+        const now = new Date()
+        return externalsResponse.data?.find((external) => (
+          new Date(external.start_datetime) <= now && new Date(external.end_datetime) > now
+        ))?.id || externalsResponse.data?.find((external) => new Date(external.end_datetime) > now)?.id || externalsResponse.data?.at(-1)?.id || null
+      })
     }
 
     if (reservationsResponse.success && reservationsResponse.data) {
@@ -235,32 +309,33 @@ function ExternalReservationContent() {
     }
   }, [fetchData, user])
 
-  const visibleExternals = useMemo(() => {
-    const dayStart = startOfDay(currentDate)
-    const dayEnd = addDays(dayStart, 1)
-    return externals.filter((external) => (
-      new Date(external.start_datetime) < dayEnd && new Date(external.end_datetime) > dayStart
+  const sortedExternals = useMemo(() => (
+    [...externals].sort((left, right) => (
+      new Date(left.start_datetime).getTime() - new Date(right.start_datetime).getTime()
     ))
-  }, [currentDate, externals])
+  ), [externals])
+
+  const selectedExternalIndex = sortedExternals.findIndex((external) => external.id === selectedExternalId)
+  const selectedExternal = selectedExternalIndex >= 0 ? sortedExternals[selectedExternalIndex] : null
 
   const resources: ExternalResource[] = useMemo(() => (
-    visibleExternals.flatMap((external) => external.room_names.map((roomName, index) => ({
-      id: `${external.id}:${index + 1}`,
+    selectedExternal?.room_names.map((roomName, index) => ({
+      id: `${selectedExternal.id}:${index + 1}`,
       title: roomName,
-    })))
-  ), [visibleExternals])
+    })) || []
+  ), [selectedExternal])
 
   const calendarEvents: CalendarEvent[] = useMemo(() => (
     reservations.map((reservation) => ({
       id: reservation.id,
-      title: reservation.group_name || '外部予約',
+      title: reservation.group_name || reservation.user_name || '個人練',
       start: new Date(reservation.start_time),
       end: new Date(reservation.end_time),
       resourceId: `${reservation.external_studio_id}:${reservation.room_number}`,
       allDay: false,
       meta: {
         reservationId: reservation.id,
-        externalName: reservation.room_name || `ルーム ${reservation.room_number}`,
+        externalName: reservation.room_name || `部屋 ${reservation.room_number}`,
         userName: reservation.user_name || undefined,
         groupName: reservation.group_name || undefined,
         state: reservation.state as ReservationState,
@@ -268,6 +343,14 @@ function ExternalReservationContent() {
       },
     }))
   ), [reservations])
+
+  const selectedCalendarEvents = useMemo(() => (
+    selectedExternal ? calendarEvents.filter((event) => event.resourceId.startsWith(`${selectedExternal.id}:`)) : []
+  ), [calendarEvents, selectedExternal])
+
+  const calendarSegments = useMemo(() => (
+    selectedExternal ? getCalendarSegments(selectedExternal) : []
+  ), [selectedExternal])
 
   const selectableExternals = useMemo(() => {
     const selectedDate = draft.date
@@ -404,6 +487,30 @@ function ExternalReservationContent() {
     }
   }
 
+  const handleDeleteReservation = async (id: string) => {
+    try {
+      setIsDeleting(true)
+      const response = await apiClient.deleteExternalReservation(id)
+      if (response.success) {
+        setIsDetailOpen(false)
+        setSelectedReservation(null)
+        setIsDeleteConfirming(false)
+        await fetchData()
+        showSuccessToast({ message: '外部予約を完全に削除しました' })
+      } else {
+        toast.error('外部予約の削除中にエラーが発生しました', {
+          description: translateError(response.error || 'UNKNOWN_ERROR'),
+        })
+      }
+    } catch (error) {
+      toast.error('外部予約の削除中にエラーが発生しました', {
+        description: translateError((error as Error).message),
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const updateExternalReservation = async (
     startTime: string,
     endTime: string,
@@ -478,66 +585,6 @@ function ExternalReservationContent() {
     }
   }
 
-  const handleCreateExternals = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!externalStartDate || !externalEndDate) return
-
-    const start = new Date(externalStartDate)
-    const [startHour, startMinute] = externalStartTime.split(':').map(Number)
-    start.setHours(startHour, startMinute, 0, 0)
-
-    const end = new Date(externalEndDate)
-    const [endHour, endMinute] = externalEndTime.split(':').map(Number)
-    end.setHours(endHour, endMinute, 0, 0)
-
-    const names = externalNames.map((name) => name.trim())
-    if (names.some((name) => !name)) {
-      toast.error('すべてのルーム名を入力してください')
-      return
-    }
-    if (new Set(names).size !== names.length) {
-      toast.error('ルーム名は重複できません')
-      return
-    }
-
-    try {
-      setIsCreatingExternal(true)
-      const response = await apiClient.createExternals({
-        names,
-        start_datetime: start.toISOString(),
-        end_datetime: end.toISOString(),
-      })
-      if (response.success) {
-        showSuccessToast({ message: '外部スタジオを追加しました' })
-        setExternalNames([''])
-        await fetchData()
-      } else {
-        toast.error('外部スタジオの追加中にエラーが発生しました', {
-          description: translateError(response.error || 'UNKNOWN_ERROR'),
-        })
-      }
-    } finally {
-      setIsCreatingExternal(false)
-    }
-  }
-
-  const handleDeleteExternal = async (id: string) => {
-    try {
-      setDeletingExternalId(id)
-      const response = await apiClient.deleteExternal(id)
-      if (response.success) {
-        showSuccessToast({ message: '外部スタジオを削除しました' })
-        await fetchData()
-      } else {
-        toast.error('外部スタジオの削除中にエラーが発生しました', {
-          description: translateError(response.error || 'UNKNOWN_ERROR'),
-        })
-      }
-    } finally {
-      setDeletingExternalId(null)
-    }
-  }
-
   const isReservationButtonDisabled = isSending ||
     !draft.externalId ||
     !draft.roomNumber ||
@@ -546,6 +593,18 @@ function ExternalReservationContent() {
     draft.startMinute === null ||
     draft.endHour === null ||
     draft.endMinute === null
+
+  const todayJST = getJSTDateString(new Date())
+  const todayStart = new Date(`${todayJST}T00:00:00+09:00`)
+  const tomorrowStart = new Date(`${addJSTDays(todayJST, 1)}T00:00:00+09:00`)
+  const canReserveSelectedExternal = selectedExternal && (
+    new Date(selectedExternal.start_datetime) < tomorrowStart &&
+    new Date(selectedExternal.end_datetime) > todayStart
+  )
+  const todayExternal = sortedExternals.find((external) => (
+    new Date(external.start_datetime) < tomorrowStart &&
+    new Date(external.end_datetime) > todayStart
+  ))
 
   if (authLoading || loading) {
     return (
@@ -561,104 +620,123 @@ function ExternalReservationContent() {
   return (
     <>
       <ReservationPageHeader
-        onAddReservation={isToday(currentDate) ? () => {
-          setDraft((current) => ({ ...current, date: startOfDay(new Date()), externalId: null, roomNumber: null }))
+        onAddReservation={() => {
+          setDraft((current) => ({
+            ...current,
+            date: startOfDay(new Date()),
+            externalId: canReserveSelectedExternal ? selectedExternal?.id || null : todayExternal?.id || null,
+            roomNumber: null,
+          }))
           setIsReservationFormOpen(true)
-        } : undefined}
+        }}
         onRefresh={fetchData}
         onAdminToggle={(checked) => {
           setIsAdminMode(checked)
           setMyGroups([])
         }}
-        onManageExternal={() => setIsManageOpen(true)}
         isAdminMode={isAdminMode}
       />
-      <div className="h-[calc(100vh-4rem)] flex flex-col">
-        <div className="flex-1 mx-auto px-5 w-full max-w-none">
-          <Card className="bg-white shadow-lg rounded-lg overflow-hidden h-full flex flex-col">
-            <CardDescription className="flex-shrink-0">
-              <div className="p-2 flex flex-wrap items-center justify-end gap-2">
-                <Button variant="outline" onClick={() => setCurrentDate(subDays(currentDate, 1))}>
-                  <ChevronLeftIcon className="h-4 w-4" />
-                </Button>
-                <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline">
-                      {format(currentDate, 'yyyy年M月d日', { locale: jaLocale })}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="center">
-                    <CalendarPrimitive
-                      mode="single"
-                      locale={jaLocale}
-                      selected={currentDate}
-                      onSelect={(date) => {
-                        if (date) setCurrentDate(date)
-                        setIsDatePickerOpen(false)
-                      }}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <Button variant="outline" onClick={() => setCurrentDate(addDays(currentDate, 1))}>
-                  <ChevronRightIcon className="h-4 w-4" />
-                </Button>
+      <div className="mx-auto w-full max-w-none px-5 pb-5">
+        <Card className="overflow-hidden rounded-lg bg-white shadow-lg">
+          <CardDescription>
+            <div className="flex flex-wrap items-center justify-center gap-2 p-2 md:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={selectedExternalIndex <= 0}
+                onClick={() => setSelectedExternalId(sortedExternals[selectedExternalIndex - 1]?.id || null)}
+                aria-label="前の外部スタジオ"
+              >
+                <ChevronLeftIcon className="h-4 w-4" />
+              </Button>
+              <Select value={selectedExternalId || ''} onValueChange={setSelectedExternalId} disabled={sortedExternals.length === 0}>
+                <SelectTrigger className="w-[calc(100%-7rem)] sm:w-96">
+                  <SelectValue placeholder="外部スタジオを選択" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[320px]">
+                  {sortedExternals.map((external) => (
+                    <SelectItem key={external.id} value={external.id}>
+                      {getExternalLabel(external)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={selectedExternalIndex < 0 || selectedExternalIndex >= sortedExternals.length - 1}
+                onClick={() => setSelectedExternalId(sortedExternals[selectedExternalIndex + 1]?.id || null)}
+                aria-label="次の外部スタジオ"
+              >
+                <ChevronRightIcon className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardDescription>
+          <CardContent className="space-y-6">
+            {!selectedExternal ? (
+              <div className="flex h-72 items-center justify-center rounded-md border text-sm text-gray-600">
+                利用できる外部スタジオはありません
               </div>
-            </CardDescription>
-            <CardContent className="flex-1">
-              {resources.length === 0 ? (
-                <div className="flex h-[720px] items-center justify-center rounded-md border text-sm text-gray-600">
-                  この日に利用できる外部スタジオはありません
-                </div>
-              ) : (
-                <BigCalendar<CalendarEvent, ExternalResource>
-                  localizer={localizer}
-                  events={calendarEvents}
-                  resources={resources}
-                  resourceIdAccessor="id"
-                  resourceTitleAccessor="title"
-                  resourceAccessor="resourceId"
-                  titleAccessor={(event) => event.title}
-                  startAccessor={(event) => event.start}
-                  endAccessor={(event) => event.end}
-                  allDayAccessor={(event) => event.allDay}
-                  onSelectEvent={(event) => {
-                    setSelectedReservation(event)
-                    setSelectedStatus(event.meta.state)
-                    setIsDetailOpen(true)
-                  }}
-                  views={{ day: true }}
-                  messages={messages}
-                  culture="ja"
-                  toolbar={false}
-                  min={new Date(0, 0, 0, 6, 0, 0)}
-                  max={new Date(0, 0, 0, 23, 0, 0)}
-                  date={currentDate}
-                  view={Views.DAY as View}
-                  onView={() => undefined}
-                  onNavigate={(date) => setCurrentDate(date)}
-                  formats={{
-                    dayHeaderFormat: (date) => format(date, 'yyyy年M月d日（eee）', { locale: jaLocale }),
-                    eventTimeRangeFormat: (event) => `${format(event.start, 'H:mm', { locale: jaLocale })} 〜 ${format(event.end, 'H:mm', { locale: jaLocale })}`,
-                  }}
-                  eventPropGetter={(event) => ({
-                    style: {
-                      backgroundColor: event.meta.state === ReservationState.CONFIRMED ? '#C8E6CD' : event.meta.state === ReservationState.PENDING ? '#FFE599' : '#D5D8DC',
-                      color: 'black',
-                      border: `2px solid ${event.meta.state === ReservationState.CONFIRMED ? '#2ECC71' : event.meta.state === ReservationState.PENDING ? '#F1C40F' : '#BDC3C7'}`,
-                    },
-                  })}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </div>
+            ) : (
+              calendarSegments.map((segment) => (
+                <section key={segment.dateKey} className="space-y-2">
+                  <h2 className="text-sm font-medium">
+                    {format(segment.date, 'yyyy年M月d日（eee）', { locale: jaLocale })}
+                  </h2>
+                  <div className="external-reservation-calendar" style={{ height: segment.height }}>
+                    <BigCalendar<CalendarEvent, ExternalResource>
+                      localizer={localizer}
+                      events={selectedCalendarEvents}
+                      resources={resources}
+                      resourceIdAccessor="id"
+                      resourceTitleAccessor="title"
+                      resourceAccessor="resourceId"
+                      titleAccessor={(event) => event.title}
+                      startAccessor={(event) => event.start}
+                      endAccessor={(event) => event.end}
+                      allDayAccessor={(event) => event.allDay}
+                      onSelectEvent={(event) => {
+                        setIsDeleteConfirming(false)
+                        setSelectedReservation(event)
+                        setSelectedStatus(event.meta.state)
+                        setIsDetailOpen(true)
+                      }}
+                      views={{ day: true }}
+                      messages={messages}
+                      culture="ja"
+                      toolbar={false}
+                      min={segment.min}
+                      max={segment.max}
+                      scrollToTime={segment.min}
+                      date={segment.date}
+                      view={Views.DAY as View}
+                      onView={() => undefined}
+                      onNavigate={() => undefined}
+                      formats={{
+                        dayHeaderFormat: (date) => format(date, 'yyyy年M月d日（eee）', { locale: jaLocale }),
+                        eventTimeRangeFormat: (event) => `${format(event.start, 'H:mm', { locale: jaLocale })} 〜 ${format(event.end, 'H:mm', { locale: jaLocale })}`,
+                      }}
+                      eventPropGetter={(event) => ({
+                        style: {
+                          backgroundColor: event.meta.state === ReservationState.CONFIRMED ? '#C8E6CD' : event.meta.state === ReservationState.PENDING ? '#FFE599' : '#D5D8DC',
+                          color: 'black',
+                          border: `2px solid ${event.meta.state === ReservationState.CONFIRMED ? '#2ECC71' : event.meta.state === ReservationState.PENDING ? '#F1C40F' : '#BDC3C7'}`,
+                        },
+                      })}
+                    />
+                  </div>
+                </section>
+              ))
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog open={isDetailOpen && selectedReservation !== null} onOpenChange={(open) => {
         setIsDetailOpen(open)
         if (!open) {
           setIsEditOpen(false)
+          setIsDeleteConfirming(false)
           setSelectedReservation(null)
         }
       }}>
@@ -680,7 +758,7 @@ function ExternalReservationContent() {
                   type="button"
                   variant="outline"
                   className="w-full"
-                  disabled={isSending}
+                  disabled={isSending || isDeleting || isDeleteConfirming}
                   onClick={() => setIsEditOpen(true)}
                 >
                   変更
@@ -691,37 +769,82 @@ function ExternalReservationContent() {
                   variant="destructive"
                   className="w-full"
                   isLoading={isSending}
+                  disabled={isDeleting || isDeleteConfirming}
                   onClick={() => handleCancelReservation(selectedReservation.meta.reservationId)}
                 >
                   キャンセル
                 </LoadingButton>
               )}
               {isAdminMode && (
-                <div className="space-y-2 rounded-md border p-3">
-                  <Label htmlFor="external-reservation-status">ステータス</Label>
-                  <Select
-                    value={selectedStatus}
-                    onValueChange={(value) => setSelectedStatus(value as ReservationState)}
-                  >
-                    <SelectTrigger id="external-reservation-status">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.values(ReservationState).map((state) => (
-                        <SelectItem key={state} value={state}>
-                          {eventStateNames[state]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <LoadingButton
-                    type="button"
-                    className="w-full"
-                    isLoading={isStatusUpdating}
-                    onClick={handleUpdateExternalStatus}
-                  >
-                    ステータスを更新
-                  </LoadingButton>
+                <div className="space-y-3">
+                  <div className="space-y-2 rounded-md border p-3">
+                    <Label htmlFor="external-reservation-status">ステータス</Label>
+                    <Select
+                      value={selectedStatus}
+                      onValueChange={(value) => setSelectedStatus(value as ReservationState)}
+                    >
+                      <SelectTrigger id="external-reservation-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.values(ReservationState).map((state) => (
+                          <SelectItem key={state} value={state}>
+                            {eventStateNames[state]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <LoadingButton
+                      type="button"
+                      className="w-full"
+                      isLoading={isStatusUpdating}
+                      disabled={isDeleting || isDeleteConfirming}
+                      onClick={handleUpdateExternalStatus}
+                    >
+                      ステータスを更新
+                    </LoadingButton>
+                  </div>
+                  {!isDeleteConfirming && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      className="w-full"
+                      onClick={() => setIsDeleteConfirming(true)}
+                      disabled={isSending || isDeleting || isStatusUpdating}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      完全に削除
+                    </Button>
+                  )}
+                  {isDeleteConfirming && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>この外部予約を完全に削除しますか？</AlertTitle>
+                      <AlertDescription className="mt-2 space-y-3">
+                        <p>この予約はキャンセルや拒否として残らず、利用実績を含む予約情報が完全に削除されます。削除後は元に戻せません。</p>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsDeleteConfirming(false)}
+                            disabled={isDeleting}
+                          >
+                            戻る
+                          </Button>
+                          <LoadingButton
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => void handleDeleteReservation(selectedReservation.meta.reservationId)}
+                            isLoading={isDeleting}
+                          >
+                            DBから削除
+                          </LoadingButton>
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </div>
               )}
             </div>
@@ -745,7 +868,6 @@ function ExternalReservationContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新規外部予約</DialogTitle>
-            <DialogDescription>本日分の空いているルームを、個人またはバンド名義で予約します。</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -794,7 +916,7 @@ function ExternalReservationContent() {
                 <SelectContent className="max-h-[220px]">
                   {selectableExternals.map((external) => (
                     <SelectItem key={external.id} value={external.id}>
-                      {format(new Date(external.start_datetime), 'H:mm')}〜{format(new Date(external.end_datetime), 'H:mm')}（{external.room_names.length}ルーム）
+                      {getExternalLabel(external)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -802,13 +924,13 @@ function ExternalReservationContent() {
             </div>
 
             <div>
-              <Label>ルーム</Label>
+              <Label>部屋</Label>
               <Select
                 disabled={!draft.externalId}
                 value={draft.roomNumber ? String(draft.roomNumber) : ''}
                 onValueChange={(value) => handleInputChange('roomNumber', Number(value))}
               >
-                <SelectTrigger><SelectValue placeholder="ルームを選択" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="部屋を選択" /></SelectTrigger>
                 <SelectContent>
                   {externals.find((external) => external.id === draft.externalId)?.room_names.map((name, index) => (
                     <SelectItem key={name} value={String(index + 1)}>{index + 1}. {name}</SelectItem>
@@ -888,91 +1010,6 @@ function ExternalReservationContent() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isManageOpen} onOpenChange={setIsManageOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>外部スタジオ管理</DialogTitle>
-            <DialogDescription>利用時間枠と、その時間に利用できるルームをまとめて作成します。</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCreateExternals} className="space-y-4">
-            <div className="space-y-2">
-              <Label>ルーム名</Label>
-              <div className="space-y-2">
-                {externalNames.map((name, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <Input
-                      value={name}
-                      onChange={(event) => {
-                        const nextNames = [...externalNames]
-                        nextNames[index] = event.target.value
-                        setExternalNames(nextNames)
-                      }}
-                      placeholder={`ルーム ${index + 1}`}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      disabled={externalNames.length === 1}
-                      onClick={() => setExternalNames(externalNames.filter((_, itemIndex) => itemIndex !== index))}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setExternalNames([...externalNames, ''])}
-              >
-                <Plus className="h-4 w-4" />
-                追加
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>開始日</Label>
-                <Input type="date" value={externalStartDate ? format(externalStartDate, 'yyyy-MM-dd') : ''} onChange={(event) => setExternalStartDate(event.target.value ? new Date(event.target.value) : undefined)} />
-              </div>
-              <div className="space-y-2">
-                <Label>開始時刻</Label>
-                <Input type="time" value={externalStartTime} onChange={(event) => setExternalStartTime(event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>終了日</Label>
-                <Input type="date" value={externalEndDate ? format(externalEndDate, 'yyyy-MM-dd') : ''} onChange={(event) => setExternalEndDate(event.target.value ? new Date(event.target.value) : undefined)} />
-              </div>
-              <div className="space-y-2">
-                <Label>終了時刻</Label>
-                <Input type="time" value={externalEndTime} onChange={(event) => setExternalEndTime(event.target.value)} />
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <LoadingButton type="submit" isLoading={isCreatingExternal}>
-                作成
-              </LoadingButton>
-            </div>
-          </form>
-          <div className="max-h-[260px] space-y-2 overflow-y-auto">
-            {externals.map((external) => (
-              <div key={external.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
-                <div className="min-w-0">
-                  <div className="font-medium">{external.room_names.map((name, index) => `${index + 1}. ${name}`).join(' / ')}</div>
-                  <div className="text-xs text-gray-600">
-                    {format(new Date(external.start_datetime), 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(new Date(external.end_datetime), 'M月d日 H:mm', { locale: jaLocale })}
-                  </div>
-                </div>
-                <Button variant="destructive" size="sm" disabled={deletingExternalId === external.id} onClick={() => handleDeleteExternal(external.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   )
 }
