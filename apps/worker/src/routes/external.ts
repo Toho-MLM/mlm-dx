@@ -20,7 +20,7 @@ import {
   ExternalSchema,
   UpdateExternalReservationRequestSchema,
   UpdateReservationStatusRequestSchema,
-  validateReservationTime,
+  validateExternalReservationTime,
   type ReservationState,
 } from '../../../../lib/shared-schemas';
 import { parseUuid } from '../utils/uuid';
@@ -93,11 +93,8 @@ async function validateReservationBase(
   if (isAdminMode) {
     try { requireAdmin(userRole); } catch { return { error: 'INSUFFICIENT_PERMISSIONS', status: 403 }; }
   }
-  const validation = validateReservationTime(startTime, endTime);
+  const validation = validateExternalReservationTime(startTime, endTime);
   if (!validation.isValid) return { error: validation.error || 'INVALID_RESERVATION_TIME', status: 400 };
-  if (getJSTDateString(new Date(startTime)) !== getJSTDateString(new Date())) {
-    return { error: 'EXTERNAL_RESERVATION_TODAY_ONLY', status: 400 };
-  }
 
   if (groupId) {
     const group = await env.DB.prepare('SELECT id FROM groups WHERE id = ? AND is_active = TRUE').bind(groupId).first();
