@@ -111,3 +111,8 @@ body {
 [data-sonner-toast] [data-description] {
   color: hsl(var(--foreground)) !important;
 }
+
+.external-reservation-calendar .rbc-time-view-resources .rbc-time-gutter,
+.external-reservation-calendar .rbc-time-view-resources .rbc-time-header-gutter {
+  z-index: 1;
+}

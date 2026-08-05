@@ -347,7 +347,7 @@ export const CreateExternalRequestSchema = z.object({
 }, {
   message: "終了日時は開始日時より後である必要があります。",
 }).refine((data) => new Set(data.names.map((name) => name.trim())).size === data.names.length, {
-  message: "ルーム名は重複できません。",
+  message: "部屋名は重複できません。",
   path: ['names'],
 });
 
@@ -406,16 +406,12 @@ export const ExternalLotteryApplicationSchema = z.object({
 const ExternalLotteryTimeRequestSchema = z.object({
   preferred_start_datetime: z.string().nullable(),
   preferred_end_datetime: z.string().nullable(),
-  requested_duration_minutes: z.number().int().min(10).max(240).multipleOf(5).nullable(),
+  requested_duration_minutes: z.number().int().min(10).max(240).multipleOf(5),
 }).superRefine((data, ctx) => {
   const hasStart = data.preferred_start_datetime !== null;
   const hasEnd = data.preferred_end_datetime !== null;
   if (hasStart !== hasEnd) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望開始日時と終了日時は両方指定してください。' });
-    return;
-  }
-  if (!hasStart && data.requested_duration_minutes === null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望時間帯または希望利用時間が必要です。' });
     return;
   }
   if (!hasStart || !hasEnd) return;
@@ -438,13 +434,8 @@ const ExternalLotteryTimeRequestSchema = z.object({
   if (targetDay < earliest || targetDay > latest) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: '抽選対象日は翌日から14日先までです。' });
   }
-  const startMinutes = getJSTHours(start) * 60 + getJSTMinutes(start);
-  const endMinutes = getJSTHours(end) * 60 + getJSTMinutes(end);
-  if (startMinutes < 6 * 60 || endMinutes > 23 * 60) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望時間帯は6:00〜23:00で指定してください。' });
-  }
   const windowMinutes = (end.getTime() - start.getTime()) / 60000;
-  if (data.requested_duration_minutes !== null && data.requested_duration_minutes > windowMinutes) {
+  if (data.requested_duration_minutes > windowMinutes) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望利用時間は希望時間帯以内にしてください。' });
   }
 });

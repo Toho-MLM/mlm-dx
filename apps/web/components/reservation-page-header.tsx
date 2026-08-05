@@ -3,7 +3,7 @@
 import React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
-import { CalendarPlus, CalendarX2, Building2 } from 'lucide-react';
+import { CalendarPlus, CalendarX2 } from 'lucide-react';
 import { useAuth } from '@/app/context/AuthContext';
 import { isAdmin } from '../../../lib/shared-schemas';
 import { AdminModeToggle } from '@/components/admin-mode-toggle';
@@ -13,7 +13,6 @@ interface ReservationPageHeaderProps {
   onRefresh?: () => void;
   onCancelReservation?: () => void;
   onAdminToggle?: (isAdminMode: boolean) => void;
-  onManageExternal?: () => void;
   isAdminMode?: boolean;
   className?: string;
 }
@@ -23,7 +22,6 @@ export function ReservationPageHeader({
   onRefresh, 
   onCancelReservation,
   onAdminToggle,
-  onManageExternal,
   isAdminMode = false,
   className 
 }: ReservationPageHeaderProps) {
@@ -48,12 +46,6 @@ export function ReservationPageHeader({
         <Button variant="destructive" size="sm" onClick={onCancelReservation}>
           <CalendarX2 className="h-4 w-4" />
           取消
-        </Button>
-      )}
-      {isUserAdmin && isAdminMode && onManageExternal && (
-        <Button variant="outline" size="sm" onClick={onManageExternal}>
-          <Building2 className="h-4 w-4" />
-          外部スタジオ管理
         </Button>
       )}
       {onAddReservation && (
