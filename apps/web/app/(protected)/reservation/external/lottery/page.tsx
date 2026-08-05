@@ -66,6 +66,11 @@ const getLotteryDrawTimes = (studio: External) => {
 type LotteryRange = { start: Date; end: Date; requestedMinutes: number }
 type LotteryCandidate = ExternalLotteryApplication & LotteryRange
 type OccupiedInterval = { start: Date; end: Date }
+type LotteryRoomOption = {
+  roomNumber: number
+  intervals: OccupiedInterval[]
+  longestMinutes: number
+}
 
 const getApplicationPriority = (application: ExternalLotteryApplication) => (
   application.group_id ? (application.is_main ? 0 : 1) : 2
@@ -131,6 +136,27 @@ const seededOrder = (value: string) => {
   return hash >>> 0
 }
 
+const getFairShareMinutes = (
+  candidate: LotteryCandidate,
+  remainingCandidates: LotteryCandidate[],
+  roomOptions: LotteryRoomOption[]
+) => {
+  const availableMinutes = roomOptions.reduce((total, room) => total + room.intervals.reduce((roomTotal, interval) => {
+    const minutes = Math.floor((interval.end.getTime() - interval.start.getTime()) / 60_000)
+    return roomTotal + (minutes >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES ? minutes : 0)
+  }, 0), 0)
+  const contenders = remainingCandidates.filter((remaining) => overlaps(candidate, remaining)).length
+  const possibleWinners = Math.min(
+    contenders,
+    Math.floor(availableMinutes / EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
+  )
+  if (possibleWinners === 0) return 0
+  const fairShare = Math.floor(
+    availableMinutes / possibleWinners / EXTERNAL_LOTTERY_DURATION_STEP_MINUTES
+  ) * EXTERNAL_LOTTERY_DURATION_STEP_MINUTES
+  return Math.min(candidate.requestedMinutes, fairShare)
+}
+
 const estimateWinningProbabilities = (
   studio: External,
   studioApplications: ExternalLotteryApplication[],
@@ -169,7 +195,7 @@ const estimateWinningProbabilities = (
     const occupied = new Map([...initialOccupied].map(([room, intervals]) => [room, [...intervals]]))
 
     ordered.forEach((candidate, candidateIndex) => {
-      const roomOptions = studio.room_names.map((_, roomIndex) => {
+      const roomOptions: LotteryRoomOption[] = studio.room_names.map((_, roomIndex) => {
         const roomNumber = roomIndex + 1
         const intervals = subtractOccupiedIntervals(candidate, occupied.get(roomNumber) || [])
         const longestMinutes = intervals.reduce((longest, interval) => (
@@ -177,15 +203,17 @@ const estimateWinningProbabilities = (
         ), 0)
         return { roomNumber, intervals, longestMinutes }
       })
-      const hasFullRoom = roomOptions.some((room) => room.longestMinutes >= candidate.requestedMinutes)
+      const fairShareMinutes = getFairShareMinutes(candidate, ordered.slice(candidateIndex), roomOptions)
+      const hasFullRoom = roomOptions.some((room) => room.longestMinutes >= fairShareMinutes)
       const rooms = roomOptions
-        .filter((room) => room.longestMinutes >= (hasFullRoom ? candidate.requestedMinutes : EXTERNAL_LOTTERY_MIN_DURATION_MINUTES))
+        .filter((room) => room.longestMinutes >= (hasFullRoom ? fairShareMinutes : EXTERNAL_LOTTERY_MIN_DURATION_MINUTES))
         .sort((left, right) => right.longestMinutes - left.longestMinutes || left.roomNumber - right.roomNumber)
 
       for (const room of rooms) {
         const duration = hasFullRoom
-          ? candidate.requestedMinutes
+          ? fairShareMinutes
           : Math.floor(room.longestMinutes / EXTERNAL_LOTTERY_DURATION_STEP_MINUTES) * EXTERNAL_LOTTERY_DURATION_STEP_MINUTES
+        if (duration < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES) continue
         const starts = room.intervals.flatMap((interval) => enumerateStarts(interval, duration))
           .map((start) => {
             const end = new Date(start.getTime() + duration * 60_000)
@@ -415,7 +443,7 @@ function ExternalLotteryContent() {
                                     variant={application.state === 'WON' ? 'default' : application.state === 'LOST' ? 'destructive' : 'outline'}
                                     className="px-1.5 text-[10px]"
                                     title={application.state === 'PENDING'
-                                      ? '確定済み予約を除いた部屋ごとの空きへ、優先区分を保ちながら同順位の処理順を複数回入れ替えて割り当てた推定値です。公平性や予約上限によって実際の結果は変わります。'
+                                      ? '確定済み予約を除いた空きを競合申込へ公平配分し、優先区分を保ちながら同順位の処理順を複数回入れ替えて算出した推定値です。公平性や予約上限によって実際の結果は変わります。'
                                       : undefined}
                                   >
                                     {application.state === 'PENDING' ? `当選確率 約${winningProbability}%` : stateLabel[application.state]}
