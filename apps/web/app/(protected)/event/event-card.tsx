@@ -23,11 +23,9 @@ interface EventCardProps {
 function Countdown({
   targetDate,
   isAccepting,
-  isDeadlineInformational = false,
 }: {
   targetDate: string
   isAccepting: boolean
-  isDeadlineInformational?: boolean
 }) {
   const [mounted, setMounted] = useState(false)
   const [, setForceUpdate] = useState(0)
@@ -51,10 +49,7 @@ function Countdown({
     }
 
     if (diff <= 0) {
-      if (isDeadlineInformational) {
-        return { text: '受付中（締め切り間近）', color: 'text-orange-600 font-bold' }
-      }
-      return { text: '期限切れ', color: 'text-red-600 font-bold' }
+      return { text: '受付中（期限超過）', color: 'text-orange-600 font-bold' }
     }
 
     const days = Math.floor(diff / (1000 * 60 * 60 * 24))
@@ -229,7 +224,6 @@ export function EventCard({ event }: EventCardProps) {
                   <Countdown
                     targetDate={event.entry_deadline}
                     isAccepting={event.is_entry_accepting}
-                    isDeadlineInformational
                   />
                 </div>
               </>
