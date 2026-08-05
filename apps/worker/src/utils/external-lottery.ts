@@ -4,6 +4,11 @@ import { recordExternalReservationUsage } from './external-processor';
 import { broadcastReservationRealtimeEvent } from './reservation-realtime';
 import { prepareAndSendReservationEmail } from './reservation-email';
 import { hasReservationLimitConflict } from '../routes/reservations';
+import {
+  EXTERNAL_LOTTERY_DURATION_STEP_MINUTES,
+  EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
+  EXTERNAL_LOTTERY_MIN_DURATION_MINUTES,
+} from '../../../../lib/shared-schemas';
 
 type StudioRow = {
   id: string;
@@ -234,7 +239,13 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
     for (const application of applications.results) {
       const identity = application.group_id ? await getGroup(env, application.group_id) : { isMain: false, memberIds: [application.user_id] };
       const range = getApplicationRange(application, studio);
-      if (!identity || !range || range.requestedMinutes < 10) {
+      if (
+        !identity ||
+        !range ||
+        range.requestedMinutes < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES ||
+        range.requestedMinutes > EXTERNAL_LOTTERY_MAX_DURATION_MINUTES ||
+        range.requestedMinutes % EXTERNAL_LOTTERY_DURATION_STEP_MINUTES !== 0
+      ) {
         await markLost(env, application.id, null, null);
         processed += 1;
         continue;
@@ -311,15 +322,18 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
       });
       const hasFullRoom = roomOptions.some((room) => room.longestMinutes >= application.requestedMinutes);
       const rankedRooms = roomOptions
-        .filter((room) => hasFullRoom ? room.longestMinutes >= application.requestedMinutes : room.longestMinutes >= 10)
+        .filter((room) => hasFullRoom
+          ? room.longestMinutes >= application.requestedMinutes
+          : room.longestMinutes >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
         .sort((a, b) => b.longestMinutes - a.longestMinutes || a.roomNumber - b.roomNumber);
 
       let assignment: { roomNumber: number; start: Date; end: Date } | null = null;
       for (const room of rankedRooms) {
         const duration = hasFullRoom
           ? application.requestedMinutes
-          : Math.floor(room.longestMinutes / 5) * 5;
-        if (duration < 10) continue;
+          : Math.floor(room.longestMinutes / EXTERNAL_LOTTERY_DURATION_STEP_MINUTES)
+            * EXTERNAL_LOTTERY_DURATION_STEP_MINUTES;
+        if (duration < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES) continue;
         const candidates = room.intervals.flatMap((interval) => enumerateStarts(interval, duration)).map((start) => {
           const end = new Date(start.getTime() + duration * 60000);
           const contention = prepared.slice(index + 1).filter((remaining) => overlaps(start, end, remaining.rangeStart, remaining.rangeEnd)).length;

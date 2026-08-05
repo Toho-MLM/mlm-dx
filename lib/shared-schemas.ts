@@ -374,9 +374,47 @@ export const CheckExternalReservationRequestSchema = z.object({
   group_id: UuidSchema.nullable().optional(),
   start_time: z.string(),
   end_time: z.string(),
+  admin: z.boolean().optional(),
 });
 
 export const ExternalLotteryStateSchema = z.enum(['PENDING', 'WON', 'LOST', 'CANCELLED']);
+
+export const EXTERNAL_LOTTERY_MIN_DURATION_MINUTES = 30;
+export const EXTERNAL_LOTTERY_MAX_DURATION_MINUTES = 120;
+export const EXTERNAL_LOTTERY_DURATION_STEP_MINUTES = 10;
+
+export const isExternalLotteryReservationProtected = (
+  startValue: Date | string,
+  endValue: Date | string,
+  nowValue: Date | string = new Date()
+): boolean => {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  const now = new Date(nowValue);
+  if ([start, end, now].some((date) => Number.isNaN(date.getTime())) || end <= start) return false;
+
+  const today = getJSTDateString(now);
+  const tomorrow = new Date(`${today}T00:00:00+09:00`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const latest = new Date(`${today}T00:00:00+09:00`);
+  latest.setUTCDate(latest.getUTCDate() + 14);
+  const tomorrowString = getJSTDateString(tomorrow);
+  const latestString = getJSTDateString(latest);
+  let targetDate = getJSTDateString(start);
+  const lastTargetDate = getJSTDateString(new Date(end.getTime() - 1));
+
+  while (targetDate <= lastTargetDate) {
+    if (targetDate >= tomorrowString && targetDate <= latestString) {
+      const drawAt = new Date(`${targetDate}T21:00:00+09:00`);
+      drawAt.setUTCDate(drawAt.getUTCDate() - 1);
+      if (now < drawAt) return true;
+    }
+    const nextDate = new Date(`${targetDate}T00:00:00+09:00`);
+    nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+    targetDate = getJSTDateString(nextDate);
+  }
+  return false;
+};
 
 export const ExternalLotteryApplicationSchema = z.object({
   id: UuidSchema,
@@ -406,12 +444,15 @@ export const ExternalLotteryApplicationSchema = z.object({
 const ExternalLotteryTimeRequestSchema = z.object({
   preferred_start_datetime: z.string().nullable(),
   preferred_end_datetime: z.string().nullable(),
-  requested_duration_minutes: z.number().int().min(10).max(240).multipleOf(5),
+  requested_duration_minutes: z.number().int()
+    .min(EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
+    .max(EXTERNAL_LOTTERY_MAX_DURATION_MINUTES)
+    .multipleOf(EXTERNAL_LOTTERY_DURATION_STEP_MINUTES),
 }).superRefine((data, ctx) => {
   const hasStart = data.preferred_start_datetime !== null;
   const hasEnd = data.preferred_end_datetime !== null;
   if (hasStart !== hasEnd) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望開始日時と終了日時は両方指定してください。' });
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '許容時間の起点と終点は両方指定してください。' });
     return;
   }
   if (!hasStart || !hasEnd) return;
@@ -419,11 +460,11 @@ const ExternalLotteryTimeRequestSchema = z.object({
   const start = new Date(data.preferred_start_datetime as string);
   const end = new Date(data.preferred_end_datetime as string);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望終了日時は開始日時より後にしてください。' });
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '許容時間の終点は起点より後にしてください。' });
     return;
   }
   if (getJSTDateString(start) !== getJSTDateString(end)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望時間帯は同じ日付内で指定してください。' });
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '許容時間は同じ日付内で指定してください。' });
   }
   const todayJST = getJSTDateString(new Date());
   const earliest = new Date(`${todayJST}T00:00:00+09:00`);
@@ -436,7 +477,7 @@ const ExternalLotteryTimeRequestSchema = z.object({
   }
   const windowMinutes = (end.getTime() - start.getTime()) / 60000;
   if (data.requested_duration_minutes > windowMinutes) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望利用時間は希望時間帯以内にしてください。' });
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '希望利用時間は許容時間内にしてください。' });
   }
 });
 

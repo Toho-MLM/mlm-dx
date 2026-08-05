@@ -23,6 +23,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'INVALID_TIME_UNIT': '希望時刻は5分単位で指定してください。',
   'EXTERNAL_LOTTERY_DATE_OUT_OF_RANGE': '抽選対象は翌日から14日先までの時間枠です。',
   'EXTERNAL_LOTTERY_CLOSED': 'この時間枠の抽選受付は終了しました。',
+  'EXTERNAL_LOTTERY_PERIOD_PROTECTED': '抽選対象の期間は外部予約できません。抽選申込を利用してください。',
   'LOTTERY_APPLICATION_CONFLICT': '同じ名義の希望可能時間帯と重なる申込があります。',
   'LOTTERY_APPLICATION_NOT_FOUND': '抽選申込が見つかりません。',
   'LOTTERY_APPLICATION_CANNOT_BE_CANCELLED': 'この抽選申込は取り消せません。',
