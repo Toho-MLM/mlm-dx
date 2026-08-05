@@ -57,6 +57,12 @@ type ReservationIdentityRow = {
   end_time: string;
 };
 
+type RoomOption = {
+  roomNumber: number;
+  intervals: AvailableInterval[];
+  longestMinutes: number;
+};
+
 const parseRoomNames = (value: string): string[] => {
   const parsed: unknown = JSON.parse(value);
   if (!Array.isArray(parsed) || parsed.some((name) => typeof name !== 'string' || name.trim() === '')) {
@@ -194,6 +200,29 @@ function enumerateStarts(interval: AvailableInterval, durationMinutes: number): 
   return starts;
 }
 
+function getFairShareMinutes(
+  application: PreparedApplication,
+  remainingApplications: PreparedApplication[],
+  roomOptions: RoomOption[]
+): number {
+  const availableMinutes = roomOptions.reduce((total, room) => total + room.intervals.reduce((roomTotal, interval) => {
+    const minutes = Math.floor((interval.end.getTime() - interval.start.getTime()) / 60000);
+    return roomTotal + (minutes >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES ? minutes : 0);
+  }, 0), 0);
+  const contenders = remainingApplications.filter((remaining) => (
+    overlaps(application.rangeStart, application.rangeEnd, remaining.rangeStart, remaining.rangeEnd)
+  )).length;
+  const possibleWinners = Math.min(
+    contenders,
+    Math.floor(availableMinutes / EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
+  );
+  if (possibleWinners === 0) return 0;
+  const fairShare = Math.floor(
+    availableMinutes / possibleWinners / EXTERNAL_LOTTERY_DURATION_STEP_MINUTES
+  ) * EXTERNAL_LOTTERY_DURATION_STEP_MINUTES;
+  return Math.min(application.requestedMinutes, fairShare);
+}
+
 async function markLost(env: Bindings, applicationId: string, score: number | null, rank: number | null) {
   await env.DB.batch([
     env.DB.prepare(`
@@ -310,7 +339,7 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
         WHERE external_studio_id = ? AND state = 'CONFIRMED'
           AND start_time < ? AND end_time > ?
       `).bind(studio.id, application.rangeEnd.toISOString(), application.rangeStart.toISOString()).all<ExistingReservation>();
-      const roomOptions = roomNames.map((_, roomIndex) => {
+      const roomOptions: RoomOption[] = roomNames.map((_, roomIndex) => {
         const roomNumber = roomIndex + 1;
         const intervals = subtractReservations(
           application.rangeStart,
@@ -320,17 +349,18 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
         const longestMinutes = intervals.reduce((max, interval) => Math.max(max, Math.floor((interval.end.getTime() - interval.start.getTime()) / 60000)), 0);
         return { roomNumber, intervals, longestMinutes };
       });
-      const hasFullRoom = roomOptions.some((room) => room.longestMinutes >= application.requestedMinutes);
+      const fairShareMinutes = getFairShareMinutes(application, prepared.slice(index), roomOptions);
+      const hasFullRoom = roomOptions.some((room) => room.longestMinutes >= fairShareMinutes);
       const rankedRooms = roomOptions
         .filter((room) => hasFullRoom
-          ? room.longestMinutes >= application.requestedMinutes
+          ? room.longestMinutes >= fairShareMinutes
           : room.longestMinutes >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
         .sort((a, b) => b.longestMinutes - a.longestMinutes || a.roomNumber - b.roomNumber);
 
       let assignment: { roomNumber: number; start: Date; end: Date } | null = null;
       for (const room of rankedRooms) {
         const duration = hasFullRoom
-          ? application.requestedMinutes
+          ? fairShareMinutes
           : Math.floor(room.longestMinutes / EXTERNAL_LOTTERY_DURATION_STEP_MINUTES)
             * EXTERNAL_LOTTERY_DURATION_STEP_MINUTES;
         if (duration < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES) continue;
