@@ -61,6 +61,9 @@ type ReservationEditDialogProps = {
   isSaving: boolean
   onSave: (startTime: string, endTime: string) => Promise<void>
   title?: string
+  allowCrossDay?: boolean
+  rangeStart?: Date
+  rangeEnd?: Date
 }
 
 export function ReservationEditDialog({
@@ -71,23 +74,31 @@ export function ReservationEditDialog({
   isSaving,
   onSave,
   title = '予約を変更',
+  allowCrossDay = false,
+  rangeStart,
+  rangeEnd,
 }: ReservationEditDialogProps) {
   const started = Date.now() >= start.getTime()
   const initialStart = useMemo(() => getJstParts(start), [start])
   const initialEnd = useMemo(() => getJstParts(end), [end])
   const [date, setDate] = useState(initialStart.date)
+  const [endDate, setEndDate] = useState(initialEnd.date)
   const [startTime, setStartTime] = useState(initialStart.time)
   const [endTime, setEndTime] = useState(initialEnd.time)
 
   useEffect(() => {
     if (!open) return
     setDate(initialStart.date)
+    setEndDate(initialEnd.date)
     setStartTime(initialStart.time)
     setEndTime(initialEnd.time)
-  }, [initialEnd.time, initialStart.date, initialStart.time, open])
+  }, [initialEnd.date, initialEnd.time, initialStart.date, initialStart.time, open])
 
   const today = getJstParts(new Date()).date
-  const maxDate = addJstDays(today, 14)
+  const rangeStartParts = rangeStart ? getJstParts(rangeStart) : null
+  const rangeEndParts = rangeEnd ? getJstParts(rangeEnd) : null
+  const minDate = allowCrossDay && rangeStartParts ? rangeStartParts.date : today
+  const maxDate = allowCrossDay && rangeEndParts ? rangeEndParts.date : addJstDays(today, 14)
   const earliestEndTime = started ? getJstParts(roundUpToFiveMinutes(new Date())).time : '06:10'
   const selectedStart = new Date(`${date}T${startTime}:00+09:00`)
   const fourHoursAfterStart = Number.isNaN(selectedStart.getTime())
@@ -96,11 +107,23 @@ export function ReservationEditDialog({
   const latestEndTime = fourHoursAfterStart.date === date && fourHoursAfterStart.time < '23:00'
     ? fourHoursAfterStart.time
     : '23:00'
+  const startTimeMin = allowCrossDay
+    ? (date === rangeStartParts?.date ? rangeStartParts.time : undefined)
+    : '06:00'
+  const startTimeMax = allowCrossDay
+    ? (date === rangeEndParts?.date ? rangeEndParts.time : undefined)
+    : '22:50'
+  const endTimeMin = allowCrossDay
+    ? (endDate === rangeStartParts?.date ? rangeStartParts.time : undefined)
+    : earliestEndTime
+  const endTimeMax = allowCrossDay
+    ? (endDate === rangeEndParts?.date ? rangeEndParts.time : undefined)
+    : latestEndTime
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     const nextStart = new Date(`${date}T${startTime}:00+09:00`)
-    const nextEnd = new Date(`${date}T${endTime}:00+09:00`)
+    const nextEnd = new Date(`${allowCrossDay ? endDate : date}T${endTime}:00+09:00`)
     if (Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime())) {
       toast.error('日時を正しく入力してください')
       return
@@ -114,6 +137,10 @@ export function ReservationEditDialog({
       toast.error('予約時間は10分以上4時間以内にしてください')
       return
     }
+    if ((rangeStart && nextStart < rangeStart) || (rangeEnd && nextEnd > rangeEnd)) {
+      toast.error('外部スタジオの時間枠内で指定してください')
+      return
+    }
     await onSave(nextStart.toISOString(), nextEnd.toISOString())
   }
 
@@ -124,23 +151,44 @@ export function ReservationEditDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {started
-              ? '開始済みの予約は終了時刻のみ変更できます。'
-              : '予約日、開始時刻、終了時刻を変更できます。'}
+              ? `開始済みの予約は終了${allowCrossDay ? '日時' : '時刻'}のみ変更できます。`
+              : allowCrossDay
+                ? '開始日時と終了日時を変更できます。'
+                : '予約日、開始時刻、終了時刻を変更できます。'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-reservation-date">予約日</Label>
-            <Input
-              id="edit-reservation-date"
-              type="date"
-              value={date}
-              min={today}
-              max={maxDate}
-              readOnly={started}
-              aria-readonly={started}
-              onChange={(event) => setDate(event.target.value)}
-            />
+          <div className={allowCrossDay ? 'grid grid-cols-1 gap-4 sm:grid-cols-2' : undefined}>
+            <div className="space-y-2">
+              <Label htmlFor="edit-reservation-date">{allowCrossDay ? '開始日' : '予約日'}</Label>
+              <Input
+                id="edit-reservation-date"
+                type="date"
+                value={date}
+                min={minDate}
+                max={maxDate}
+                readOnly={started}
+                aria-readonly={started}
+                onChange={(event) => {
+                  const nextDate = event.target.value
+                  setDate(nextDate)
+                  if (allowCrossDay && endDate < nextDate) setEndDate(nextDate)
+                }}
+              />
+            </div>
+            {allowCrossDay && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-reservation-end-date">終了日</Label>
+                <Input
+                  id="edit-reservation-end-date"
+                  type="date"
+                  value={endDate}
+                  min={date || minDate}
+                  max={maxDate}
+                  onChange={(event) => setEndDate(event.target.value)}
+                />
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -148,8 +196,8 @@ export function ReservationEditDialog({
               <Input
                 id="edit-reservation-start"
                 type="time"
-                min="06:00"
-                max="22:50"
+                min={startTimeMin}
+                max={startTimeMax}
                 step={300}
                 value={startTime}
                 readOnly={started}
@@ -162,8 +210,8 @@ export function ReservationEditDialog({
               <Input
                 id="edit-reservation-end"
                 type="time"
-                min={earliestEndTime}
-                max={latestEndTime}
+                min={endTimeMin}
+                max={endTimeMax}
                 step={300}
                 value={endTime}
                 onChange={(event) => setEndTime(event.target.value)}

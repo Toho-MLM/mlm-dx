@@ -16,7 +16,7 @@ export default function LotterySupportPage() {
           <Clock3Icon className="h-4 w-4" />
           <AlertTitle>抽選は各利用対象日の前日21:00に実施されます</AlertTitle>
           <AlertDescription>
-            外部抽選は翌日から14日先までの時間枠に申し込めます。日付をまたぐ時間枠には、まだ終了していない抽選日時がすべて表示されます。当日の空き部屋は「外部予約」から先着順で予約してください。
+            外部抽選は翌日から14日先までの時間枠に申し込めます。日付をまたぐ時間枠には、まだ終了していない抽選日時がすべて表示されます。抽選後の空き部屋は「外部予約」から先着順で予約してください。
           </AlertDescription>
         </Alert>
 

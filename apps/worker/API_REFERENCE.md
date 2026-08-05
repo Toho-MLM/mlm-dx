@@ -255,6 +255,10 @@ Worker は以下の `Bindings` を前提としています。
 - 外部予約の状態を変更するのではなく、対象予約と紐づく利用実績をDBから完全に削除します。
 - 存在しない予約は `404 RESERVATION_NOT_FOUND`、UUID形式でないIDは `400 INVALID_INPUT` を返します。
 
+#### POST `/reservations/external` / PUT `/reservations/external/:id`
+- 外部予約は最短10分・最長4時間で、選択した外部スタジオの時間枠内に収まる必要があります。
+- 6:00〜23:00と同日内の制限は適用せず、スタジオの時間枠内であれば日付をまたいで予約できます。
+
 #### GET `/reservations/external/lottery`
 - 認証必須。抽選状況一覧用に全申込を返します。
 

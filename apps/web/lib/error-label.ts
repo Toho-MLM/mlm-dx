@@ -18,7 +18,6 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'RESERVATION_LIMIT_NOT_FOUND': '予約上限が見つかりません。',
   'EXTERNAL_NOT_FOUND': '外部スタジオが見つかりません。',
   'EXTERNAL_PERIOD_CONFLICT': '外部スタジオの利用期間外です。',
-  'EXTERNAL_RESERVATION_TODAY_ONLY': '外部スタジオの先着予約は当日分のみ受け付けています。',
   'INVALID_ROOM_NUMBER': '指定された部屋が見つかりません。',
   'INVALID_ROOM_NAMES': '部屋名に空欄または重複があります。',
   'INVALID_TIME_UNIT': '希望時刻は5分単位で指定してください。',

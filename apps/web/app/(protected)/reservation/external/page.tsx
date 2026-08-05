@@ -2,7 +2,7 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar'
-import { format, getDay, parse, startOfDay, startOfWeek, addDays } from 'date-fns'
+import { format, getDay, parse, startOfWeek } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { AlertCircle, ChevronLeftIcon, ChevronRightIcon, Loader2, Trash2 } from 'lucide-react'
@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -24,7 +25,7 @@ import { apiClient } from '@/lib/api'
 import { getLoginPath } from '@/lib/auth-redirect'
 import { useAuth } from '@/app/context/AuthContext'
 import { eventStateNames, ReservationState } from '@/app/types'
-import { isAdmin, validateReservationTime, type External, type ExternalReservation, type ExternalReservationConflict } from '@shared-schemas'
+import { isAdmin, validateExternalReservationTime, type External, type ExternalReservation, type ExternalReservationConflict } from '@shared-schemas'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 import { ReservationEditDialog } from '@/components/reservation-edit-dialog'
 
@@ -40,7 +41,8 @@ type ExternalResource = {
 }
 
 type ExternalDraft = {
-  date: Date
+  startDate: string
+  endDate: string
   externalId: string | null
   roomNumber: number | null
   groupId: string | null
@@ -108,6 +110,24 @@ const addJSTDays = (dateString: string, days: number) => {
   const date = new Date(`${dateString}T00:00:00+09:00`)
   date.setUTCDate(date.getUTCDate() + days)
   return getJSTDateString(date)
+}
+
+const getInitialExternalDraft = (external: External | null = null): ExternalDraft => {
+  const now = new Date()
+  const initialDate = external
+    ? getJSTDateString(new Date(Math.max(now.getTime(), new Date(external.start_datetime).getTime())))
+    : getJSTDateString(now)
+  return {
+    startDate: initialDate,
+    endDate: initialDate,
+    externalId: external?.id || null,
+    roomNumber: null,
+    groupId: null,
+    startHour: null,
+    startMinute: null,
+    endHour: null,
+    endMinute: null,
+  }
 }
 
 const getJSTTimeParts = (value: Date) => {
@@ -198,16 +218,7 @@ function ExternalReservationContent() {
   const [pendingDraft, setPendingDraft] = useState<ExternalDraft | null>(null)
   const [pendingEdit, setPendingEdit] = useState<{ startTime: string; endTime: string } | null>(null)
   const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false)
-  const [draft, setDraft] = useState<ExternalDraft>({
-    date: startOfDay(new Date()),
-    externalId: null,
-    roomNumber: null,
-    groupId: null,
-    startHour: null,
-    startMinute: null,
-    endHour: null,
-    endMinute: null,
-  })
+  const [draft, setDraft] = useState<ExternalDraft>(() => getInitialExternalDraft())
 
   const fetchGroups = useCallback(async () => {
     if (isGroupsLoading) return
@@ -352,23 +363,30 @@ function ExternalReservationContent() {
     selectedExternal ? getCalendarSegments(selectedExternal) : []
   ), [selectedExternal])
 
-  const selectableExternals = useMemo(() => {
-    const selectedDate = draft.date
-    const dayStart = startOfDay(selectedDate)
-    const dayEnd = addDays(dayStart, 1)
-    return externals.filter((external) => (
-      new Date(external.start_datetime) < dayEnd && new Date(external.end_datetime) > dayStart
-    ))
-  }, [draft.date, externals])
+  const reservableExternals = useMemo(() => (
+    sortedExternals.filter((external) => new Date(external.end_datetime) > new Date())
+  ), [sortedExternals])
 
-  const handleInputChange = (name: keyof ExternalDraft, value: number | Date | string | null) => {
+  const draftExternal = externals.find((external) => external.id === draft.externalId) || null
+  const draftMinDate = draftExternal ? getJSTDateString(draftExternal.start_datetime) : undefined
+  const draftMaxStartDate = draftExternal
+    ? getJSTDateString(new Date(new Date(draftExternal.end_datetime).getTime() - 1))
+    : undefined
+  const draftMaxEndDate = draftExternal ? getJSTDateString(draftExternal.end_datetime) : undefined
+
+  const handleInputChange = (name: keyof ExternalDraft, value: number | string | null) => {
     setDraft((prev) => {
-      const next = { ...prev, [name]: value }
-      if (name === 'date') {
-        next.externalId = null
-        next.roomNumber = null
+      if (name === 'externalId') {
+        const external = externals.find((item) => item.id === value) || null
+        return {
+          ...getInitialExternalDraft(external),
+          groupId: prev.groupId,
+        }
       }
-      if (name === 'externalId') next.roomNumber = null
+      const next = { ...prev, [name]: value }
+      if (name === 'startDate' && typeof value === 'string' && next.endDate < value) {
+        next.endDate = value
+      }
       if (name === 'startHour') {
         next.startMinute = null
         next.endHour = null
@@ -393,10 +411,8 @@ function ExternalReservationContent() {
       return null
     }
 
-    const start = new Date(targetDraft.date)
-    start.setHours(targetDraft.startHour, targetDraft.startMinute, 0, 0)
-    const end = new Date(targetDraft.date)
-    end.setHours(targetDraft.endHour, targetDraft.endMinute, 0, 0)
+    const start = new Date(`${targetDraft.startDate}T${String(targetDraft.startHour).padStart(2, '0')}:${String(targetDraft.startMinute).padStart(2, '0')}:00+09:00`)
+    const end = new Date(`${targetDraft.endDate}T${String(targetDraft.endHour).padStart(2, '0')}:${String(targetDraft.endMinute).padStart(2, '0')}:00+09:00`)
     return { start, end }
   }
 
@@ -405,9 +421,14 @@ function ExternalReservationContent() {
     const times = getDraftTimes(targetDraft)
     if (!times) return
 
-    const validation = validateReservationTime(times.start.toISOString(), times.end.toISOString())
+    const validation = validateExternalReservationTime(times.start.toISOString(), times.end.toISOString())
     if (!validation.isValid) {
       toast.error('予約時間が無効です', { description: validation.error || '予約時間が無効です。' })
+      return
+    }
+    const external = externals.find((item) => item.id === targetDraft.externalId)
+    if (!external || times.start < new Date(external.start_datetime) || times.end > new Date(external.end_datetime)) {
+      toast.error('予約時間が無効です', { description: '外部スタジオの時間枠内で指定してください。' })
       return
     }
 
@@ -429,16 +450,7 @@ function ExternalReservationContent() {
         setIsConflictDialogOpen(false)
         setConflicts([])
         setPendingDraft(null)
-        setDraft({
-          date: startOfDay(new Date()),
-          externalId: null,
-          roomNumber: null,
-          groupId: null,
-          startHour: null,
-          startMinute: null,
-          endHour: null,
-          endMinute: null,
-        })
+        setDraft(getInitialExternalDraft())
         await fetchData()
         return
       }
@@ -589,22 +601,20 @@ function ExternalReservationContent() {
     !draft.externalId ||
     !draft.roomNumber ||
     !draft.groupId ||
+    !draft.startDate ||
+    !draft.endDate ||
     draft.startHour === null ||
     draft.startMinute === null ||
     draft.endHour === null ||
     draft.endMinute === null
 
-  const todayJST = getJSTDateString(new Date())
-  const todayStart = new Date(`${todayJST}T00:00:00+09:00`)
-  const tomorrowStart = new Date(`${addJSTDays(todayJST, 1)}T00:00:00+09:00`)
-  const canReserveSelectedExternal = selectedExternal && (
-    new Date(selectedExternal.start_datetime) < tomorrowStart &&
-    new Date(selectedExternal.end_datetime) > todayStart
-  )
-  const todayExternal = sortedExternals.find((external) => (
-    new Date(external.start_datetime) < tomorrowStart &&
-    new Date(external.end_datetime) > todayStart
-  ))
+  const selectedReservationExternal = selectedReservation
+    ? externals.find((external) => selectedReservation.resourceId.startsWith(`${external.id}:`)) || null
+    : null
+
+  const defaultReservationExternal = selectedExternal && new Date(selectedExternal.end_datetime) > new Date()
+    ? selectedExternal
+    : reservableExternals[0] || null
 
   if (authLoading || loading) {
     return (
@@ -622,10 +632,8 @@ function ExternalReservationContent() {
       <ReservationPageHeader
         onAddReservation={() => {
           setDraft((current) => ({
-            ...current,
-            date: startOfDay(new Date()),
-            externalId: canReserveSelectedExternal ? selectedExternal?.id || null : todayExternal?.id || null,
-            roomNumber: null,
+            ...getInitialExternalDraft(defaultReservationExternal),
+            groupId: current.groupId,
           }))
           setIsReservationFormOpen(true)
         }}
@@ -748,7 +756,13 @@ function ExternalReservationContent() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <p><strong>場所</strong> {selectedReservation.meta.externalName}</p>
-                <p><strong>時間</strong> {format(selectedReservation.start, 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'H:mm', { locale: jaLocale })}</p>
+                <p>
+                  <strong>時間</strong> {format(selectedReservation.start, 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(
+                    selectedReservation.end,
+                    getJSTDateString(selectedReservation.start) === getJSTDateString(selectedReservation.end) ? 'H:mm' : 'M月d日 H:mm',
+                    { locale: jaLocale }
+                  )}
+                </p>
                 {selectedReservation.meta.groupName && <p><strong>グループ</strong> {selectedReservation.meta.groupName}</p>}
                 {selectedReservation.meta.userName && <p><strong>予約者</strong> {selectedReservation.meta.userName}</p>}
                 <p><strong>ステータス</strong> {eventStateNames[selectedReservation.meta.state]}</p>
@@ -861,6 +875,9 @@ function ExternalReservationContent() {
           isSaving={isSending}
           onSave={(startTime, endTime) => updateExternalReservation(startTime, endTime, false)}
           title="外部予約を変更"
+          allowCrossDay
+          rangeStart={selectedReservationExternal ? new Date(selectedReservationExternal.start_datetime) : undefined}
+          rangeEnd={selectedReservationExternal ? new Date(selectedReservationExternal.end_datetime) : undefined}
         />
       )}
 
@@ -905,8 +922,6 @@ function ExternalReservationContent() {
               </Select>
             </div>
 
-            <div><Label>予約日</Label><div className="rounded-md border px-3 py-2 text-sm">{format(new Date(), 'yyyy年M月d日', { locale: jaLocale })}</div></div>
-
             <div>
               <Label>時間枠</Label>
               <Select value={draft.externalId || ''} onValueChange={(value) => handleInputChange('externalId', value)}>
@@ -914,13 +929,42 @@ function ExternalReservationContent() {
                   <SelectValue placeholder="外部スタジオを選択" />
                 </SelectTrigger>
                 <SelectContent className="max-h-[220px]">
-                  {selectableExternals.map((external) => (
+                  {reservableExternals.map((external) => (
                     <SelectItem key={external.id} value={external.id}>
                       {getExternalLabel(external)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="external-reservation-start-date">開始日</Label>
+                <Input
+                  id="external-reservation-start-date"
+                  type="date"
+                  value={draft.startDate}
+                  min={draftMinDate}
+                  max={draftMaxStartDate}
+                  disabled={!draft.externalId}
+                  onChange={(event) => handleInputChange('startDate', event.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="external-reservation-end-date">終了日</Label>
+                <Input
+                  id="external-reservation-end-date"
+                  type="date"
+                  value={draft.endDate}
+                  min={draft.startDate || draftMinDate}
+                  max={draftMaxEndDate}
+                  disabled={!draft.externalId}
+                  onChange={(event) => handleInputChange('endDate', event.target.value)}
+                  required
+                />
+              </div>
             </div>
 
             <div>
@@ -944,7 +988,7 @@ function ExternalReservationContent() {
                 <Label>開始時刻（時）</Label>
                 <Select value={draft.startHour !== null ? String(draft.startHour) : ''} onValueChange={(value) => handleInputChange('startHour', Number(value))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{generateHourOptions(6, 17).map((hour) => <SelectItem key={hour} value={String(hour)}>{String(hour).padStart(2, '0')}</SelectItem>)}</SelectContent>
+                  <SelectContent>{generateHourOptions(0, 24).map((hour) => <SelectItem key={hour} value={String(hour)}>{String(hour).padStart(2, '0')}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
@@ -958,7 +1002,7 @@ function ExternalReservationContent() {
                 <Label>終了時刻（時）</Label>
                 <Select disabled={draft.startMinute === null} value={draft.endHour !== null ? String(draft.endHour) : ''} onValueChange={(value) => handleInputChange('endHour', Number(value))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{generateHourOptions(6, 18).map((hour) => <SelectItem key={hour} value={String(hour)}>{String(hour).padStart(2, '0')}</SelectItem>)}</SelectContent>
+                  <SelectContent>{generateHourOptions(0, 24).map((hour) => <SelectItem key={hour} value={String(hour)}>{String(hour).padStart(2, '0')}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
@@ -988,7 +1032,13 @@ function ExternalReservationContent() {
               <div key={`${conflict.member_id}-${conflict.reservation_type}-${conflict.reservation_id}`} className="rounded-md border p-3 text-sm">
                 <div><span className="font-medium">メンバー:</span> {conflict.member_name}</div>
                 <div className="text-gray-700"><span className="font-medium">重複予約:</span> {conflict.location_name} / {conflict.reservation_name}</div>
-                <div className="text-gray-600"><span className="font-medium">時間:</span> {format(new Date(conflict.start_time), 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(new Date(conflict.end_time), 'H:mm', { locale: jaLocale })}</div>
+                <div className="text-gray-600">
+                  <span className="font-medium">時間:</span> {format(new Date(conflict.start_time), 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(
+                    new Date(conflict.end_time),
+                    getJSTDateString(conflict.start_time) === getJSTDateString(conflict.end_time) ? 'H:mm' : 'M月d日 H:mm',
+                    { locale: jaLocale }
+                  )}
+                </div>
               </div>
             ))}
           </div>
