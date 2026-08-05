@@ -501,6 +501,25 @@ export const validateReservationTime = (startTime: string, endTime: string): { i
   }
 };
 
+export const validateExternalReservationTime = (startTime: string, endTime: string): { isValid: boolean; error?: string } => {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return { isValid: false, error: "無効な日時形式です。" };
+  }
+  if (start >= end) {
+    return { isValid: false, error: "終了日時は開始日時より後である必要があります。" };
+  }
+  const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+  if (durationMinutes < 10) {
+    return { isValid: false, error: "利用時間は最短10分です。" };
+  }
+  if (durationMinutes > 240) {
+    return { isValid: false, error: "利用時間は最長4時間です。" };
+  }
+  return { isValid: true };
+};
+
 export const isReservationDateValid = (date: Date): boolean => {
   const now = new Date();
   const maxDate = addDays(now, 14);
