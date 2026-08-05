@@ -25,7 +25,7 @@ import { apiClient } from '@/lib/api'
 import { getLoginPath } from '@/lib/auth-redirect'
 import { useAuth } from '@/app/context/AuthContext'
 import { eventStateNames, ReservationState } from '@/app/types'
-import { isAdmin, validateExternalReservationTime, type External, type ExternalReservation, type ExternalReservationConflict } from '@shared-schemas'
+import { isAdmin, isExternalLotteryReservationProtected, validateExternalReservationTime, type External, type ExternalReservation, type ExternalReservationConflict } from '@shared-schemas'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 import { ReservationEditDialog } from '@/components/reservation-edit-dialog'
 
@@ -431,6 +431,10 @@ function ExternalReservationContent() {
       toast.error('予約時間が無効です', { description: '外部スタジオの時間枠内で指定してください。' })
       return
     }
+    if (!isAdminMode && isExternalLotteryReservationProtected(times.start, times.end)) {
+      toast.error('外部予約できません', { description: translateError('EXTERNAL_LOTTERY_PERIOD_PROTECTED') })
+      return
+    }
 
     try {
       setIsSending(true)
@@ -529,6 +533,10 @@ function ExternalReservationContent() {
     acknowledged: boolean
   ) => {
     if (!selectedReservation) return
+    if (!isAdminMode && isExternalLotteryReservationProtected(startTime, endTime)) {
+      toast.error('外部予約を変更できません', { description: translateError('EXTERNAL_LOTTERY_PERIOD_PROTECTED') })
+      return
+    }
     try {
       setIsSending(true)
       const response = await apiClient.updateExternalReservation(
@@ -597,7 +605,14 @@ function ExternalReservationContent() {
     }
   }
 
+  const currentDraftTimes = getDraftTimes(draft)
+  const isDraftInLotteryPeriod = Boolean(
+    !isAdminMode &&
+    currentDraftTimes &&
+    isExternalLotteryReservationProtected(currentDraftTimes.start, currentDraftTimes.end)
+  )
   const isReservationButtonDisabled = isSending ||
+    isDraftInLotteryPeriod ||
     !draft.externalId ||
     !draft.roomNumber ||
     !draft.groupId ||
@@ -1013,6 +1028,14 @@ function ExternalReservationContent() {
                 </Select>
               </div>
             </div>
+
+            {isDraftInLotteryPeriod && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>抽選対象の期間です</AlertTitle>
+                <AlertDescription>この期間は外部予約できません。外部抽選から申し込んでください。</AlertDescription>
+              </Alert>
+            )}
 
             <LoadingButton type="submit" isLoading={isSending} disabled={isReservationButtonDisabled} className={cn('w-full', isReservationButtonDisabled && 'opacity-50')}>
               予約

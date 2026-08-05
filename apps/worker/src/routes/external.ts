@@ -20,6 +20,10 @@ import {
   ExternalSchema,
   UpdateExternalReservationRequestSchema,
   UpdateReservationStatusRequestSchema,
+  EXTERNAL_LOTTERY_DURATION_STEP_MINUTES,
+  EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
+  EXTERNAL_LOTTERY_MIN_DURATION_MINUTES,
+  isExternalLotteryReservationProtected,
   validateExternalReservationTime,
   type ReservationState,
 } from '../../../../lib/shared-schemas';
@@ -107,6 +111,9 @@ async function validateReservationBase(
   if (roomNumber < 1 || roomNumber > studio.roomNames.length) return { error: 'INVALID_ROOM_NUMBER', status: 400 };
   if (new Date(startTime) < new Date(studio.start_datetime) || new Date(endTime) > new Date(studio.end_datetime)) {
     return { error: 'EXTERNAL_PERIOD_CONFLICT', status: 400 };
+  }
+  if (!isAdminMode && isExternalLotteryReservationProtected(startTime, endTime)) {
+    return { error: 'EXTERNAL_LOTTERY_PERIOD_PROTECTED', status: 409 };
   }
   const conflict = await env.DB.prepare(`
     SELECT id FROM external_reservations
@@ -303,7 +310,10 @@ externalReservationRoutes.post('/check', async (c) => {
     const user = c.get('user');
     const data = CheckExternalReservationRequestSchema.parse(await c.req.json());
     const groupId = data.group_id ?? null;
-    const validation = await validateReservationBase(c.env, user.id, user.role, data.external_studio_id, data.room_number, groupId, data.start_time, data.end_time, false);
+    const validation = await validateReservationBase(
+      c.env, user.id, user.role, data.external_studio_id, data.room_number,
+      groupId, data.start_time, data.end_time, data.admin === true
+    );
     if (validation.error) return c.json({ success: false, error: validation.error }, validation.status || 400);
     return c.json({ success: true, data: await getMemberConflicts(c.env, user.id, groupId, data.start_time, data.end_time) });
   } catch (error) {
@@ -350,6 +360,7 @@ externalReservationRoutes.get('/lottery', async (c) => {
       FROM external_lottery_applications ela
       INNER JOIN external_studios es ON es.id = ela.external_studio_id
       INNER JOIN users u ON u.id = ela.user_id LEFT JOIN groups g ON g.id = ela.group_id
+      WHERE ela.state != 'CANCELLED'
       ORDER BY es.start_datetime ASC, ela.created_at ASC`;
     const rows = await c.env.DB.prepare(query).all<Record<string, unknown>>();
     const data = rows.results.map((row) => ExternalLotteryApplicationSchema.parse({ ...row, room_names: parseRoomNames(String(row.room_names)) }));
@@ -404,7 +415,12 @@ externalReservationRoutes.post('/lottery', async (c) => {
     const availableEnd = preferredEnd ?? new Date(studio.end_datetime);
     const requestedMinutes = data.requested_duration_minutes;
     const holdEnd = new Date(holdStart.getTime() + requestedMinutes * 60000);
-    if (requestedMinutes < 10 || holdEnd > availableEnd) {
+    if (
+      requestedMinutes < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES ||
+      requestedMinutes > EXTERNAL_LOTTERY_MAX_DURATION_MINUTES ||
+      requestedMinutes % EXTERNAL_LOTTERY_DURATION_STEP_MINUTES !== 0 ||
+      holdEnd > availableEnd
+    ) {
       return c.json({ success: false, error: 'INVALID_RESERVATION_TIME' }, 400);
     }
     if (await hasReservationLimitConflict(
