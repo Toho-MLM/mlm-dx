@@ -250,6 +250,19 @@ Worker は以下の `Bindings` を前提としています。
 - 予約の状態を変更するのではなく、対象レコードをDBから完全に削除します。
 - 存在しない予約は `404 RESERVATION_NOT_FOUND`、UUID形式でないIDは `400 INVALID_INPUT` を返します。
 
+#### DELETE `/reservations/external/:id`
+- 管理者のみ実行できます。
+- 外部予約の状態を変更するのではなく、対象予約と紐づく利用実績をDBから完全に削除します。
+- 存在しない予約は `404 RESERVATION_NOT_FOUND`、UUID形式でないIDは `400 INVALID_INPUT` を返します。
+
+#### GET `/reservations/external/lottery`
+- 認証必須。抽選状況一覧用に全申込を返します。
+
+#### POST `/reservations/external/lottery`
+- 認証必須。`requested_duration_minutes`（10〜240分、5分単位）は必須です。
+- `preferred_start_datetime` と `preferred_end_datetime` は任意ですが、指定する場合は両方必要です。
+- 希望時間帯を指定しない場合、6:00〜23:00の制限は適用せず、外部スタジオの時間枠全体を抽選対象にします。
+
 #### POST `/reservations/unavailable`
 - 管理者のみ実行できます。
 - 新しい予約禁止期間と既存の `PENDING` / `CONFIRMED` 予約が一部だけ重なる場合、禁止部分を除いた最長の時間帯へ予約を短縮し、状態は維持します。この変更は `RESERVATION_ADJUSTED` 通知の対象です。

@@ -24,7 +24,7 @@ import {
   type ReservationState,
 } from '../../../../lib/shared-schemas';
 import { parseUuid } from '../utils/uuid';
-import { getJSTDateString, getJSTTimeRange } from '../utils/reservation-processor';
+import { getJSTDateString } from '../utils/reservation-processor';
 
 const externalStudioRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 const externalReservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -345,9 +345,6 @@ externalReservationRoutes.post('/', async (c) => {
 
 externalReservationRoutes.get('/lottery', async (c) => {
   try {
-    const user = c.get('user');
-    const admin = c.req.query('admin') === 'true';
-    if (admin) { try { requireAdmin(user.role); } catch { return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403); } }
     const query = `
       SELECT ela.*, COALESCE(u.nickname, u.name) user_name, g.name group_name, g.is_main,
              es.start_datetime studio_start_datetime, es.end_datetime studio_end_datetime, es.room_names,
@@ -356,11 +353,8 @@ externalReservationRoutes.get('/lottery', async (c) => {
       FROM external_lottery_applications ela
       INNER JOIN external_studios es ON es.id = ela.external_studio_id
       INNER JOIN users u ON u.id = ela.user_id LEFT JOIN groups g ON g.id = ela.group_id
-      ${admin ? '' : `WHERE ela.user_id = ? OR EXISTS (
-        SELECT 1 FROM group_member_instruments gm WHERE gm.group_id = ela.group_id AND gm.user_id = ?
-      )`}
       ORDER BY es.start_datetime ASC, ela.created_at ASC`;
-    const rows = admin ? await c.env.DB.prepare(query).all<Record<string, unknown>>() : await c.env.DB.prepare(query).bind(user.id, user.id).all<Record<string, unknown>>();
+    const rows = await c.env.DB.prepare(query).all<Record<string, unknown>>();
     const data = rows.results.map((row) => ExternalLotteryApplicationSchema.parse({ ...row, room_names: parseRoomNames(String(row.room_names)) }));
     return c.json({ success: true, data });
   } catch (error) {
@@ -409,11 +403,9 @@ externalReservationRoutes.post('/lottery', async (c) => {
     `).bind(groupId, user.id, groupId, rangeEnd, rangeStart).first();
     if (overlap) return c.json({ success: false, error: 'LOTTERY_APPLICATION_CONFLICT' }, 409);
 
-    const businessHours = getJSTTimeRange(studioDate, 6, 23);
-    const holdStart = preferredStart ?? new Date(Math.max(new Date(studio.start_datetime).getTime(), businessHours.startUTC.getTime()));
-    const availableEnd = preferredEnd ?? new Date(Math.min(new Date(studio.end_datetime).getTime(), businessHours.endUTC.getTime()));
-    const requestedMinutes = data.requested_duration_minutes
-      ?? Math.round((availableEnd.getTime() - holdStart.getTime()) / 60000);
+    const holdStart = preferredStart ?? new Date(studio.start_datetime);
+    const availableEnd = preferredEnd ?? new Date(studio.end_datetime);
+    const requestedMinutes = data.requested_duration_minutes;
     const holdEnd = new Date(holdStart.getTime() + requestedMinutes * 60000);
     if (requestedMinutes < 10 || holdEnd > availableEnd) {
       return c.json({ success: false, error: 'INVALID_RESERVATION_TIME' }, 400);
@@ -540,6 +532,31 @@ externalReservationRoutes.put('/:id/status', async (c) => {
     if (error instanceof ZodError) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     console.error('Error updating external reservation status:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+externalReservationRoutes.delete('/:id', async (c) => {
+  try {
+    requireAdmin(c.get('user').role);
+    const id = parseUuid(c.req.param('id'));
+    if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+
+    const reservation = await c.env.DB.prepare('SELECT id FROM external_reservations WHERE id = ?')
+      .bind(id).first<{ id: string }>();
+    if (!reservation) return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
+
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM external_reservation_usage WHERE reservation_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM external_reservations WHERE id = ?').bind(id),
+    ]);
+    await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
+    return c.json({ success: true });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+    console.error('Error deleting external reservation:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
