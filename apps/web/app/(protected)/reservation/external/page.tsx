@@ -731,6 +731,7 @@ function ExternalReservationContent() {
                       min={segment.min}
                       max={segment.max}
                       scrollToTime={segment.min}
+                      showMultiDayTimes
                       date={segment.date}
                       view={Views.DAY as View}
                       onView={() => undefined}
