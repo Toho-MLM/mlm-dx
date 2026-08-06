@@ -573,7 +573,7 @@ function ExternalLotteryContent() {
               <div className="space-y-2"><Label>許容時間（終点）</Label><Input type="datetime-local" step={300} min={preferredStart || (selectedSlot ? toJSTLocalInputValue(selectedSlot.start) : undefined)} max={selectedSlot ? toJSTLocalInputValue(selectedSlot.end) : undefined} disabled={!selectedSlot} value={preferredEnd} onChange={(event) => setPreferredEnd(event.target.value)} /></div>
             </div>
             <div className="space-y-2">
-              <Label>希望利用時間（必須）</Label>
+              <Label>希望利用時間</Label>
               <Select value={duration} onValueChange={setDuration}>
                 <SelectTrigger><SelectValue placeholder="希望利用時間を選択" /></SelectTrigger>
                 <SelectContent className="max-h-[220px]">
