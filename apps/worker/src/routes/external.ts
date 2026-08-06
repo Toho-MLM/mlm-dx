@@ -425,7 +425,6 @@ externalReservationRoutes.post('/lottery', async (c) => {
     if (preferredStart && preferredEnd) {
       if (
         getJSTDateString(preferredStart) !== targetDate
-        || getJSTDateString(preferredEnd) !== targetDate
         || preferredStart < new Date(studio.start_datetime)
         || preferredEnd > new Date(studio.end_datetime)
       ) {
