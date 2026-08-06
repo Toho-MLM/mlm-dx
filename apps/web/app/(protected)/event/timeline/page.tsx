@@ -26,7 +26,6 @@ type TimelineRow = {
   start_time: string | null
   end_time: string | null
   position: number | null
-  created_at: string
   is_virtual?: boolean
 }
 

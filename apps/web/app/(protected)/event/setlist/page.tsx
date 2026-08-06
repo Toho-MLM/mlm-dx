@@ -56,8 +56,6 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
             position: i.position,
             title: i.title,
             artist: i.artist || '',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
           } as SetlistItem)),
         }))
         setSectionEntriesWithSetlist(result)
@@ -339,8 +337,6 @@ function SetlistContent() {
             position: i.position,
             title: i.title,
             artist: i.artist || '',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
           } as SetlistItem)),
         }))
         const editingMap = new Map<string, SetlistItem[]>()
@@ -373,8 +369,6 @@ function SetlistContent() {
       position: items.length + 1,
       title: '',
       artist: '',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     } as SetlistItem]
     setEditingItems(new Map(editingItems.set(entryId, newItems)))
   }

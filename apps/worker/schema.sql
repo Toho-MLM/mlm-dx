@@ -143,8 +143,6 @@ CREATE TABLE IF NOT EXISTS external_lottery_applications (
   requested_duration_minutes INTEGER,
   state TEXT NOT NULL DEFAULT 'PENDING' CHECK (state IN ('PENDING','WON','LOST','CANCELLED')),
   fairness_score REAL,
-  tie_breaker TEXT NOT NULL,
-  tie_break_rank INTEGER,
   assigned_room_number INTEGER,
   assigned_start_datetime DATETIME,
   assigned_end_datetime DATETIME,
@@ -170,32 +168,6 @@ CREATE INDEX IF NOT EXISTS idx_external_lottery_studio_state
 
 CREATE INDEX IF NOT EXISTS idx_external_lottery_identity_time
   ON external_lottery_applications(group_id, user_id, state, preferred_start_datetime, preferred_end_datetime);
-
-CREATE TABLE IF NOT EXISTS external_lottery_limit_holds (
-  application_id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  group_id TEXT,
-  start_time DATETIME NOT NULL,
-  end_time DATETIME NOT NULL,
-  created_at DATETIME NOT NULL,
-  FOREIGN KEY (application_id) REFERENCES external_lottery_applications(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
-  CHECK (end_time > start_time)
-);
-
-CREATE INDEX IF NOT EXISTS idx_external_lottery_limit_holds_identity_time
-  ON external_lottery_limit_holds(group_id, user_id, start_time, end_time);
-
-CREATE TABLE IF NOT EXISTS external_reservation_usage (
-  reservation_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  minutes INTEGER NOT NULL CHECK (minutes >= 10),
-  used_at DATETIME NOT NULL,
-  created_at DATETIME NOT NULL,
-  PRIMARY KEY (reservation_id, user_id),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
 
 CREATE TABLE IF NOT EXISTS reservation_limits (
   id TEXT PRIMARY KEY,

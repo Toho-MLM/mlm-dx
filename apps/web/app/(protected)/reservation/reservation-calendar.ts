@@ -36,7 +36,7 @@ export type CalendarEvent = {
     user_name?: string
     group_name?: string
     state?: ReservationState
-    cancellable?: number
+    cancellable?: boolean
   }
 }
 

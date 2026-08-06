@@ -931,7 +931,7 @@ function ReservationContent() {
                       <p><strong>ステータス</strong> {eventStateNames[selectedReservation.resource.state]}</p>
                     )}
                   </div>
-                  {selectedReservation.resource.cancellable === 1 && selectedReservation.end > new Date() && (
+                  {selectedReservation.resource.cancellable && selectedReservation.end > new Date() && (
                     <Button
                       type="button"
                       variant="outline"
@@ -942,7 +942,7 @@ function ReservationContent() {
                       変更
                     </Button>
                   )}
-                  {selectedReservation.resource.cancellable === 1 && (
+                  {selectedReservation.resource.cancellable && (
                     <LoadingButton 
                       onClick={() => {
                         if (selectedReservation.resource.reservationId) {

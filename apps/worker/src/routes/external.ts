@@ -6,7 +6,6 @@ import { isUserInGroup } from './groups';
 import { hasReservationLimitConflict } from './reservations';
 import { requireAdmin } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
-import { preserveOrIncreaseExternalReservationUsage, recordExternalReservationUsage } from '../utils/external-processor';
 import type { EmailNotificationType } from '../../../../lib/shared-schemas';
 import { prepareAndSendReservationEmail, prepareReservationEmail, sendPreparedReservationEmail } from '../utils/reservation-email';
 import {
@@ -28,7 +27,8 @@ import {
   type ReservationState,
 } from '../../../../lib/shared-schemas';
 import { parseUuid } from '../utils/uuid';
-import { getJSTDateString } from '../utils/reservation-processor';
+import { getJSTDateString, getJSTDayRange } from '../utils/reservation-processor';
+import { getExternalLotteryFairnessScore } from '../utils/external-lottery';
 
 const externalStudioRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 const externalReservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -298,7 +298,13 @@ externalReservationRoutes.get('/', async (c) => {
       )`}
       ORDER BY er.start_time ASC, er.room_number ASC`;
     const rows = admin ? await c.env.DB.prepare(query).all() : await c.env.DB.prepare(query).bind(user.id, user.id, user.id, user.id).all();
-    return c.json({ success: true, data: rows.results.map((row) => ExternalReservationSchema.parse(row)) });
+    return c.json({
+      success: true,
+      data: rows.results.map((row) => ExternalReservationSchema.parse({
+        ...row,
+        cancellable: Boolean(row.cancellable),
+      })),
+    });
   } catch (error) {
     console.error('Error fetching external reservations:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
@@ -339,7 +345,6 @@ externalReservationRoutes.post('/', async (c) => {
         (id, external_studio_id, room_number, user_id, group_id, start_time, end_time, state, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?)
     `).bind(id, data.external_studio_id, data.room_number, user.id, groupId, data.start_time, data.end_time, now, now).run();
-    await recordExternalReservationUsage(c.env, { id, user_id: user.id, group_id: groupId, start_time: data.start_time, end_time: data.end_time });
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, { kind: 'EXTERNAL', reservationId: id, notificationType: 'RESERVATION_CONFIRMED' }));
     return c.json({ success: true });
@@ -363,7 +368,32 @@ externalReservationRoutes.get('/lottery', async (c) => {
       WHERE ela.state != 'CANCELLED'
       ORDER BY es.start_datetime ASC, ela.created_at ASC`;
     const rows = await c.env.DB.prepare(query).all<Record<string, unknown>>();
-    const data = rows.results.map((row) => ExternalLotteryApplicationSchema.parse({ ...row, room_names: parseRoomNames(String(row.room_names)) }));
+    const fairnessCache = new Map<string, Promise<number>>();
+    const data = await Promise.all(rows.results.map(async (row) => {
+      let fairnessScore = row.fairness_score;
+      if (row.state === 'PENDING') {
+        const groupId = row.group_id === null ? null : String(row.group_id);
+        const targetDate = getJSTDateString(new Date(String(row.studio_start_datetime)));
+        const cacheKey = `${targetDate}:${groupId ?? `user:${String(row.user_id)}`}`;
+        let scorePromise = fairnessCache.get(cacheKey);
+        if (!scorePromise) {
+          scorePromise = getExternalLotteryFairnessScore(
+            c.env,
+            String(row.user_id),
+            groupId,
+            getJSTDayRange(targetDate).startUTC
+          );
+          fairnessCache.set(cacheKey, scorePromise);
+        }
+        fairnessScore = await scorePromise;
+      }
+      return ExternalLotteryApplicationSchema.parse({
+        ...row,
+        fairness_score: fairnessScore,
+        is_main: row.is_main === null ? null : Boolean(row.is_main),
+        room_names: parseRoomNames(String(row.room_names)),
+      });
+    }));
     return c.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching external lottery applications:', error);
@@ -379,19 +409,26 @@ externalReservationRoutes.post('/lottery', async (c) => {
     if (groupId && !await isUserInGroup(c.env, user.id, groupId)) return c.json({ success: false, error: 'NOT_GROUP_MEMBER' }, 403);
     const studio = await getStudio(c.env, data.external_studio_id);
     if (!studio) return c.json({ success: false, error: 'EXTERNAL_NOT_FOUND' }, 404);
-    const studioDate = getJSTDateString(new Date(studio.start_datetime));
+    const preferredStart = data.preferred_start_datetime ? new Date(data.preferred_start_datetime) : null;
+    const preferredEnd = data.preferred_end_datetime ? new Date(data.preferred_end_datetime) : null;
+    const targetDate = preferredStart
+      ? getJSTDateString(preferredStart)
+      : getJSTDateString(new Date(studio.start_datetime));
     const today = getJSTDateString(new Date());
     const tomorrow = new Date(`${today}T00:00:00+09:00`); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     const max = new Date(`${today}T00:00:00+09:00`); max.setUTCDate(max.getUTCDate() + 14);
-    const target = new Date(`${studioDate}T00:00:00+09:00`);
+    const target = new Date(`${targetDate}T00:00:00+09:00`);
     if (target < tomorrow || target > max) return c.json({ success: false, error: 'EXTERNAL_LOTTERY_DATE_OUT_OF_RANGE' }, 400);
-    const drawAt = new Date(`${studioDate}T21:00:00+09:00`);
+    const drawAt = new Date(`${targetDate}T21:00:00+09:00`);
     drawAt.setUTCDate(drawAt.getUTCDate() - 1);
     if (new Date() >= drawAt) return c.json({ success: false, error: 'EXTERNAL_LOTTERY_CLOSED' }, 400);
-    const preferredStart = data.preferred_start_datetime ? new Date(data.preferred_start_datetime) : null;
-    const preferredEnd = data.preferred_end_datetime ? new Date(data.preferred_end_datetime) : null;
     if (preferredStart && preferredEnd) {
-      if (getJSTDateString(preferredStart) !== studioDate || preferredStart < new Date(studio.start_datetime) || preferredEnd > new Date(studio.end_datetime)) {
+      if (
+        getJSTDateString(preferredStart) !== targetDate
+        || getJSTDateString(preferredEnd) !== targetDate
+        || preferredStart < new Date(studio.start_datetime)
+        || preferredEnd > new Date(studio.end_datetime)
+      ) {
         return c.json({ success: false, error: 'EXTERNAL_PERIOD_CONFLICT' }, 400);
       }
       const startMinute = preferredStart.getTime() / 60000;
@@ -433,22 +470,13 @@ externalReservationRoutes.post('/lottery', async (c) => {
       return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 400);
     }
 
-    const random = new Uint8Array(16); crypto.getRandomValues(random);
-    const tieBreaker = Array.from(random, (value) => value.toString(16).padStart(2, '0')).join('');
     const id = crypto.randomUUID(); const now = new Date().toISOString();
-    await c.env.DB.batch([
-      c.env.DB.prepare(`
-        INSERT INTO external_lottery_applications
-          (id, external_studio_id, user_id, group_id, preferred_start_datetime, preferred_end_datetime,
-           requested_duration_minutes, state, tie_breaker, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)
-      `).bind(id, studio.id, user.id, groupId, data.preferred_start_datetime, data.preferred_end_datetime, data.requested_duration_minutes, tieBreaker, now, now),
-      c.env.DB.prepare(`
-        INSERT INTO external_lottery_limit_holds
-          (application_id, user_id, group_id, start_time, end_time, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(id, user.id, groupId, holdStart.toISOString(), holdEnd.toISOString(), now),
-    ]);
+    await c.env.DB.prepare(`
+      INSERT INTO external_lottery_applications
+        (id, external_studio_id, user_id, group_id, preferred_start_datetime, preferred_end_datetime,
+         requested_duration_minutes, state, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
+    `).bind(id, studio.id, user.id, groupId, data.preferred_start_datetime, data.preferred_end_datetime, data.requested_duration_minutes, now, now).run();
     return c.json({ success: true, data: { id } });
   } catch (error) {
     if (error instanceof ZodError) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
@@ -467,15 +495,8 @@ externalReservationRoutes.post('/lottery/:id/cancel', async (c) => {
     const permitted = application.user_id === user.id || (application.group_id !== null && await isUserInGroup(c.env, user.id, application.group_id));
     if (!permitted) return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     if (application.state !== 'PENDING') return c.json({ success: false, error: 'LOTTERY_APPLICATION_CANNOT_BE_CANCELLED' }, 400);
-    const [cancelResult] = await c.env.DB.batch([
-      c.env.DB.prepare("UPDATE external_lottery_applications SET state = 'CANCELLED', updated_at = ? WHERE id = ? AND state = 'PENDING'")
-        .bind(new Date().toISOString(), id),
-      c.env.DB.prepare(`
-        DELETE FROM external_lottery_limit_holds
-        WHERE application_id = ?
-          AND EXISTS (SELECT 1 FROM external_lottery_applications WHERE id = ? AND state = 'CANCELLED')
-      `).bind(id, id),
-    ]);
+    const cancelResult = await c.env.DB.prepare("UPDATE external_lottery_applications SET state = 'CANCELLED', updated_at = ? WHERE id = ? AND state = 'PENDING'")
+      .bind(new Date().toISOString(), id).run();
     if (Number(cancelResult.meta.changes ?? 0) === 0) {
       return c.json({ success: false, error: 'LOTTERY_APPLICATION_CANNOT_BE_CANCELLED' }, 400);
     }
@@ -504,7 +525,6 @@ externalReservationRoutes.put('/:id', async (c) => {
     if (conflicts.length && !data.acknowledged_member_conflicts) return c.json({ success: false, error: 'MEMBER_RESERVATION_CONFLICT_WARNING', data: conflicts });
     await c.env.DB.prepare('UPDATE external_reservations SET start_time = ?, end_time = ?, updated_at = ? WHERE id = ?')
       .bind(data.start_time, data.end_time, new Date().toISOString(), id).run();
-    await preserveOrIncreaseExternalReservationUsage(c.env, id, data.start_time, data.end_time);
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
       kind: 'EXTERNAL', reservationId: id, notificationType: 'RESERVATION_EDITED',
@@ -536,7 +556,6 @@ externalReservationRoutes.put('/:id/status', async (c) => {
       if (conflict) return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
     }
     await c.env.DB.prepare('UPDATE external_reservations SET state = ?, updated_at = ? WHERE id = ?').bind(data.state, new Date().toISOString(), id).run();
-    if (data.state === 'CONFIRMED' && reservation.state !== 'CONFIRMED') await recordExternalReservationUsage(c.env, reservation);
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     const notification = notificationForStatus(data.state);
     if (notification) c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, { kind: 'EXTERNAL', reservationId: id, notificationType: notification }));
@@ -559,10 +578,7 @@ externalReservationRoutes.delete('/:id', async (c) => {
       .bind(id).first<{ id: string }>();
     if (!reservation) return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
 
-    await c.env.DB.batch([
-      c.env.DB.prepare('DELETE FROM external_reservation_usage WHERE reservation_id = ?').bind(id),
-      c.env.DB.prepare('DELETE FROM external_reservations WHERE id = ?').bind(id),
-    ]);
+    await c.env.DB.prepare('DELETE FROM external_reservations WHERE id = ?').bind(id).run();
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     return c.json({ success: true });
   } catch (error) {

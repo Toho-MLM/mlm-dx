@@ -35,8 +35,6 @@ export interface User {
     instruments: ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[];
     grade: number;
     role: 'MGR' | 'CHF' | 'MAC' | 'MBR' | 'ADM' | 'NHD' | 'NAC';
-    created_at: string;
-    updated_at: string;
 }
 
 export interface MemberListItem {
@@ -102,7 +100,7 @@ export interface ReservationData {
     start: Date;
     end: Date;
     state: ReservationState;
-    cancellable: number;
+    cancellable: boolean;
 }
 
 export enum ReservationState {
@@ -174,8 +172,6 @@ export interface Event {
     is_setlist_accepting: boolean
     group_limit: number
     song_limit: number
-    created_at: string
-    updated_at: string
 }
 
 export interface Entry {
@@ -183,7 +179,6 @@ export interface Entry {
     event_id: string
     group_id: string
     note?: string | null
-    created_at: string
 }
 
 export interface SetlistItem {
@@ -192,7 +187,4 @@ export interface SetlistItem {
     position: number
     title: string
     artist: string
-    created_at: string
-    updated_at: string
 }
-
