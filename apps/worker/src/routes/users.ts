@@ -88,7 +88,10 @@ userRoutes.get('/groups/select', async (c) => {
 
     const groups = await c.env.DB.prepare(query).bind(...params).all();
 
-    return c.json({ success: true, data: groups.results });
+    return c.json({
+      success: true,
+      data: groups.results.map((group) => ({ ...group, is_main: Boolean(group.is_main) })),
+    });
   } catch (error) {
     console.error('Error fetching my group select:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);

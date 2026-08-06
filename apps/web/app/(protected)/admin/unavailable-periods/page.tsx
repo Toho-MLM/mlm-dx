@@ -29,8 +29,6 @@ interface UnavailablePeriod {
   start_datetime: string
   end_datetime: string
   reason: string | null
-  created_at: string
-  updated_at: string
 }
 
 export default function UnavailablePeriodsPage() {

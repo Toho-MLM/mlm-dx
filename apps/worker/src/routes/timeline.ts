@@ -44,7 +44,6 @@ timelineRoutes.get('/event/:eventId', async (c) => {
       start_time: string | null;
       end_time: string | null;
       position: number | null;
-      created_at: string;
       group_name: string | null;
     };
 
@@ -55,7 +54,6 @@ timelineRoutes.get('/event/:eventId', async (c) => {
         e.start_time,
         e.end_time,
         e.position,
-        e.created_at,
         g.name as group_name
       FROM entries e
       LEFT JOIN groups g ON g.id = e.group_id
@@ -70,7 +68,6 @@ timelineRoutes.get('/event/:eventId', async (c) => {
       start_time: string | null;
       end_time: string | null;
       position: number | null;
-      created_at: string;
     };
 
     const configured: TimelineItem[] = [];
@@ -84,7 +81,6 @@ timelineRoutes.get('/event/:eventId', async (c) => {
         start_time: r.start_time || null,
         end_time: r.end_time || null,
         position: r.position === null ? null : Number(r.position),
-        created_at: r.created_at,
       };
       if (item.position === null) unconfigured.push(item); else configured.push(item);
     }

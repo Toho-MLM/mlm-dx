@@ -36,8 +36,6 @@ export const UserSchema = z.object({
   instruments: z.array(z.string()),
   grade: z.number(),
   role: z.string(),
-  created_at: z.string(),
-  updated_at: z.string().nullable(),
 });
 
 export const GroupMemberSchema = z.object({
@@ -49,10 +47,8 @@ export const GroupSchema = z.object({
   id: UuidSchema,
   name: z.string(),
   assignments: z.array(GroupMemberSchema),
-  is_main: z.union([z.boolean(), z.number()]).transform(val => Boolean(val)),
-  is_active: z.union([z.boolean(), z.number()]).transform(val => Boolean(val)),
-  created_at: z.string(),
-  updated_at: z.string(),
+  is_main: z.boolean(),
+  is_active: z.boolean(),
 });
 
 export const ReservationStateSchema = z.enum([
@@ -73,7 +69,7 @@ export const ReservationSchema = z.object({
   start_time: z.string(),
   end_time: z.string(),
   state: ReservationStateSchema,
-  cancellable: z.number(),
+  cancellable: z.boolean(),
 });
 
 export const ExternalSchema = z.object({
@@ -81,8 +77,6 @@ export const ExternalSchema = z.object({
   start_datetime: z.string(),
   end_datetime: z.string(),
   room_names: z.array(z.string().min(1)).min(1),
-  created_at: z.string(),
-  updated_at: z.string(),
 });
 
 export const ExternalReservationSchema = z.object({
@@ -97,7 +91,7 @@ export const ExternalReservationSchema = z.object({
   start_time: z.string(),
   end_time: z.string(),
   state: ReservationStateSchema,
-  cancellable: z.number(),
+  cancellable: z.boolean(),
 });
 
 export const ExternalReservationConflictSchema = z.object({
@@ -148,8 +142,6 @@ export const ArchiveSchema = z.object({
   title: z.string(),
   youtube_url: z.string().nullable(),
   year: z.number(),
-  created_at: z.string(),
-  updated_at: z.string().nullable(),
 });
 
 export const EventSchema = z.object({
@@ -162,8 +154,6 @@ export const EventSchema = z.object({
   is_setlist_accepting: z.boolean(),
   group_limit: z.number(),
   song_limit: z.number(),
-  created_at: z.string(),
-  updated_at: z.string(),
 });
 
 export const DashboardMemberActionSchema = z.discriminatedUnion('kind', [
@@ -246,8 +236,6 @@ export const UnavailablePeriodSchema = z.object({
   start_datetime: z.string(),
   end_datetime: z.string(),
   reason: z.string().nullable(),
-  created_at: z.string(),
-  updated_at: z.string(),
 });
 
 export const ReservationLimitScopeSchema = z.enum(['PERSONAL', 'GROUP']);
@@ -261,8 +249,6 @@ export const ReservationLimitSchema = z.object({
   end_datetime: z.string().nullable(),
   window_days: z.number().nullable(),
   max_minutes: z.number(),
-  created_at: z.string(),
-  updated_at: z.string(),
 });
 
 export const ReservationLimitRemainingSchema = ReservationLimitSchema.extend({
@@ -423,13 +409,12 @@ export const ExternalLotteryApplicationSchema = z.object({
   group_id: UuidSchema.nullable(),
   user_name: z.string().nullable(),
   group_name: z.string().nullable(),
-  is_main: z.union([z.boolean(), z.number()]).nullable().transform((value) => value === null ? null : Boolean(value)),
+  is_main: z.boolean().nullable(),
   preferred_start_datetime: z.string().nullable(),
   preferred_end_datetime: z.string().nullable(),
   requested_duration_minutes: z.number().int().nullable(),
   state: ExternalLotteryStateSchema,
   fairness_score: z.number().nullable(),
-  tie_break_rank: z.number().int().positive().nullable(),
   assigned_room_number: z.number().int().positive().nullable(),
   assigned_room_name: z.string().nullable(),
   assigned_start_datetime: z.string().nullable(),
@@ -437,9 +422,37 @@ export const ExternalLotteryApplicationSchema = z.object({
   studio_start_datetime: z.string(),
   studio_end_datetime: z.string(),
   room_names: z.array(z.string().min(1)).min(1),
-  created_at: z.string(),
-  updated_at: z.string(),
 });
+
+export type ExternalLotteryWeightInput = {
+  id: string;
+  schedulingSlackMinutes: number;
+  fairnessScore: number;
+};
+
+const getRelativeLotteryAdvantage = (value: number, values: number[]): number => {
+  const uniqueValues = [...new Set(values)].sort((left, right) => left - right);
+  if (uniqueValues.length <= 1) return 0;
+  return 1 - uniqueValues.indexOf(value) / (uniqueValues.length - 1);
+};
+
+export const calculateExternalLotteryWeights = (
+  applications: ExternalLotteryWeightInput[]
+): Map<string, number> => {
+  const slackValues = applications.map((application) => application.schedulingSlackMinutes);
+  const fairnessValues = applications.map((application) => application.fairnessScore);
+  return new Map(applications.map((application) => [
+    application.id,
+    1
+      + 2 * getRelativeLotteryAdvantage(application.schedulingSlackMinutes, slackValues)
+      + 2 * getRelativeLotteryAdvantage(application.fairnessScore, fairnessValues),
+  ]));
+};
+
+export const getExternalLotteryWeightedOrderKey = (weight: number, randomUnit: number): number => {
+  const boundedRandom = Math.min(1 - Number.EPSILON, Math.max(Number.EPSILON, randomUnit));
+  return -Math.log(boundedRandom) / weight;
+};
 
 const ExternalLotteryTimeRequestSchema = z.object({
   preferred_start_datetime: z.string().nullable(),
@@ -664,7 +677,6 @@ export const EntrySchema = z.object({
   event_id: UuidSchema,
   group_id: UuidSchema,
   note: z.string().nullable(),
-  created_at: z.string(),
 });
 
 export const CreateEntryRequestSchema = z.object({
@@ -684,7 +696,6 @@ export const TimelineItemSchema = z.object({
   start_time: z.string().nullable(),
   end_time: z.string().nullable(),
   position: z.number().nullable(),
-  created_at: z.string(),
   is_virtual: z.boolean().optional(),
 });
 
@@ -708,8 +719,6 @@ export const SetlistItemSchema = z.object({
   position: z.number(),
   title: z.string(),
   artist: z.string(),
-  created_at: z.string(),
-  updated_at: z.string(),
 });
 
 export const CreateSetlistItemRequestSchema = z.object({

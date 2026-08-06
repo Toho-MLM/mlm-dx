@@ -25,6 +25,8 @@ import {
   EXTERNAL_LOTTERY_DURATION_STEP_MINUTES,
   EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
   EXTERNAL_LOTTERY_MIN_DURATION_MINUTES,
+  calculateExternalLotteryWeights,
+  getExternalLotteryWeightedOrderKey,
   type External,
   type ExternalLotteryApplication,
   type ExternalReservation,
@@ -52,16 +54,28 @@ const getLotteryDrawAt = (studioDate: string) => {
   return drawAt
 }
 
-const getLotteryDrawTimes = (studio: External) => {
-  const drawTimes: Date[] = []
+type LotterySlot = { id: string; studio: External; date: string; start: Date; end: Date; drawAt: Date }
+
+const getLotterySlots = (studio: External): LotterySlot[] => {
+  const slots: LotterySlot[] = []
+  const studioStart = new Date(studio.start_datetime)
+  const studioEnd = new Date(studio.end_datetime)
   let studioDate = getJSTDateString(studio.start_datetime)
-  const lastStudioDate = getJSTDateString(new Date(new Date(studio.end_datetime).getTime() - 1))
+  const lastStudioDate = getJSTDateString(new Date(studioEnd.getTime() - 1))
   while (studioDate <= lastStudioDate) {
-    drawTimes.push(getLotteryDrawAt(studioDate))
+    const dayStart = new Date(`${studioDate}T06:00:00+09:00`)
+    const dayEnd = new Date(`${studioDate}T23:00:00+09:00`)
+    const start = new Date(Math.max(studioStart.getTime(), dayStart.getTime()))
+    const end = new Date(Math.min(studioEnd.getTime(), dayEnd.getTime()))
+    if (end.getTime() - start.getTime() >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES * 60_000) {
+      slots.push({ id: `${studio.id}:${studioDate}`, studio, date: studioDate, start, end, drawAt: getLotteryDrawAt(studioDate) })
+    }
     studioDate = addJSTDays(studioDate, 1)
   }
-  return drawTimes
+  return slots
 }
+
+const getLotteryDrawTimes = (studio: External) => getLotterySlots(studio).map((slot) => slot.drawAt)
 
 type LotteryRange = { start: Date; end: Date; requestedMinutes: number }
 type LotteryCandidate = ExternalLotteryApplication & LotteryRange
@@ -74,6 +88,10 @@ type LotteryRoomOption = {
 
 const getApplicationPriority = (application: ExternalLotteryApplication) => (
   application.group_id ? (application.is_main ? 0 : 1) : 2
+)
+
+const getSchedulingSlackMinutes = (candidate: LotteryCandidate) => (
+  Math.round((candidate.end.getTime() - candidate.start.getTime()) / 60_000) - candidate.requestedMinutes
 )
 
 const getApplicationRange = (application: ExternalLotteryApplication, studio: External): LotteryRange | null => {
@@ -188,9 +206,24 @@ const estimateWinningProbabilities = (
 
   const trialCount = 240
   for (let trial = 0; trial < trialCount; trial += 1) {
+    const weights = new Map<string, number>()
+    for (const priority of [0, 1, 2]) {
+      const cohort = candidates.filter((candidate) => getApplicationPriority(candidate) === priority)
+      calculateExternalLotteryWeights(cohort.map((candidate) => ({
+        id: candidate.id,
+        schedulingSlackMinutes: getSchedulingSlackMinutes(candidate),
+        fairnessScore: candidate.fairness_score ?? 0,
+      }))).forEach((weight, id) => weights.set(id, weight))
+    }
     const ordered = [...candidates].sort((left, right) => (
       getApplicationPriority(left) - getApplicationPriority(right)
-      || seededOrder(`${studio.id}:${trial}:${left.id}`) - seededOrder(`${studio.id}:${trial}:${right.id}`)
+      || getExternalLotteryWeightedOrderKey(
+        weights.get(left.id) ?? 1,
+        (seededOrder(`${studio.id}:${trial}:${left.id}`) + 1) / (0x1_0000_0000 + 1)
+      ) - getExternalLotteryWeightedOrderKey(
+        weights.get(right.id) ?? 1,
+        (seededOrder(`${studio.id}:${trial}:${right.id}`) + 1) / (0x1_0000_0000 + 1)
+      )
     ))
     const occupied = new Map([...initialOccupied].map(([room, intervals]) => [room, [...intervals]]))
 
@@ -282,18 +315,19 @@ function ExternalLotteryContent() {
   }, [authLoading, fetchData, pathname, router, searchParams, user])
 
   const targetStudios = useMemo(() => {
-    const today = getJSTDateString(new Date())
-    const tomorrow = addJSTDays(today, 1)
-    const max = addJSTDays(today, 14)
-    return studios.filter((studio) => {
-      const studioDate = getJSTDateString(studio.start_datetime)
-      return studioDate >= tomorrow && studioDate <= max
-    })
+    const now = new Date()
+    return studios.filter((studio) => new Date(studio.end_datetime) >= now)
   }, [studios])
 
-  const eligibleStudios = useMemo(() => (
-    targetStudios.filter((studio) => getLotteryDrawAt(getJSTDateString(studio.start_datetime)) > new Date())
-  ), [targetStudios])
+  const eligibleSlots = useMemo(() => {
+    const now = new Date()
+    const today = getJSTDateString(now)
+    const tomorrow = addJSTDays(today, 1)
+    const max = addJSTDays(today, 14)
+    return targetStudios.flatMap(getLotterySlots).filter((slot) => (
+      slot.date >= tomorrow && slot.date <= max && slot.drawAt > now
+    ))
+  }, [targetStudios])
 
   const applicationsByStudio = useMemo(() => {
     const grouped = new Map<string, ExternalLotteryApplication[]>()
@@ -322,8 +356,8 @@ function ExternalLotteryContent() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
-    const studio = studios.find((item) => item.id === studioId)
-    if (!studio) return
+    const slot = eligibleSlots.find((item) => item.id === studioId)
+    if (!slot) return
     if ((preferredStart === '') !== (preferredEnd === '')) {
       toast.error('許容時間（起点）と許容時間（終点）は両方入力してください')
       return
@@ -332,14 +366,17 @@ function ExternalLotteryContent() {
       toast.error('希望利用時間を入力してください')
       return
     }
-    const date = getJSTDateString(studio.start_datetime)
     try {
       setSubmitting(true)
       const response = await apiClient.createExternalLotteryApplication({
-        external_studio_id: studio.id,
+        external_studio_id: slot.studio.id,
         group_id: identity === '__personal__' ? null : identity,
-        preferred_start_datetime: preferredStart ? new Date(`${date}T${preferredStart}:00+09:00`).toISOString() : null,
-        preferred_end_datetime: preferredEnd ? new Date(`${date}T${preferredEnd}:00+09:00`).toISOString() : null,
+        preferred_start_datetime: preferredStart
+          ? new Date(`${slot.date}T${preferredStart}:00+09:00`).toISOString()
+          : slot.start.toISOString(),
+        preferred_end_datetime: preferredEnd
+          ? new Date(`${slot.date}T${preferredEnd}:00+09:00`).toISOString()
+          : slot.end.toISOString(),
         requested_duration_minutes: Number(duration),
       })
       if (!response.success) {
@@ -376,7 +413,7 @@ function ExternalLotteryContent() {
   return (
     <>
       <PageHeader rightActions={(
-        <Button size="sm" onClick={() => setOpen(true)} disabled={eligibleStudios.length === 0}>
+        <Button size="sm" onClick={() => setOpen(true)} disabled={eligibleSlots.length === 0}>
           <CalendarPlus className="h-4 w-4" />申込
         </Button>
       )} />
@@ -388,7 +425,7 @@ function ExternalLotteryContent() {
               <div className="grid min-w-max grid-flow-col auto-cols-[17rem] items-start gap-3 py-3 [transform:rotateX(180deg)]">
               {targetStudios.map((studio) => {
                 const studioApplications = applicationsByStudio.get(studio.id) || []
-                const isAccepting = getLotteryDrawAt(getJSTDateString(studio.start_datetime)) > new Date()
+                const isAccepting = getLotteryDrawTimes(studio).some((drawAt) => drawAt > new Date())
                 const upcomingDrawTimes = getLotteryDrawTimes(studio).filter((drawAt) => drawAt > new Date())
                 return (
                   <section key={studio.id} className="space-y-2">
@@ -443,7 +480,7 @@ function ExternalLotteryContent() {
                                     variant={application.state === 'WON' ? 'default' : application.state === 'LOST' ? 'destructive' : 'outline'}
                                     className="px-1.5 text-[10px]"
                                     title={application.state === 'PENDING'
-                                      ? '確定済み予約を除いた空きを競合申込へ公平配分し、優先区分を保ちながら同順位の処理順を複数回入れ替えて算出した推定値です。公平性や予約上限によって実際の結果は変わります。'
+                                      ? '確定済み予約を除いた空きを競合申込へ公平配分し、優先区分ごとに時間の余裕と公平性から計算したウェイトで処理順を複数回抽選した推定値です。予約上限などにより実際の結果は変わります。'
                                       : undefined}
                                   >
                                     {application.state === 'PENDING' ? `当選確率 約${winningProbability}%` : stateLabel[application.state]}
@@ -457,7 +494,7 @@ function ExternalLotteryContent() {
                                     : '指定なし'}</div>
                                   <div>希望利用時間 {application.requested_duration_minutes ? `${application.requested_duration_minutes}分` : '未設定'}</div>
                                   {application.state !== 'PENDING' && application.state !== 'CANCELLED' && (
-                                    <div>公平性 {application.fairness_score?.toFixed(1) ?? '-'}分 / 順位 {application.tie_break_rank ?? '-'}</div>
+                                    <div>公平性 {application.fairness_score?.toFixed(1) ?? '-'}分</div>
                                   )}
                                 </div>
                                 {canCancel && (
@@ -512,9 +549,9 @@ function ExternalLotteryContent() {
               <Select value={studioId} onValueChange={setStudioId}>
                 <SelectTrigger><SelectValue placeholder="時間枠を選択" /></SelectTrigger>
                 <SelectContent className="max-h-[240px]">
-                  {eligibleStudios.map((studio) => (
-                    <SelectItem key={studio.id} value={studio.id}>
-                      {format(new Date(studio.start_datetime), 'M月d日 H:mm', { locale: ja })}〜{format(new Date(studio.end_datetime), 'H:mm', { locale: ja })}
+                  {eligibleSlots.map((slot) => (
+                    <SelectItem key={slot.id} value={slot.id}>
+                      {format(slot.start, 'M月d日 H:mm', { locale: ja })}〜{format(slot.end, 'H:mm', { locale: ja })}
                     </SelectItem>
                   ))}
                 </SelectContent>

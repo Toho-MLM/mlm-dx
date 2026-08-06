@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { isUserInGroup } from './groups';
-import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationLimitRemainingSchema, isAdmin, UpdateReservationRequestSchema, UpdateReservationStatusRequestSchema, type ReservationState } from '../../../../lib/shared-schemas';
+import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationLimitRemainingSchema, ReservationSchema, isAdmin, UpdateReservationRequestSchema, UpdateReservationStatusRequestSchema, type ReservationState } from '../../../../lib/shared-schemas';
 import { processReservationState, isTodayInJST, getJSTDateString, getJSTDayRange, getAvailableIntervals, selectLongestInterval, validateReservationDateRange } from '../utils/reservation-processor';
 import { requireAdmin } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
@@ -182,26 +182,43 @@ async function getUsedReservationMinutes(
           ${excludeExternal ? 'AND id != ?' : ''}
       `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeExternal ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>();
 
-  const lotteryHolds = scope === 'GROUP'
+  const lotteryApplications = scope === 'GROUP'
     ? await env.DB.prepare(`
-        SELECT start_time, end_time
-        FROM external_lottery_limit_holds
-        WHERE group_id = ?
-          AND start_time < ?
-          AND end_time > ?
-          ${excludeLottery ? 'AND application_id != ?' : ''}
-      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeLottery ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>()
+        SELECT COALESCE(application.preferred_start_datetime, studio.start_datetime) AS start_time,
+               COALESCE(application.preferred_end_datetime, studio.end_datetime) AS available_end_time,
+               application.requested_duration_minutes
+        FROM external_lottery_applications application
+        INNER JOIN external_studios studio ON studio.id = application.external_studio_id
+        WHERE application.group_id = ?
+          AND application.state = 'PENDING'
+          ${excludeLottery ? 'AND application.id != ?' : ''}
+      `).bind(targetId, ...(excludeLottery ? [exclude.id] : [])).all<{
+        start_time: string; available_end_time: string; requested_duration_minutes: number | null;
+      }>()
     : await env.DB.prepare(`
-        SELECT start_time, end_time
-        FROM external_lottery_limit_holds
-        WHERE user_id = ?
-          AND group_id IS NULL
-          AND start_time < ?
-          AND end_time > ?
-          ${excludeLottery ? 'AND application_id != ?' : ''}
-      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeLottery ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>();
+        SELECT COALESCE(application.preferred_start_datetime, studio.start_datetime) AS start_time,
+               COALESCE(application.preferred_end_datetime, studio.end_datetime) AS available_end_time,
+               application.requested_duration_minutes
+        FROM external_lottery_applications application
+        INNER JOIN external_studios studio ON studio.id = application.external_studio_id
+        WHERE application.user_id = ?
+          AND application.group_id IS NULL
+          AND application.state = 'PENDING'
+          ${excludeLottery ? 'AND application.id != ?' : ''}
+      `).bind(targetId, ...(excludeLottery ? [exclude.id] : [])).all<{
+        start_time: string; available_end_time: string; requested_duration_minutes: number | null;
+      }>();
+  const lotteryReservations = lotteryApplications.results.map((application) => ({
+    start_time: application.start_time,
+    end_time: new Date(
+      new Date(application.start_time).getTime() + (
+        application.requested_duration_minutes
+          ?? Math.round((new Date(application.available_end_time).getTime() - new Date(application.start_time).getTime()) / 60000)
+      ) * 60000
+    ).toISOString(),
+  }));
 
-  return [...reservations.results, ...externalReservations.results, ...lotteryHolds.results].reduce((total, reservation) => (
+  return [...reservations.results, ...externalReservations.results, ...lotteryReservations].reduce((total, reservation) => (
     total + calculateOverlapMinutes(
       reservation.start_time,
       reservation.end_time,
@@ -442,7 +459,13 @@ reservationRoutes.get('/', async (c) => {
         ORDER BY r.start_time ASC
       `).bind(twoWeeksAgoIso).all();
 
-      return c.json({ success: true, data: reservations.results });
+      return c.json({
+        success: true,
+        data: reservations.results.map((reservation) => ReservationSchema.parse({
+          ...reservation,
+          cancellable: Boolean(reservation.cancellable),
+        })),
+      });
     } else {
       const reservations = await c.env.DB.prepare(`
         SELECT r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
@@ -466,7 +489,13 @@ reservationRoutes.get('/', async (c) => {
         ORDER BY r.start_time ASC
       `).bind(user.id, user.id, user.id, twoWeeksAgoIso).all();
 
-      return c.json({ success: true, data: reservations.results });
+      return c.json({
+        success: true,
+        data: reservations.results.map((reservation) => ReservationSchema.parse({
+          ...reservation,
+          cancellable: Boolean(reservation.cancellable),
+        })),
+      });
     }
   } catch (error) {
     console.error('Error fetching reservations:', error);

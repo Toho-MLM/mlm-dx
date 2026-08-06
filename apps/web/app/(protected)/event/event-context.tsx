@@ -3,7 +3,7 @@
 import { createContext, useContext, type ReactNode } from 'react'
 
 type GroupOption = { id: string; name: string; is_main: boolean }
-type UserEntry = { id: string; event_id: string; group_id: string; note?: string | null; created_at: string }
+type UserEntry = { id: string; event_id: string; group_id: string; note?: string | null }
 
 export type EventContextValue = {
   groupOptions?: GroupOption[]
@@ -25,4 +25,3 @@ export function EventProvider({ value, children }: { value: EventContextValue; c
     <EventContext.Provider value={value}>{children}</EventContext.Provider>
   )
 }
-

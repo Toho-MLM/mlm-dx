@@ -444,8 +444,6 @@ app.get('/auth/session', async (c) => {
         role: dbUser.role,
         grade: dbUser.grade,
         instruments: dbUser.instruments,
-        created_at: dbUser.created_at,
-        updated_at: dbUser.updated_at,
       }
     });
   } catch (error) {
@@ -747,7 +745,7 @@ app.get('/auth/passkey/credentials', requireAuth, async (c) => {
     const user = c.get('user');
     await c.env.DB.prepare('DELETE FROM passkey_challenges WHERE expires_at < ?').bind(nowISO()).run();
     const rows = await c.env.DB.prepare(
-      'SELECT id, credential_id, device_type, backed_up, transports, attestation_format, created_at, updated_at FROM passkeys WHERE user_id = ? ORDER BY created_at DESC'
+      'SELECT id, credential_id, device_type, backed_up, transports, attestation_format FROM passkeys WHERE user_id = ? ORDER BY created_at DESC'
     ).bind(user.id).all<PasskeyRow>();
     const passkeys = (rows.results ?? []).map((row) => ({
       id: row.id,
@@ -756,8 +754,6 @@ app.get('/auth/passkey/credentials', requireAuth, async (c) => {
       backed_up: row.backed_up === 1,
       transports: safeParseTransports(row.transports),
       attestation_format: row.attestation_format,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
     }));
     return c.json({ success: true, passkeys });
   } catch (error) {

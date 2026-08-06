@@ -170,7 +170,6 @@ bandMainDraftRoutes.get('/:token', async (c) => {
         members,
         canFinalize: canManageDraft(user, draft),
         canDelete: canManageDraft(user, draft),
-        updatedAt: draft.updated_at,
       },
     });
   } catch (error) {

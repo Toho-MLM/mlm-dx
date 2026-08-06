@@ -24,7 +24,7 @@ export default function Page() {
   const [events, setEvents] = useState<Event[]>([])
   const [loadingEvents, setLoadingEvents] = useState(true)
   const [groupOptions, setGroupOptions] = useState<Array<{ id: string; name: string; is_main: boolean }>>([])
-  const [entries, setEntries] = useState<Array<{ id: string; event_id: string; group_id: string; note?: string | null; created_at: string }>>([])
+  const [entries, setEntries] = useState<Array<{ id: string; event_id: string; group_id: string; note?: string | null }>>([])
   const [loadingEntries, setLoadingEntries] = useState(true)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<Event | undefined>()
@@ -127,8 +127,6 @@ export default function Page() {
       is_setlist_accepting: true,
       group_limit: 1,
       song_limit: 2,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     }
     return (
       <>

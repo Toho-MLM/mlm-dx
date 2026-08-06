@@ -1,6 +1,5 @@
 import type { Bindings } from '../index';
 import { getJSTDateString, getJSTDayRange, type AvailableInterval } from './reservation-processor';
-import { recordExternalReservationUsage } from './external-processor';
 import { broadcastReservationRealtimeEvent } from './reservation-realtime';
 import { prepareAndSendReservationEmail } from './reservation-email';
 import { hasReservationLimitConflict } from '../routes/reservations';
@@ -8,6 +7,8 @@ import {
   EXTERNAL_LOTTERY_DURATION_STEP_MINUTES,
   EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
   EXTERNAL_LOTTERY_MIN_DURATION_MINUTES,
+  calculateExternalLotteryWeights,
+  getExternalLotteryWeightedOrderKey,
 } from '../../../../lib/shared-schemas';
 
 type StudioRow = {
@@ -25,17 +26,18 @@ type ApplicationRow = {
   preferred_start_datetime: string | null;
   preferred_end_datetime: string | null;
   requested_duration_minutes: number | null;
-  tie_breaker: string;
   created_at: string;
 };
 
 type PreparedApplication = ApplicationRow & {
   priority: number;
   fairnessScore: number;
+  schedulingSlackMinutes: number;
   memberIds: string[];
   rangeStart: Date;
   rangeEnd: Date;
   requestedMinutes: number;
+  weightedOrder: number;
 };
 
 type ExistingReservation = {
@@ -148,32 +150,47 @@ async function getExistingReservationAllocations(
   return allocations;
 }
 
-async function getFairnessScore(env: Bindings, memberIds: string[], rangeEnd: Date): Promise<number> {
+export async function getExternalLotteryFairnessScore(
+  env: Bindings,
+  userId: string,
+  groupId: string | null,
+  rangeEnd: Date
+): Promise<number> {
   const rangeStart = new Date(rangeEnd);
   rangeStart.setUTCDate(rangeStart.getUTCDate() - 30);
-  const placeholders = memberIds.map(() => '?').join(',');
   const usage = await env.DB.prepare(`
-    SELECT user_id, COALESCE(SUM(minutes), 0) AS minutes
-    FROM external_reservation_usage
-    WHERE user_id IN (${placeholders})
-      AND used_at >= ?
-      AND used_at < ?
-    GROUP BY user_id
-  `).bind(...memberIds, rangeStart.toISOString(), rangeEnd.toISOString()).all<{ user_id: string; minutes: number }>();
-  const minutesByMember = new Map(usage.results.map((row) => [row.user_id, Number(row.minutes)]));
-  return memberIds.reduce((sum, id) => sum + (minutesByMember.get(id) ?? 0), 0) / memberIds.length;
+    SELECT COALESCE(ROUND(SUM((julianday(end_time) - julianday(start_time)) * 1440)), 0) AS minutes
+    FROM external_reservations
+    WHERE ((? IS NULL AND group_id IS NULL AND user_id = ?) OR group_id = ?)
+      AND state IN ('CONFIRMED', 'CANCELLED', 'COMPLETED', 'WITHDRAWN')
+      AND start_time >= ?
+      AND start_time < ?
+  `).bind(groupId, userId, groupId, rangeStart.toISOString(), rangeEnd.toISOString()).first<{ minutes: number }>();
+  return Number(usage?.minutes ?? 0);
 }
 
-function getApplicationRange(application: ApplicationRow, studio: StudioRow) {
+function getApplicationRange(
+  application: ApplicationRow,
+  studio: StudioRow,
+  targetStart: Date,
+  targetEnd: Date
+) {
   const studioStart = new Date(studio.start_datetime);
   const studioEnd = new Date(studio.end_datetime);
-  const rangeStart = application.preferred_start_datetime
+  const requestedRangeStart = application.preferred_start_datetime
     ? new Date(application.preferred_start_datetime)
     : studioStart;
-  const rangeEnd = application.preferred_end_datetime
+  const requestedRangeEnd = application.preferred_end_datetime
     ? new Date(application.preferred_end_datetime)
     : studioEnd;
-  if (rangeStart < studioStart || rangeEnd > studioEnd || rangeEnd <= rangeStart) return null;
+  if (
+    requestedRangeStart < studioStart
+    || requestedRangeEnd > studioEnd
+    || requestedRangeEnd <= requestedRangeStart
+  ) return null;
+  const rangeStart = new Date(Math.max(requestedRangeStart.getTime(), targetStart.getTime()));
+  const rangeEnd = new Date(Math.min(requestedRangeEnd.getTime(), targetEnd.getTime()));
+  if (rangeEnd <= rangeStart) return null;
   const requestedMinutes = application.requested_duration_minutes
     ?? Math.round((rangeEnd.getTime() - rangeStart.getTime()) / 60000);
   return { rangeStart, rangeEnd, requestedMinutes };
@@ -223,15 +240,12 @@ function getFairShareMinutes(
   return Math.min(application.requestedMinutes, fairShare);
 }
 
-async function markLost(env: Bindings, applicationId: string, score: number | null, rank: number | null) {
-  await env.DB.batch([
-    env.DB.prepare(`
-      UPDATE external_lottery_applications
-      SET state = 'LOST', fairness_score = ?, tie_break_rank = ?, updated_at = ?
-      WHERE id = ? AND state = 'PENDING'
-    `).bind(score, rank, new Date().toISOString(), applicationId),
-    env.DB.prepare('DELETE FROM external_lottery_limit_holds WHERE application_id = ?').bind(applicationId),
-  ]);
+async function markLost(env: Bindings, applicationId: string, score: number | null) {
+  await env.DB.prepare(`
+    UPDATE external_lottery_applications
+    SET state = 'LOST', fairness_score = ?, updated_at = ?
+    WHERE id = ? AND state = 'PENDING'
+  `).bind(score, new Date().toISOString(), applicationId).run();
 }
 
 export async function processExternalLotteryForNextDay(env: Bindings): Promise<number> {
@@ -258,16 +272,24 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
     const applications = await env.DB.prepare(`
       SELECT id, external_studio_id, user_id, group_id,
              preferred_start_datetime, preferred_end_datetime,
-             requested_duration_minutes, tie_breaker, created_at
+             requested_duration_minutes, created_at
       FROM external_lottery_applications
       WHERE external_studio_id = ? AND state = 'PENDING'
+        AND COALESCE(preferred_start_datetime, ?) < ?
+        AND COALESCE(preferred_end_datetime, ?) > ?
       ORDER BY created_at ASC, id ASC
-    `).bind(studio.id).all<ApplicationRow>();
+    `).bind(
+      studio.id,
+      studio.start_datetime,
+      dayRange.endUTC.toISOString(),
+      studio.end_datetime,
+      dayRange.startUTC.toISOString()
+    ).all<ApplicationRow>();
 
     const prepared: PreparedApplication[] = [];
     for (const application of applications.results) {
       const identity = application.group_id ? await getGroup(env, application.group_id) : { isMain: false, memberIds: [application.user_id] };
-      const range = getApplicationRange(application, studio);
+      const range = getApplicationRange(application, studio, dayRange.startUTC, dayRange.endUTC);
       if (
         !identity ||
         !range ||
@@ -275,34 +297,39 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
         range.requestedMinutes > EXTERNAL_LOTTERY_MAX_DURATION_MINUTES ||
         range.requestedMinutes % EXTERNAL_LOTTERY_DURATION_STEP_MINUTES !== 0
       ) {
-        await markLost(env, application.id, null, null);
+        await markLost(env, application.id, null);
         processed += 1;
         continue;
       }
       prepared.push({
         ...application,
         priority: application.group_id ? (identity.isMain ? 0 : 1) : 2,
-        fairnessScore: await getFairnessScore(env, identity.memberIds, dayRange.startUTC),
+        fairnessScore: await getExternalLotteryFairnessScore(env, application.user_id, application.group_id, dayRange.startUTC),
+        schedulingSlackMinutes: Math.round(
+          (range.rangeEnd.getTime() - range.rangeStart.getTime()) / 60000
+        ) - range.requestedMinutes,
         memberIds: identity.memberIds,
+        weightedOrder: 0,
         ...range,
       });
     }
 
-    prepared.sort((a, b) => a.priority - b.priority
-      || a.fairnessScore - b.fairnessScore
-      || a.tie_breaker.localeCompare(b.tie_breaker));
-    const rankByApplication = new Map<string, number>();
-    const rankCounters = new Map<string, number>();
-    for (const application of prepared) {
-      const key = `${application.priority}:${application.fairnessScore}`;
-      const rank = (rankCounters.get(key) ?? 0) + 1;
-      rankCounters.set(key, rank);
-      rankByApplication.set(application.id, rank);
+    for (const priority of [0, 1, 2]) {
+      const cohort = prepared.filter((application) => application.priority === priority);
+      const weights = calculateExternalLotteryWeights(cohort);
+      for (const application of cohort) {
+        const random = new Uint32Array(1);
+        crypto.getRandomValues(random);
+        const randomUnit = (random[0] + 1) / (0x1_0000_0000 + 1);
+        application.weightedOrder = getExternalLotteryWeightedOrderKey(
+          weights.get(application.id) ?? 1,
+          randomUnit
+        );
+      }
     }
-
+    prepared.sort((a, b) => a.priority - b.priority || a.weightedOrder - b.weightedOrder);
     for (let index = 0; index < prepared.length; index += 1) {
       const application = prepared[index];
-      const rank = rankByApplication.get(application.id) ?? 1;
       const alreadyCreated = await env.DB.prepare(`
         SELECT id, user_id, group_id, room_number, start_time, end_time
         FROM external_reservations WHERE id = ?
@@ -310,17 +337,13 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
         id: string; user_id: string; group_id: string | null; room_number: number; start_time: string; end_time: string;
       }>();
       if (alreadyCreated) {
-        const [recoverResult] = await env.DB.batch([
-          env.DB.prepare(`
-            UPDATE external_lottery_applications
-            SET state = 'WON', fairness_score = ?, tie_break_rank = ?, assigned_room_number = ?,
-                assigned_start_datetime = ?, assigned_end_datetime = ?, updated_at = ?
-            WHERE id = ? AND state = 'PENDING'
-          `).bind(application.fairnessScore, rank, alreadyCreated.room_number, alreadyCreated.start_time, alreadyCreated.end_time, new Date().toISOString(), application.id),
-          env.DB.prepare('DELETE FROM external_lottery_limit_holds WHERE application_id = ?').bind(application.id),
-        ]);
+        const recoverResult = await env.DB.prepare(`
+          UPDATE external_lottery_applications
+          SET state = 'WON', fairness_score = ?, assigned_room_number = ?,
+              assigned_start_datetime = ?, assigned_end_datetime = ?, updated_at = ?
+          WHERE id = ? AND state = 'PENDING'
+        `).bind(application.fairnessScore, alreadyCreated.room_number, alreadyCreated.start_time, alreadyCreated.end_time, new Date().toISOString(), application.id).run();
         if (Number(recoverResult.meta.changes ?? 0) === 0) continue;
-        await recordExternalReservationUsage(env, alreadyCreated);
         allocated.push({
           memberIds: new Set(application.memberIds),
           start: new Date(alreadyCreated.start_time),
@@ -388,7 +411,7 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
       }
 
       if (!assignment) {
-        await markLost(env, application.id, application.fairnessScore, rank);
+        await markLost(env, application.id, application.fairnessScore);
         processed += 1;
         continue;
       }
@@ -408,23 +431,15 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
         ),
         env.DB.prepare(`
           UPDATE external_lottery_applications
-          SET state = 'WON', fairness_score = ?, tie_break_rank = ?, assigned_room_number = ?,
+          SET state = 'WON', fairness_score = ?, assigned_room_number = ?,
               assigned_start_datetime = ?, assigned_end_datetime = ?, updated_at = ?
           WHERE id = ? AND state = 'PENDING'
         `).bind(
-          application.fairnessScore, rank, assignment.roomNumber,
+          application.fairnessScore, assignment.roomNumber,
           assignment.start.toISOString(), assignment.end.toISOString(), now, application.id
         ),
-        env.DB.prepare('DELETE FROM external_lottery_limit_holds WHERE application_id = ?').bind(application.id),
       ]);
       if (Number(insertResult.meta.changes ?? 0) === 0) continue;
-      await recordExternalReservationUsage(env, {
-        id: application.id,
-        user_id: application.user_id,
-        group_id: application.group_id,
-        start_time: assignment.start.toISOString(),
-        end_time: assignment.end.toISOString(),
-      });
       await prepareAndSendReservationEmail(env, {
         kind: 'EXTERNAL', reservationId: application.id, notificationType: 'RESERVATION_CONFIRMED',
       });
