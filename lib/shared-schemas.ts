@@ -476,9 +476,6 @@ const ExternalLotteryTimeRequestSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: '許容時間の終点は起点より後にしてください。' });
     return;
   }
-  if (getJSTDateString(start) !== getJSTDateString(end)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '許容時間は同じ日付内で指定してください。' });
-  }
   const todayJST = getJSTDateString(new Date());
   const earliest = new Date(`${todayJST}T00:00:00+09:00`);
   earliest.setUTCDate(earliest.getUTCDate() + 1);

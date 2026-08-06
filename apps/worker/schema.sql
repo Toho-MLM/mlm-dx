@@ -154,8 +154,6 @@ CREATE TABLE IF NOT EXISTS external_lottery_applications (
   CHECK ((preferred_start_datetime IS NULL) = (preferred_end_datetime IS NULL)),
   CHECK (preferred_start_datetime IS NOT NULL OR requested_duration_minutes IS NOT NULL),
   CHECK (preferred_start_datetime IS NULL OR preferred_end_datetime > preferred_start_datetime),
-  CHECK (preferred_start_datetime IS NULL OR date(preferred_start_datetime, '+9 hours') = date(preferred_end_datetime, '+9 hours')),
-  CHECK (preferred_start_datetime IS NULL OR (time(preferred_start_datetime, '+9 hours') >= time('06:00:00') AND time(preferred_end_datetime, '+9 hours') <= time('23:00:00'))),
   CHECK (requested_duration_minutes IS NULL OR (requested_duration_minutes BETWEEN 10 AND 240 AND requested_duration_minutes % 5 = 0)),
   CHECK (requested_duration_minutes IS NULL OR preferred_start_datetime IS NULL OR requested_duration_minutes <= (julianday(preferred_end_datetime) - julianday(preferred_start_datetime)) * 1440 + 0.01),
   CHECK ((assigned_start_datetime IS NULL) = (assigned_end_datetime IS NULL)),

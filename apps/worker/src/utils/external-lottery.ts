@@ -188,8 +188,9 @@ function getApplicationRange(
     || requestedRangeEnd > studioEnd
     || requestedRangeEnd <= requestedRangeStart
   ) return null;
-  const rangeStart = new Date(Math.max(requestedRangeStart.getTime(), targetStart.getTime()));
-  const rangeEnd = new Date(Math.min(requestedRangeEnd.getTime(), targetEnd.getTime()));
+  if (requestedRangeStart < targetStart || requestedRangeStart >= targetEnd) return null;
+  const rangeStart = requestedRangeStart;
+  const rangeEnd = requestedRangeEnd;
   if (rangeEnd <= rangeStart) return null;
   const requestedMinutes = application.requested_duration_minutes
     ?? Math.round((rangeEnd.getTime() - rangeStart.getTime()) / 60000);
@@ -208,10 +209,13 @@ function hasMemberConflict(
   ));
 }
 
-function enumerateStarts(interval: AvailableInterval, durationMinutes: number): Date[] {
+function enumerateStarts(interval: AvailableInterval, durationMinutes: number, latestStartExclusive: Date): Date[] {
   const step = 5 * 60000;
   const first = Math.ceil(interval.start.getTime() / step) * step;
-  const latest = interval.end.getTime() - durationMinutes * 60000;
+  const latest = Math.min(
+    interval.end.getTime() - durationMinutes * 60000,
+    latestStartExclusive.getTime() - 1
+  );
   const starts: Date[] = [];
   for (let value = first; value <= latest; value += step) starts.push(new Date(value));
   return starts;
@@ -260,10 +264,14 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
     ORDER BY start_datetime ASC, id ASC
   `).bind(dayRange.endUTC.toISOString(), dayRange.startUTC.toISOString()).all<StudioRow>();
 
+  const allocationRangeEnd = studios.results.reduce(
+    (latest, studio) => Math.max(latest, new Date(studio.end_datetime).getTime()),
+    dayRange.endUTC.getTime()
+  );
   const allocated = await getExistingReservationAllocations(
     env,
     dayRange.startUTC.toISOString(),
-    dayRange.endUTC.toISOString()
+    new Date(allocationRangeEnd).toISOString()
   );
 
   let processed = 0;
@@ -275,15 +283,15 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
              requested_duration_minutes, created_at
       FROM external_lottery_applications
       WHERE external_studio_id = ? AND state = 'PENDING'
+        AND COALESCE(preferred_start_datetime, ?) >= ?
         AND COALESCE(preferred_start_datetime, ?) < ?
-        AND COALESCE(preferred_end_datetime, ?) > ?
       ORDER BY created_at ASC, id ASC
     `).bind(
       studio.id,
       studio.start_datetime,
-      dayRange.endUTC.toISOString(),
-      studio.end_datetime,
-      dayRange.startUTC.toISOString()
+      dayRange.startUTC.toISOString(),
+      studio.start_datetime,
+      dayRange.endUTC.toISOString()
     ).all<ApplicationRow>();
 
     const prepared: PreparedApplication[] = [];
@@ -387,7 +395,7 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
           : Math.floor(room.longestMinutes / EXTERNAL_LOTTERY_DURATION_STEP_MINUTES)
             * EXTERNAL_LOTTERY_DURATION_STEP_MINUTES;
         if (duration < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES) continue;
-        const candidates = room.intervals.flatMap((interval) => enumerateStarts(interval, duration)).map((start) => {
+        const candidates = room.intervals.flatMap((interval) => enumerateStarts(interval, duration, dayRange.endUTC)).map((start) => {
           const end = new Date(start.getTime() + duration * 60000);
           const contention = prepared.slice(index + 1).filter((remaining) => overlaps(start, end, remaining.rangeStart, remaining.rangeEnd)).length;
           return { start, end, contention };
