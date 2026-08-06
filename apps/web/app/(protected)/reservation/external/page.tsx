@@ -65,7 +65,7 @@ type CalendarEvent = {
     userName?: string
     groupName?: string
     state: ReservationState
-    cancellable: number
+    cancellable: boolean
   }
 }
 
@@ -731,6 +731,7 @@ function ExternalReservationContent() {
                       min={segment.min}
                       max={segment.max}
                       scrollToTime={segment.min}
+                      showMultiDayTimes
                       date={segment.date}
                       view={Views.DAY as View}
                       onView={() => undefined}
@@ -782,7 +783,7 @@ function ExternalReservationContent() {
                 {selectedReservation.meta.userName && <p><strong>予約者</strong> {selectedReservation.meta.userName}</p>}
                 <p><strong>ステータス</strong> {eventStateNames[selectedReservation.meta.state]}</p>
               </div>
-              {selectedReservation.meta.cancellable === 1 && selectedReservation.end > new Date() && (
+              {selectedReservation.meta.cancellable && selectedReservation.end > new Date() && (
                 <Button
                   type="button"
                   variant="outline"
@@ -793,7 +794,7 @@ function ExternalReservationContent() {
                   変更
                 </Button>
               )}
-              {selectedReservation.meta.cancellable === 1 && (
+              {selectedReservation.meta.cancellable && (
                 <LoadingButton
                   variant="destructive"
                   className="w-full"

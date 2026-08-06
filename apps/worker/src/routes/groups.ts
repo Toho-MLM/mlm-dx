@@ -194,6 +194,8 @@ groupRoutes.get('/', async (c) => {
 
         return {
           ...group,
+          is_main: Boolean(group.is_main),
+          is_active: Boolean(group.is_active),
           assignments: groupMembers
         };
       })

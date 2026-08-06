@@ -140,16 +140,6 @@ export async function processTodayExternalReservations(env: Bindings): Promise<n
     }
     changedCount += 1;
 
-    if (processResult.state === 'CONFIRMED') {
-      await recordExternalReservationUsage(env, {
-        id: reservation.id,
-        user_id: reservation.user_id,
-        group_id: reservation.group_id,
-        start_time: processResult.adjustedStartTime ?? reservation.start_time,
-        end_time: processResult.adjustedEndTime ?? reservation.end_time,
-      });
-    }
-
     await prepareAndSendReservationEmail(env, {
       kind: 'EXTERNAL',
       reservationId: reservation.id,
@@ -168,42 +158,6 @@ export async function processTodayExternalReservations(env: Bindings): Promise<n
   }
 
   return changedCount;
-}
-
-export async function recordExternalReservationUsage(
-  env: Bindings,
-  reservation: { id: string; user_id: string; group_id: string | null; start_time: string; end_time: string }
-): Promise<void> {
-  const minutes = Math.max(10, Math.round((new Date(reservation.end_time).getTime() - new Date(reservation.start_time).getTime()) / 60000));
-  const memberIds = reservation.group_id
-    ? (await env.DB.prepare(`
-        SELECT DISTINCT user_id
-        FROM group_member_instruments
-        WHERE group_id = ?
-      `).bind(reservation.group_id).all<{ user_id: string }>()).results.map((row) => row.user_id)
-    : [reservation.user_id];
-  const createdAt = new Date().toISOString();
-  for (const memberId of memberIds) {
-    await env.DB.prepare(`
-      INSERT OR IGNORE INTO external_reservation_usage
-        (reservation_id, user_id, minutes, used_at, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).bind(reservation.id, memberId, minutes, reservation.start_time, createdAt).run();
-  }
-}
-
-export async function preserveOrIncreaseExternalReservationUsage(
-  env: Bindings,
-  reservationId: string,
-  startTime: string,
-  endTime: string
-): Promise<void> {
-  const minutes = Math.max(10, Math.round((new Date(endTime).getTime() - new Date(startTime).getTime()) / 60000));
-  await env.DB.prepare(`
-    UPDATE external_reservation_usage
-    SET minutes = CASE WHEN minutes < ? THEN ? ELSE minutes END
-    WHERE reservation_id = ?
-  `).bind(minutes, minutes, reservationId).run();
 }
 
 export async function processPastExternalReservations(env: Bindings): Promise<number> {

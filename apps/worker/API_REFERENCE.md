@@ -104,8 +104,6 @@ Worker は以下の `Bindings` を前提としています。
     "instruments": ["VO"],
     "grade": 2,
     "role": "MBR",
-    "created_at": "2024-04-01T00:00:00.000Z",
-    "updated_at": "2025-03-01T10:00:00.000Z",
     "student_number": "EXAMPLE"
   }
 }

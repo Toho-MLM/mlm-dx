@@ -231,14 +231,6 @@ function ProfileContent() {
     }
   }, [confirmingPasskeyId, fetchPasskeys])
 
-  const formatDateTime = useCallback((value: string) => {
-    try {
-      return new Date(value).toLocaleString('ja-JP', { hour12: false })
-    } catch {
-      return value
-    }
-  }, [])
-
   const summarizeCredentialId = useCallback((value: string) => {
     if (value.length <= 16) {
       return value
@@ -479,9 +471,6 @@ function ProfileContent() {
                         <div className="space-y-1">
                           <div className="text-sm font-semibold text-gray-900">
                             {summarizeCredentialId(item.credential_id)}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            登録日時: {formatDateTime(item.created_at)}
                           </div>
                           <div className="text-xs text-gray-600">
                             デバイス種別: {formatDeviceType(item.device_type)} / {formatBackedUp(item.backed_up)}

@@ -59,7 +59,6 @@ export type BandMainDraft = {
   members: BandDraftMember[]
   canFinalize: boolean
   canDelete: boolean
-  updatedAt: string
 }
 export type PasskeyCredential = {
   id: string
@@ -68,8 +67,6 @@ export type PasskeyCredential = {
   backed_up: boolean
   transports: string[]
   attestation_format: string | null
-  created_at: string
-  updated_at: string
 }
 type PasskeyRegistrationStartResponse = { challengeId: string; options: PublicKeyCredentialCreationOptionsJSON }
 type PasskeyLoginStartResponse = { success: true; challengeId: string; options: PublicKeyCredentialRequestOptionsJSON } | { success: false }
@@ -471,8 +468,8 @@ class ApiClient {
     return httpClient.put<ApiResponse<void>>(`/entries/${id}`, data)
   }
 
-  async getSetlistItems(entryId: string): Promise<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>>> {
-    return httpClient.get<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string; created_at: string; updated_at: string }>>>(`/setlist/entry/${entryId}`)
+  async getSetlistItems(entryId: string): Promise<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string }>>> {
+    return httpClient.get<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string }>>>(`/setlist/entry/${entryId}`)
   }
 
   async getEventSetlist(eventId: string, admin: boolean = false): Promise<ApiResponse<EventSetlistBundleItem[]>> {
