@@ -43,6 +43,9 @@ const getJSTDateString = (value: Date | string) => {
   const date = typeof value === 'string' ? new Date(value) : value
   return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
+const toJSTLocalInputValue = (value: Date) => (
+  new Date(value.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16)
+)
 const addJSTDays = (dateString: string, days: number) => {
   const date = new Date(`${dateString}T00:00:00+09:00`)
   date.setUTCDate(date.getUTCDate() + days)
@@ -54,7 +57,7 @@ const getLotteryDrawAt = (studioDate: string) => {
   return drawAt
 }
 
-type LotterySlot = { id: string; studio: External; date: string; start: Date; end: Date; drawAt: Date }
+type LotterySlot = { id: string; studio: External; date: string; start: Date; latestStart: Date; end: Date; drawAt: Date }
 
 const getLotterySlots = (studio: External): LotterySlot[] => {
   const slots: LotterySlot[] = []
@@ -63,12 +66,15 @@ const getLotterySlots = (studio: External): LotterySlot[] => {
   let studioDate = getJSTDateString(studio.start_datetime)
   const lastStudioDate = getJSTDateString(new Date(studioEnd.getTime() - 1))
   while (studioDate <= lastStudioDate) {
-    const dayStart = new Date(`${studioDate}T06:00:00+09:00`)
-    const dayEnd = new Date(`${studioDate}T23:00:00+09:00`)
+    const dayStart = new Date(`${studioDate}T00:00:00+09:00`)
+    const nextDayStart = new Date(`${addJSTDays(studioDate, 1)}T00:00:00+09:00`)
     const start = new Date(Math.max(studioStart.getTime(), dayStart.getTime()))
-    const end = new Date(Math.min(studioEnd.getTime(), dayEnd.getTime()))
-    if (end.getTime() - start.getTime() >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES * 60_000) {
-      slots.push({ id: `${studio.id}:${studioDate}`, studio, date: studioDate, start, end, drawAt: getLotteryDrawAt(studioDate) })
+    const latestStart = new Date(Math.min(
+      studioEnd.getTime() - EXTERNAL_LOTTERY_MIN_DURATION_MINUTES * 60_000,
+      nextDayStart.getTime() - 5 * 60_000
+    ))
+    if (latestStart >= start) {
+      slots.push({ id: `${studio.id}:${studioDate}`, studio, date: studioDate, start, latestStart, end: studioEnd, drawAt: getLotteryDrawAt(studioDate) })
     }
     studioDate = addJSTDays(studioDate, 1)
   }
@@ -328,6 +334,7 @@ function ExternalLotteryContent() {
       slot.date >= tomorrow && slot.date <= max && slot.drawAt > now
     ))
   }, [targetStudios])
+  const selectedSlot = eligibleSlots.find((slot) => slot.id === studioId)
 
   const applicationsByStudio = useMemo(() => {
     const grouped = new Map<string, ExternalLotteryApplication[]>()
@@ -372,10 +379,10 @@ function ExternalLotteryContent() {
         external_studio_id: slot.studio.id,
         group_id: identity === '__personal__' ? null : identity,
         preferred_start_datetime: preferredStart
-          ? new Date(`${slot.date}T${preferredStart}:00+09:00`).toISOString()
+          ? new Date(`${preferredStart}:00+09:00`).toISOString()
           : slot.start.toISOString(),
         preferred_end_datetime: preferredEnd
-          ? new Date(`${slot.date}T${preferredEnd}:00+09:00`).toISOString()
+          ? new Date(`${preferredEnd}:00+09:00`).toISOString()
           : slot.end.toISOString(),
         requested_duration_minutes: Number(duration),
       })
@@ -546,23 +553,27 @@ function ExternalLotteryContent() {
             </div>
             <div className="space-y-2">
               <Label>時間枠</Label>
-              <Select value={studioId} onValueChange={setStudioId}>
+              <Select value={studioId} onValueChange={(value) => {
+                setStudioId(value)
+                setPreferredStart('')
+                setPreferredEnd('')
+              }}>
                 <SelectTrigger><SelectValue placeholder="時間枠を選択" /></SelectTrigger>
                 <SelectContent className="max-h-[240px]">
                   {eligibleSlots.map((slot) => (
                     <SelectItem key={slot.id} value={slot.id}>
-                      {format(slot.start, 'M月d日 H:mm', { locale: ja })}〜{format(slot.end, 'H:mm', { locale: ja })}
+                      {format(slot.start, 'M月d日 H:mm', { locale: ja })}〜{format(slot.end, 'M月d日 H:mm', { locale: ja })}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>許容時間（起点）</Label><Input type="time" step={300} value={preferredStart} onChange={(event) => setPreferredStart(event.target.value)} /></div>
-              <div className="space-y-2"><Label>許容時間（終点）</Label><Input type="time" step={300} value={preferredEnd} onChange={(event) => setPreferredEnd(event.target.value)} /></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2"><Label>許容時間（起点）</Label><Input type="datetime-local" step={300} min={selectedSlot ? toJSTLocalInputValue(selectedSlot.start) : undefined} max={selectedSlot ? toJSTLocalInputValue(selectedSlot.latestStart) : undefined} disabled={!selectedSlot} value={preferredStart} onChange={(event) => setPreferredStart(event.target.value)} /></div>
+              <div className="space-y-2"><Label>許容時間（終点）</Label><Input type="datetime-local" step={300} min={preferredStart || (selectedSlot ? toJSTLocalInputValue(selectedSlot.start) : undefined)} max={selectedSlot ? toJSTLocalInputValue(selectedSlot.end) : undefined} disabled={!selectedSlot} value={preferredEnd} onChange={(event) => setPreferredEnd(event.target.value)} /></div>
             </div>
             <div className="space-y-2">
-              <Label>希望利用時間（必須）</Label>
+              <Label>希望利用時間</Label>
               <Select value={duration} onValueChange={setDuration}>
                 <SelectTrigger><SelectValue placeholder="希望利用時間を選択" /></SelectTrigger>
                 <SelectContent className="max-h-[220px]">
