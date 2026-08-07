@@ -209,6 +209,57 @@ function hasMemberConflict(
   ));
 }
 
+function sharesMember(memberIdsA: string[], memberIdsB: string[]): boolean {
+  const members = new Set(memberIdsA);
+  return memberIdsB.some((memberId) => members.has(memberId));
+}
+
+function countTemporalStarts(
+  application: PreparedApplication,
+  blockedStart?: Date,
+  blockedEnd?: Date
+): number {
+  // 公平配分で希望時間より短くなる場合も、最短枠を確保できれば当選候補になれる。
+  const durationMs = EXTERNAL_LOTTERY_MIN_DURATION_MINUTES * 60000;
+  const stepMs = 5 * 60000;
+  const firstStart = Math.ceil(application.rangeStart.getTime() / stepMs) * stepMs;
+  const lastStart = application.rangeEnd.getTime() - durationMs;
+  let count = 0;
+
+  for (let startMs = firstStart; startMs <= lastStart; startMs += stepMs) {
+    const endMs = startMs + durationMs;
+    if (
+      blockedStart
+      && blockedEnd
+      && startMs < blockedEnd.getTime()
+      && endMs > blockedStart.getTime()
+    ) continue;
+    count += 1;
+  }
+  return count;
+}
+
+function getMemberSchedulingImpact(
+  application: PreparedApplication,
+  start: Date,
+  end: Date,
+  remainingApplications: PreparedApplication[]
+): { madeUnschedulable: number; lostOptions: number } {
+  let madeUnschedulable = 0;
+  let lostOptions = 0;
+
+  for (const remaining of remainingApplications) {
+    if (!sharesMember(application.memberIds, remaining.memberIds)) continue;
+    const optionsBefore = countTemporalStarts(remaining);
+    if (optionsBefore === 0) continue;
+    const optionsAfter = countTemporalStarts(remaining, start, end);
+    if (optionsAfter === 0) madeUnschedulable += 1;
+    lostOptions += optionsBefore - optionsAfter;
+  }
+
+  return { madeUnschedulable, lostOptions };
+}
+
 function enumerateStarts(interval: AvailableInterval, durationMinutes: number, latestStartExclusive: Date): Date[] {
   const step = 5 * 60000;
   const first = Math.ceil(interval.start.getTime() / step) * step;
@@ -389,33 +440,40 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
         .sort((a, b) => b.longestMinutes - a.longestMinutes || a.roomNumber - b.roomNumber);
 
       let assignment: { roomNumber: number; start: Date; end: Date } | null = null;
-      for (const room of rankedRooms) {
+      const remainingApplications = prepared.slice(index + 1);
+      const candidates = rankedRooms.flatMap((room) => {
         const duration = hasFullRoom
           ? fairShareMinutes
           : Math.floor(room.longestMinutes / EXTERNAL_LOTTERY_DURATION_STEP_MINUTES)
             * EXTERNAL_LOTTERY_DURATION_STEP_MINUTES;
-        if (duration < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES) continue;
-        const candidates = room.intervals.flatMap((interval) => enumerateStarts(interval, duration, dayRange.endUTC)).map((start) => {
+        if (duration < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES) return [];
+        return room.intervals.flatMap((interval) => enumerateStarts(interval, duration, dayRange.endUTC)).map((start) => {
           const end = new Date(start.getTime() + duration * 60000);
-          const contention = prepared.slice(index + 1).filter((remaining) => overlaps(start, end, remaining.rangeStart, remaining.rangeEnd)).length;
-          return { start, end, contention };
-        }).filter((candidate) => !hasMemberConflict(application.memberIds, candidate.start, candidate.end, allocated))
-          .sort((a, b) => a.contention - b.contention || a.start.getTime() - b.start.getTime());
-        for (const candidate of candidates) {
-          const exceedsLimit = await hasReservationLimitConflict(
-            env,
-            application.user_id,
-            application.group_id,
-            candidate.start.toISOString(),
-            candidate.end.toISOString(),
-            { kind: 'LOTTERY', id: application.id }
-          );
-          if (!exceedsLimit) {
-            assignment = { roomNumber: room.roomNumber, start: candidate.start, end: candidate.end };
-            break;
-          }
+          const memberImpact = getMemberSchedulingImpact(application, start, end, remainingApplications);
+          const contention = remainingApplications.filter((remaining) => overlaps(start, end, remaining.rangeStart, remaining.rangeEnd)).length;
+          return { roomNumber: room.roomNumber, start, end, contention, ...memberImpact };
+        });
+      }).filter((candidate) => !hasMemberConflict(application.memberIds, candidate.start, candidate.end, allocated))
+        .sort((a, b) => (
+          a.madeUnschedulable - b.madeUnschedulable
+          || a.lostOptions - b.lostOptions
+          || a.contention - b.contention
+          || a.start.getTime() - b.start.getTime()
+          || a.roomNumber - b.roomNumber
+        ));
+      for (const candidate of candidates) {
+        const exceedsLimit = await hasReservationLimitConflict(
+          env,
+          application.user_id,
+          application.group_id,
+          candidate.start.toISOString(),
+          candidate.end.toISOString(),
+          { kind: 'LOTTERY', id: application.id }
+        );
+        if (!exceedsLimit) {
+          assignment = { roomNumber: candidate.roomNumber, start: candidate.start, end: candidate.end };
+          break;
         }
-        if (assignment) break;
       }
 
       if (!assignment) {
