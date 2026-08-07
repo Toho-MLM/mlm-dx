@@ -2,6 +2,23 @@ import { z } from 'zod'
 
 type RequestInit = globalThis.RequestInit
 
+export interface HttpErrorData {
+  error?: string
+  message?: string
+  members?: string[]
+}
+
+export class HttpError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly data?: HttpErrorData
+  ) {
+    super(message)
+    this.name = 'HttpError'
+  }
+}
+
 export class HttpClient {
   private baseUrl: string
 
@@ -27,12 +44,16 @@ export class HttpClient {
 
     if (!response.ok) {
       let errorMessage: string
+      let errorData: HttpErrorData | undefined
       
       try {
-        const errorData = await response.json()
-        if (errorData.error) {
+        const parsedErrorData: unknown = await response.json()
+        if (parsedErrorData && typeof parsedErrorData === 'object') {
+          errorData = parsedErrorData as HttpErrorData
+        }
+        if (errorData?.error) {
           errorMessage = errorData.error
-        } else if (errorData.message) {
+        } else if (errorData?.message) {
           errorMessage = errorData.message
         } else {
           errorMessage = `HTTP error! status: ${response.status}`
@@ -60,7 +81,7 @@ export class HttpClient {
           }
       }
 
-      throw new Error(errorMessage)
+      throw new HttpError(errorMessage, response.status, errorData)
     }
 
     const data = await response.json()

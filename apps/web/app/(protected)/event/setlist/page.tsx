@@ -6,6 +6,7 @@ import { useRef } from 'react'
 import { forwardRef, useImperativeHandle } from 'react'
 import { Event, Entry, SetlistItem } from '@/app/types'
 import { apiClient } from '@/lib/api'
+import { HttpError } from '@/lib/http-client'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -450,13 +451,16 @@ function SetlistContent() {
         } else {
           sectionRefs.current.get(eventId)?.reload()
         }
-      } else {
-        if (response.error === 'NO_VALID_GROUPS') {
+      }
+    } catch (error) {
+      console.error('Error creating entry:', error)
+      if (error instanceof HttpError) {
+        if (error.data?.error === 'NO_VALID_GROUPS') {
           toast.error('登録可能なグループがありません')
-        } else if (response.error === 'GROUP_LIMIT_EXCEEDED') {
-          const members = (response as { members?: string[] }).members || [];
+        } else if (error.data?.error === 'GROUP_LIMIT_EXCEEDED') {
+          const members = error.data.members || []
           if (members.length > 0) {
-            const memberNames = members.join('、');
+            const memberNames = members.join('、')
             toast.error(`${memberNames}のバンド登録数が上限を超えています`)
           } else {
             toast.error('メンバーのバンド登録数が上限を超えています')
@@ -464,10 +468,9 @@ function SetlistContent() {
         } else {
           toast.error('エントリー作成中にエラーが発生しました')
         }
+      } else {
+        toast.error('エラーが発生しました')
       }
-    } catch (error) {
-      console.error('Error creating entry:', error)
-      toast.error('エラーが発生しました')
     }
   }
 

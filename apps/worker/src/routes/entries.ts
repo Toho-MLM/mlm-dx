@@ -26,9 +26,17 @@ async function validateGroupLimit(env: Bindings, eventId: string, groupIds: stri
     return { isValid: true };
   }
 
+  const existingEntries = await env.DB.prepare(`
+    SELECT group_id
+    FROM entries
+    WHERE event_id = ?
+  `).bind(eventId).all<{ group_id: string }>();
+  const existingGroupIds = new Set(existingEntries.results.map(entry => entry.group_id));
+  const newGroupIds = [...new Set(groupIds)].filter(groupId => !existingGroupIds.has(groupId));
+
   const memberGroupCountMap = new Map<string, number>();
 
-  for (const groupId of groupIds) {
+  for (const groupId of newGroupIds) {
     const members = await env.DB.prepare(`
       SELECT DISTINCT user_id
       FROM group_member_instruments
