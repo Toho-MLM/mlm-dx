@@ -45,6 +45,7 @@ type CreateEntryRequest = SharedSchemas.CreateEntryRequest
 type UnavailablePeriod = SharedSchemas.UnavailablePeriod
 type CreateUnavailablePeriodRequest = SharedSchemas.CreateUnavailablePeriodRequest
 type ApiResponse<T> = SharedSchemas.ApiResponse<T>
+type CreateEntriesResponse = SharedSchemas.CreateEntriesResponse
 export type BandDraftState = {
   columns: Array<{ id: string; name: string }>
   cells: Record<string, Record<string, string[]>>
@@ -453,10 +454,10 @@ class ApiClient {
     return httpClient.get<ApiResponse<Entry[]>>(`/entries${params}`)
   }
 
-  async createEntries(data: CreateEntryRequest, admin?: boolean): Promise<ApiResponse<void>> {
+  async createEntries(data: CreateEntryRequest, admin?: boolean): Promise<CreateEntriesResponse> {
     const requestData = { ...data, admin: admin === true ? true : undefined }
     SharedSchemas.CreateEntryRequestSchema.parse(requestData)
-    return httpClient.post<ApiResponse<void>>(`/entries`, requestData)
+    return httpClient.post<CreateEntriesResponse>(`/entries`, requestData)
   }
 
   async deleteEntry(id: string): Promise<ApiResponse<void>> {

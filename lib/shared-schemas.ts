@@ -848,3 +848,7 @@ export interface ApiResponse<T = unknown> {
   error?: string;
   message?: string;
 }
+
+export interface CreateEntriesResponse extends ApiResponse<void> {
+  members?: string[];
+}
