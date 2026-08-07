@@ -25,7 +25,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
 import { showSuccessToast } from '@/lib/utils'
-import { AdminModeToggle } from '@/components/admin-mode-toggle'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 
 interface EntryWithSetlist {
@@ -239,7 +238,7 @@ function SetlistContent() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
   const isUserAdmin = user && isAdmin(user.role)
-  const [isAdminMode, setIsAdminMode] = useAdminMode(isUserAdmin)
+  const [isAdminMode] = useAdminMode(isUserAdmin)
   const [events, setEvents] = useState<Event[]>([])
   const [eventsLoading, setEventsLoading] = useState(true)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
@@ -433,10 +432,6 @@ function SetlistContent() {
     }
   }
 
-  const handleAdminToggle = (checked: boolean) => {
-    setIsAdminMode(checked)
-  }
-
   const handleCreateEntry = async (eventId: string, groupId: string) => {
     try {
       const response = await apiClient.createEntries({
@@ -474,18 +469,11 @@ function SetlistContent() {
     }
   }
 
-  const rightActions = (
-    <div className="flex items-center gap-2">
-      {isUserAdmin && (
-        <AdminModeToggle checked={isAdminMode} onCheckedChange={handleAdminToggle} />
-      )}
-      {!isUserAdmin && (
-        <Button size="sm" variant="outline" onClick={handleRefresh}>
-          更新
-        </Button>
-      )}
-    </div>
-  )
+  const rightActions = !isUserAdmin ? (
+    <Button size="sm" variant="outline" onClick={handleRefresh}>
+      更新
+    </Button>
+  ) : undefined
 
   return (
     <>

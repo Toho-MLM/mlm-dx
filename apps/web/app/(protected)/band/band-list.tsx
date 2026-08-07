@@ -32,7 +32,7 @@ export function BandList() {
   const isUserAdmin = user && isAdmin(user.role)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBand, setEditingBand] = useState<Group | undefined>()
-  const [isAdminMode, setIsAdminMode] = useAdminMode(isUserAdmin)
+  const [isAdminMode] = useAdminMode(isUserAdmin)
   const [bands, setBands] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
   const [memberOptions, setMemberOptions] = useState<MemberOption[]>([])
@@ -140,10 +140,6 @@ export function BandList() {
     }
   }
 
-  const handleAdminToggle = async (checked: boolean) => {
-    setIsAdminMode(checked)
-  }
-
   const handleDeleteConfirm = async () => {
     const targets = deletingBands.length > 0 ? deletingBands : deletingBand ? [deletingBand] : []
     if (targets.length === 0 || isDeleting) return
@@ -181,7 +177,6 @@ export function BandList() {
         onAddBand={handleAdd}
         onOpenMainDraft={handleOpenMainDraft}
         onRefresh={handleRefresh}
-        onAdminToggle={handleAdminToggle}
         isAdminMode={isAdminMode}
       />
       <div className="p-3 sm:p-4">

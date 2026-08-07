@@ -8,6 +8,8 @@ import { LogOutIcon, CalendarIcon, UsersIcon, SquarePlayIcon, FileUserIcon, Help
 import { Button } from "@/components/ui/button"
 import { navigationConfig } from "@/lib/navigation";
 import { isAdmin } from "@shared-schemas";
+import { AdminModeToggle } from "@/components/admin-mode-toggle";
+import { useAdminMode } from "@/hooks/use-admin-mode";
 
 const iconMap = {
   CalendarIcon,
@@ -27,6 +29,8 @@ export function AppSidebar() {
   const { setOpenMobile } = useSidebar();
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const isUserAdmin = Boolean(user && isAdmin(user.role));
+  const [isAdminMode, setIsAdminMode] = useAdminMode(isUserAdmin);
 
   const handleProfileClick = () => {
     setOpenMobile(false);
@@ -69,33 +73,40 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter>
         {user && (
-          <div className="flex items-center gap-3 p-3">
-            <div 
-              className="flex items-center gap-3 flex-1 cursor-pointer hover:bg-gray-100 rounded-md transition-colors p-2 -m-2" 
-              onClick={handleProfileClick}
-            >
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={user.picture} alt={user.nickname || user.name || 'User'} />
-                <AvatarFallback>
-                  {(user.nickname || user.name)?.charAt(0)?.toUpperCase() || 'U'}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{user.nickname || user.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+          <div className="p-3">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex items-center gap-3 flex-1 cursor-pointer hover:bg-gray-100 rounded-md transition-colors p-2 -m-2"
+                onClick={handleProfileClick}
+              >
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={user.picture} alt={user.nickname || user.name || 'User'} />
+                  <AvatarFallback>
+                    {(user.nickname || user.name)?.charAt(0)?.toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{user.nickname || user.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                </div>
               </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  signOut();
+                }}
+                className="g_id_signout h-8 w-8 p-0 hover:bg-gray-200"
+              >
+                <LogOutIcon className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                signOut();
-              }}
-              className="g_id_signout h-8 w-8 p-0 hover:bg-gray-200"
-            >
-              <LogOutIcon className="h-4 w-4" />
-            </Button>
+            {isUserAdmin && (
+              <div className="mt-3 border-t border-sidebar-border pt-3">
+                <AdminModeToggle checked={isAdminMode} onCheckedChange={setIsAdminMode} />
+              </div>
+            )}
           </div>
         )}
       </SidebarFooter>
