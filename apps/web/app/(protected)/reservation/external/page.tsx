@@ -198,7 +198,7 @@ function ExternalReservationContent() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
-  const [isAdminMode, setIsAdminMode] = useAdminMode(user && isAdmin(user.role))
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
   const [loading, setLoading] = useState(true)
   const [externals, setExternals] = useState<External[]>([])
   const [selectedExternalId, setSelectedExternalId] = useState<string | null>(null)
@@ -653,11 +653,6 @@ function ExternalReservationContent() {
           setIsReservationFormOpen(true)
         }}
         onRefresh={fetchData}
-        onAdminToggle={(checked) => {
-          setIsAdminMode(checked)
-          setMyGroups([])
-        }}
-        isAdminMode={isAdminMode}
       />
       <div className="mx-auto w-full max-w-none px-5 pb-5">
         <Card className="overflow-hidden rounded-lg bg-white shadow-lg">
