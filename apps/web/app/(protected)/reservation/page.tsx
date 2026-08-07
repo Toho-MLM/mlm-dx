@@ -175,7 +175,7 @@ function ReservationContent() {
   const [reservationLimits, setReservationLimits] = useState<ReservationLimit[]>([])
   const [reservationLimitRemaining, setReservationLimitRemaining] = useState<ReservationLimitRemaining[]>([])
   const { user, loading: authLoading } = useAuth();
-  const [isAdminMode, setIsAdminMode] = useAdminMode(user && isAdmin(user.role));
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role));
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -673,11 +673,6 @@ function ReservationContent() {
     await fetchReservations()
   }
 
-  const handleAdminToggle = (checked: boolean) => {
-    setIsAdminMode(checked)
-    setMyGroups([])
-  }
-
   const formatLimitMinutes = (minutes: number) => {
     const hours = Math.floor(minutes / 60)
     const remainingMinutes = minutes % 60
@@ -737,8 +732,6 @@ function ReservationContent() {
       <ReservationPageHeader 
         onAddReservation={handleAddReservation}
         onRefresh={handleRefresh}
-        onAdminToggle={handleAdminToggle}
-        isAdminMode={isAdminMode}
       />
       <div className="h-[calc(100vh-4rem)] flex flex-col" ref={calendarRef} style={{ position: 'relative' }}>
         <div className="flex-1 mx-auto px-5 w-full max-w-none">
