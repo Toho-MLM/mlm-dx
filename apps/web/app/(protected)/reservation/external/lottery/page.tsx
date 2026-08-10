@@ -78,7 +78,11 @@ const getLotterySlots = (studio: External): LotterySlot[] => {
       nextDayStart.getTime() - 5 * 60_000
     ))
     if (latestStart >= start) {
-      slots.push({ id: `${studio.id}:${studioDate}`, studio, date: studioDate, start, latestStart, end: studioEnd, drawAt: getLotteryDrawAt(studioDate) })
+      const end = new Date(Math.min(
+        studioEnd.getTime(),
+        latestStart.getTime() + EXTERNAL_LOTTERY_MAX_DURATION_MINUTES * 60_000
+      ))
+      slots.push({ id: `${studio.id}:${studioDate}`, studio, date: studioDate, start, latestStart, end, drawAt: getLotteryDrawAt(studioDate) })
     }
     studioDate = addJSTDays(studioDate, 1)
   }
