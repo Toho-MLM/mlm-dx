@@ -1,8 +1,9 @@
 import type { Context } from 'hono';
-import type { Bindings, Variables, UserRow } from '../index';
+import type { Bindings, Variables } from '../index';
 import type { User } from '../types';
 import { getCookie } from 'hono/cookie';
 import { verifyJWT } from '../auth';
+import { createD1AuthRepository } from '../features/auth/infrastructure/d1-repository';
 
 export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Variables }>, next: () => Promise<void>) => {
   try {
@@ -17,8 +18,7 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
       return c.json({ success: false, error: 'INVALID_TOKEN' }, 401);
     }
 
-    const fullUser = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?')
-      .bind(payload.sub).first<UserRow>();
+    const fullUser = await createD1AuthRepository(c.env.DB).findUserById(payload.sub);
 
     if (!fullUser) {
       return c.json({ success: false, error: 'USER_NOT_FOUND' }, 401);

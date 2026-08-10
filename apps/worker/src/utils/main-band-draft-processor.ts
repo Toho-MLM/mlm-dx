@@ -1,4 +1,5 @@
 import type { Bindings } from '../index';
+import { createD1BandDraftRepository } from '../features/band-draft/infrastructure/d1-repository';
 
 export async function deleteOldMainBandDrafts(env: Bindings): Promise<void> {
   const now = new Date();
@@ -6,8 +7,5 @@ export async function deleteOldMainBandDrafts(env: Bindings): Promise<void> {
   const cutoff = new Date(now);
   cutoff.setUTCDate(cutoff.getUTCDate() - 30);
 
-  await env.DB.prepare(`
-    DELETE FROM main_band_drafts
-    WHERE created_at < ?
-  `).bind(cutoff.toISOString()).run();
+  await createD1BandDraftRepository(env.DB).deleteOlderThan(cutoff.toISOString());
 }

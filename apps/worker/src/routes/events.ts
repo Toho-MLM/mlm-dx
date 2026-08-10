@@ -5,14 +5,8 @@ import { requireAdmin } from '../utils/admin';
 import { z } from 'zod';
 import { EventSchema, CreateEventRequestSchema, UpdateEventRequestSchema } from '@shared-schemas';
 import { parseUuid } from '../utils/uuid';
-
-function validateEventDates(entryDeadline: string, setlistDeadline: string, eventDate: string): boolean {
-  const entry = new Date(entryDeadline)
-  const setlist = new Date(setlistDeadline)
-  const event = new Date(eventDate)
-
-  return entry <= setlist && setlist < event
-}
+import { validateEventDates } from '../features/events/domain/dates';
+import { createD1EventRepository } from '../features/events/infrastructure/d1-repository';
 
 const eventRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -33,22 +27,12 @@ eventRoutes.post('/', async (c) => {
     
     const songLimit = requestData.song_limit ?? 2;
     
-    await c.env.DB.prepare(`
-      INSERT INTO events (id, title, event_date, entry_deadline, is_entry_accepting, setlist_deadline, is_setlist_accepting, group_limit, song_limit, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      newId,
-      requestData.title,
-      requestData.event_date,
-      requestData.entry_deadline,
-      requestData.is_entry_accepting ? 1 : 0,
-      requestData.setlist_deadline,
-      requestData.is_setlist_accepting ? 1 : 0,
-      requestData.group_limit,
-      songLimit,
-      now,
-      now
-    ).run();
+    await createD1EventRepository(c.env.DB).create({
+      id: newId, title: requestData.title, eventDate: requestData.event_date,
+      entryDeadline: requestData.entry_deadline, isEntryAccepting: requestData.is_entry_accepting,
+      setlistDeadline: requestData.setlist_deadline, isSetlistAccepting: requestData.is_setlist_accepting,
+      groupLimit: requestData.group_limit, songLimit,
+    }, now);
     
     return c.json({ success: true });
   } catch (error) {
@@ -65,17 +49,8 @@ eventRoutes.post('/', async (c) => {
 
 eventRoutes.get('/', async (c) => {
   try {
-    const events = await c.env.DB.prepare(`
-      SELECT id, title, event_date, entry_deadline, is_entry_accepting, setlist_deadline, is_setlist_accepting, group_limit, song_limit, created_at, updated_at
-      FROM events
-      ORDER BY event_date ASC
-    `).all();
-
-    const validatedEvents = events.results.map(event => ({
-      ...event,
-      is_entry_accepting: Boolean(event.is_entry_accepting),
-      is_setlist_accepting: Boolean(event.is_setlist_accepting),
-    })).map(event => EventSchema.parse(event));
+    const events = await createD1EventRepository(c.env.DB).list();
+    const validatedEvents = events.map(event => EventSchema.parse(event));
 
     return c.json({ success: true, data: validatedEvents });
   } catch (error) {
@@ -100,89 +75,31 @@ eventRoutes.put('/:id', async (c) => {
 
     const now = new Date().toISOString();
 
-    const oldEvent = await c.env.DB.prepare(`
-      SELECT group_limit, song_limit FROM events WHERE id = ?
-    `).bind(eventId).first<{ group_limit: number; song_limit: number }>();
+    const repository = createD1EventRepository(c.env.DB);
+    const oldEvent = await repository.findLimits(eventId);
 
     if (!oldEvent) {
       return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
 
-    const oldGroupLimit = oldEvent.group_limit;
-    const oldSongLimit = oldEvent.song_limit;
+    const oldGroupLimit = oldEvent.groupLimit;
+    const oldSongLimit = oldEvent.songLimit;
     const songLimit = requestData.song_limit !== undefined ? requestData.song_limit : oldSongLimit;
 
     if (requestData.group_limit < oldGroupLimit) {
-      const violatingMember = await c.env.DB.prepare(`
-        SELECT gmi.user_id
-        FROM entries entry
-        INNER JOIN group_member_instruments gmi ON gmi.group_id = entry.group_id
-        WHERE entry.event_id = ?
-        GROUP BY gmi.user_id
-        HAVING COUNT(DISTINCT entry.group_id) > ?
-        LIMIT 1
-      `).bind(eventId, requestData.group_limit).first<{ user_id: string }>();
-      if (violatingMember) {
+      if (await repository.hasGroupLimitViolation(eventId, requestData.group_limit)) {
         return c.json({ success: false, error: 'GROUP_LIMIT_CONFLICT' }, 409);
       }
     }
 
-    const enforceLoweredLimit = requestData.group_limit < oldGroupLimit ? 1 : 0;
-    const updateStatement = c.env.DB.prepare(`
-      UPDATE events 
-      SET title = ?, event_date = ?, entry_deadline = ?, is_entry_accepting = ?, setlist_deadline = ?, is_setlist_accepting = ?, group_limit = ?, song_limit = ?, updated_at = ?
-      WHERE id = ?
-        AND (
-          ? = 0
-          OR NOT EXISTS (
-            SELECT 1
-            FROM entries entry
-            INNER JOIN group_member_instruments gmi ON gmi.group_id = entry.group_id
-            WHERE entry.event_id = events.id
-            GROUP BY gmi.user_id
-            HAVING COUNT(DISTINCT entry.group_id) > ?
-          )
-        )
-    `).bind(
-      requestData.title,
-      requestData.event_date,
-      requestData.entry_deadline,
-      requestData.is_entry_accepting ? 1 : 0,
-      requestData.setlist_deadline,
-      requestData.is_setlist_accepting ? 1 : 0,
-      requestData.group_limit,
-      songLimit,
-      now,
-      eventId,
-      enforceLoweredLimit,
-      requestData.group_limit
-    );
-    const statements = [updateStatement];
-    if (songLimit < oldSongLimit) {
-      statements.push(c.env.DB.prepare(`
-        DELETE FROM setlist_items
-        WHERE position > ?
-          AND entry_id IN (SELECT id FROM entries WHERE event_id = ?)
-          AND EXISTS (
-            SELECT 1 FROM events ev
-            WHERE ev.id = ?
-              AND (
-                ? = 0
-                OR NOT EXISTS (
-                  SELECT 1
-                  FROM entries entry
-                  INNER JOIN group_member_instruments gmi ON gmi.group_id = entry.group_id
-                  WHERE entry.event_id = ev.id
-                  GROUP BY gmi.user_id
-                  HAVING COUNT(DISTINCT entry.group_id) > ?
-                )
-              )
-          )
-      `).bind(songLimit, eventId, eventId, enforceLoweredLimit, requestData.group_limit));
-    }
-    const [updateResult] = await c.env.DB.batch(statements);
-    if (Number(updateResult.meta.changes ?? 0) === 0) {
-      return enforceLoweredLimit
+    const updated = await repository.update({
+      id: eventId, title: requestData.title, eventDate: requestData.event_date,
+      entryDeadline: requestData.entry_deadline, isEntryAccepting: requestData.is_entry_accepting,
+      setlistDeadline: requestData.setlist_deadline, isSetlistAccepting: requestData.is_setlist_accepting,
+      groupLimit: requestData.group_limit, songLimit,
+    }, oldEvent, now);
+    if (!updated) {
+      return requestData.group_limit < oldGroupLimit
         ? c.json({ success: false, error: 'GROUP_LIMIT_CONFLICT' }, 409)
         : c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
@@ -209,9 +126,7 @@ eventRoutes.delete('/:id', async (c) => {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     }
 
-    await c.env.DB.prepare(`
-      DELETE FROM events WHERE id = ?
-    `).bind(eventId).run();
+    await createD1EventRepository(c.env.DB).delete(eventId);
 
     return c.json({ success: true, message: 'Event deleted successfully' });
   } catch (error) {

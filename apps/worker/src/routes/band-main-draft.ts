@@ -2,16 +2,9 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { requireAdmin } from '../utils/admin';
-import { DraftStateSchema, INSTRUMENTS, type DraftState } from '../band-draft-state';
-
-type DraftRow = {
-  id: string;
-  share_token: string;
-  state_json: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-};
+import type { DraftRow } from '../features/band-draft/application/repository';
+import { createInitialDraftState, groupsFromDraft, parseDraftState } from '../features/band-draft/domain/draft';
+import { createD1BandDraftRepository } from '../features/band-draft/infrastructure/d1-repository';
 
 const bandMainDraftRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -23,61 +16,16 @@ function createShareToken(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function parseDraftState(value: string): DraftState {
-  return DraftStateSchema.parse(JSON.parse(value));
-}
-
-function createInitialState(memberIds: string[]): DraftState {
-  const cells: DraftState['cells'] = {};
-  for (let index = 1; index <= 3; index += 1) {
-    const columnId = crypto.randomUUID();
-    cells[columnId] = {};
-    for (const instrument of INSTRUMENTS) {
-      cells[columnId][instrument] = [];
-    }
-  }
-
-  const columns = Object.keys(cells).map((id, index) => ({
-    id,
-    name: `バンド${index + 1}`,
-  }));
-
-  return {
-    columns,
-    cells,
-    unassignedMemberIds: memberIds,
-    version: 0,
-  };
-}
-
 async function fetchDraftByToken(env: Bindings, token: string): Promise<DraftRow | null> {
-  return await env.DB.prepare(`
-    SELECT *
-    FROM main_band_drafts
-    WHERE share_token = ?
-      AND id = (
-        SELECT id
-        FROM main_band_drafts
-        ORDER BY created_at DESC
-        LIMIT 1
-      )
-  `).bind(token).first<DraftRow>();
+  return createD1BandDraftRepository(env.DB).findByToken(token);
 }
 
 async function fetchLatestDraft(env: Bindings): Promise<DraftRow | null> {
-  return await env.DB.prepare(`
-    SELECT *
-    FROM main_band_drafts
-    ORDER BY created_at DESC
-    LIMIT 1
-  `).first<DraftRow>();
+  return createD1BandDraftRepository(env.DB).findLatest();
 }
 
 async function deleteDraftsExcept(env: Bindings, draftId: string): Promise<void> {
-  await env.DB.prepare(`
-    DELETE FROM main_band_drafts
-    WHERE id != ?
-  `).bind(draftId).run();
+  await createD1BandDraftRepository(env.DB).deleteExcept(draftId);
 }
 
 function canManageDraft(user: Variables['user'], draft: DraftRow): boolean {
@@ -85,30 +33,7 @@ function canManageDraft(user: Variables['user'], draft: DraftRow): boolean {
 }
 
 async function getMemberOptions(env: Bindings) {
-  const rows = await env.DB.prepare(`
-    SELECT
-      id,
-      name,
-      nickname,
-      instruments,
-      UPPER(SUBSTR(email, 1, 6)) as student_number
-    FROM users
-    ORDER BY grade DESC, UPPER(SUBSTR(email, 1, 6)) ASC
-  `).all<{ id: string; name: string; nickname: string | null; instruments: string; student_number: string }>();
-
-  return (rows.results ?? []).map((row) => ({
-    id: row.id,
-    name: `${row.student_number} ${row.nickname || row.name}`,
-    instruments: safeJsonParse(row.instruments, [] as string[]),
-  }));
-}
-
-function safeJsonParse<T>(json: string, fallback: T): T {
-  try {
-    return JSON.parse(json) as T;
-  } catch {
-    return fallback;
-  }
+  return createD1BandDraftRepository(env.DB).listMembers();
 }
 
 bandMainDraftRoutes.post('/', async (c) => {
@@ -126,19 +51,10 @@ bandMainDraftRoutes.post('/', async (c) => {
     const members = await getMemberOptions(c.env);
     const id = crypto.randomUUID();
     const shareToken = createShareToken();
-    const state = createInitialState(members.map((member) => member.id));
-
-    await c.env.DB.prepare(`
-      INSERT INTO main_band_drafts (id, share_token, state_json, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(
-      id,
-      shareToken,
-      JSON.stringify(state),
-      user.id,
-      now,
-      now
-    ).run();
+    const state = createInitialDraftState(members.map((member) => member.id), crypto.randomUUID);
+    await createD1BandDraftRepository(c.env.DB).create({
+      id, share_token: shareToken, state_json: JSON.stringify(state), created_by: user.id,
+    }, now);
 
     return c.json({ success: true, data: { shareToken } });
   } catch (error) {
@@ -213,69 +129,18 @@ bandMainDraftRoutes.post('/:token/finalize', async (c) => {
     }
     const state = parseDraftState(draft.state_json);
     const now = new Date().toISOString();
-    const groupsToCreate: Array<{
-      id: string;
-      name: string;
-      assignments: Array<{ instrument: string; memberId: string }>;
-    }> = [];
-
-    for (const column of state.columns) {
-      const columnCells = state.cells[column.id] ?? {};
-      const assignments: Array<{ instrument: string; memberId: string }> = [];
-
-      for (const instrument of INSTRUMENTS) {
-        for (const memberId of columnCells[instrument] ?? []) {
-          assignments.push({ instrument, memberId });
-        }
-      }
-
-      if (assignments.length === 0) {
-        continue;
-      }
-
-      groupsToCreate.push({
-        id: crypto.randomUUID(),
-        name: `本バンド${groupsToCreate.length + 1}`,
-        assignments,
-      });
-    }
+    const groupsToCreate = groupsFromDraft(state, crypto.randomUUID);
 
     const memberIds = [...new Set(groupsToCreate.flatMap((group) => (
       group.assignments.map((assignment) => assignment.memberId)
     )))];
     if (memberIds.length > 0) {
-      const placeholders = memberIds.map(() => '?').join(',');
-      const existingMembers = await c.env.DB.prepare(`SELECT id FROM users WHERE id IN (${placeholders})`)
-        .bind(...memberIds).all<{ id: string }>();
-      if (existingMembers.results.length !== memberIds.length) {
+      if (!await createD1BandDraftRepository(c.env.DB).membersExist(memberIds)) {
         return c.json({ success: false, error: 'DRAFT_MEMBER_NOT_FOUND' }, 409);
       }
     }
 
-    const statements = groupsToCreate.flatMap((group) => [
-      c.env.DB.prepare(`
-        INSERT INTO groups (id, name, is_main, is_active, created_at, updated_at)
-        SELECT ?, ?, TRUE, TRUE, ?, ?
-        WHERE EXISTS (SELECT 1 FROM main_band_drafts WHERE id = ? AND state_json = ?)
-      `).bind(group.id, group.name, now, now, draft.id, draft.state_json),
-      ...group.assignments.map((assignment) => c.env.DB.prepare(`
-        INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?
-        WHERE EXISTS (SELECT 1 FROM groups WHERE id = ?)
-      `).bind(
-        crypto.randomUUID(),
-        group.id,
-        assignment.memberId,
-        assignment.instrument,
-        now,
-        now,
-        group.id
-      )),
-    ]);
-    statements.push(c.env.DB.prepare('DELETE FROM main_band_drafts WHERE id = ? AND state_json = ?').bind(draft.id, draft.state_json));
-    const results = await c.env.DB.batch(statements);
-    const deleteResult = results.at(-1);
-    if (Number(deleteResult?.meta.changes ?? 0) === 0) {
+    if (!await createD1BandDraftRepository(c.env.DB).finalize(draft, groupsToCreate, now, crypto.randomUUID)) {
       return c.json({ success: false, error: 'DRAFT_NOT_FOUND' }, 409);
     }
 
@@ -303,10 +168,7 @@ bandMainDraftRoutes.delete('/:token', async (c) => {
       return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    await c.env.DB.prepare(`
-      DELETE FROM main_band_drafts
-      WHERE id = ?
-    `).bind(draft.id).run();
+    await createD1BandDraftRepository(c.env.DB).delete(draft.id);
 
     return c.json({ success: true });
   } catch (error) {

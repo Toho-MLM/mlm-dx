@@ -7,33 +7,16 @@ import {
   type ReservationEmailStatus,
 } from './reservation-email-template';
 import { sendMail } from './smtp';
+import type { ReservationEmailRecord, EmailRecipient } from '../features/reservations/application/email-repository';
+import { createD1ReservationEmailRepository } from '../features/reservations/infrastructure/d1-email-repository';
 
 export type { ReservationEmailKind } from './reservation-email-template';
-
-type ReservationEmailRow = {
-  id: string;
-  user_id: string;
-  group_id: string | null;
-  state: ReservationEmailStatus;
-  start_time: string;
-  end_time: string;
-  requester_name: string;
-  requester_email: string;
-  requester_preference_code: number;
-  group_name: string | null;
-  location_name: string | null;
-};
-
-type Recipient = {
-  email: string;
-  name?: string;
-};
 
 export type PreparedReservationEmail = {
   reservationId: string;
   notificationType: EmailNotificationType;
-  to: Recipient;
-  cc: Recipient[];
+  to: EmailRecipient;
+  cc: EmailRecipient[];
   subject: string;
   text: string;
   html: string;
@@ -57,35 +40,8 @@ async function fetchReservationRow(
   env: Bindings,
   kind: ReservationEmailKind,
   reservationId: string
-): Promise<ReservationEmailRow | null> {
-  if (kind === 'HALL') {
-    return env.DB.prepare(`
-      SELECT r.id, r.user_id, r.group_id, r.state, r.start_time, r.end_time,
-             COALESCE(u.nickname, u.name) AS requester_name,
-             u.email AS requester_email,
-             u.email_notification_preference_code AS requester_preference_code,
-             g.name AS group_name,
-             'ホール' AS location_name
-      FROM reservations r
-      INNER JOIN users u ON u.id = r.user_id
-      LEFT JOIN groups g ON g.id = r.group_id
-      WHERE r.id = ?
-    `).bind(reservationId).first<ReservationEmailRow>();
-  }
-
-  return env.DB.prepare(`
-    SELECT er.id, er.user_id, er.group_id, er.state, er.start_time, er.end_time,
-           COALESCE(u.nickname, u.name) AS requester_name,
-           u.email AS requester_email,
-           u.email_notification_preference_code AS requester_preference_code,
-           g.name AS group_name,
-           json_extract(es.room_names, '$[' || (er.room_number - 1) || ']') AS location_name
-    FROM external_reservations er
-    INNER JOIN users u ON u.id = er.user_id
-    LEFT JOIN groups g ON g.id = er.group_id
-    INNER JOIN external_studios es ON es.id = er.external_studio_id
-    WHERE er.id = ?
-  `).bind(reservationId).first<ReservationEmailRow>();
+): Promise<ReservationEmailRecord | null> {
+  return createD1ReservationEmailRepository(env.DB).find(kind, reservationId);
 }
 
 async function fetchEnabledGroupRecipients(
@@ -93,24 +49,8 @@ async function fetchEnabledGroupRecipients(
   groupId: string,
   prime: number,
   requesterEmail: string
-): Promise<Recipient[]> {
-  const members = await env.DB.prepare(`
-    SELECT DISTINCT u.email, COALESCE(u.nickname, u.name) AS name
-    FROM group_member_instruments gmi
-    INNER JOIN users u ON u.id = gmi.user_id
-    WHERE gmi.group_id = ?
-      AND u.email_notification_preference_code % ? = 0
-    ORDER BY name ASC
-  `).bind(groupId, prime).all<{ email: string; name: string }>();
-
-  const requesterKey = requesterEmail.toLowerCase();
-  const seen = new Set<string>();
-  return members.results.flatMap((member) => {
-    const key = member.email.toLowerCase();
-    if (key === requesterKey || seen.has(key)) return [];
-    seen.add(key);
-    return [{ email: member.email, name: member.name }];
-  });
+): Promise<EmailRecipient[]> {
+  return createD1ReservationEmailRepository(env.DB).enabledGroupRecipients(groupId, prime, requesterEmail);
 }
 
 export async function prepareReservationEmail(
@@ -123,7 +63,7 @@ export async function prepareReservationEmail(
   const prime = getEmailNotificationPrime(options.notificationType);
   const requesterEnabled = Number(row.requester_preference_code) % prime === 0;
   const to = { email: row.requester_email, name: row.requester_name };
-  let cc: Recipient[] = [];
+  let cc: EmailRecipient[] = [];
 
   if (row.group_id) {
     cc = await fetchEnabledGroupRecipients(env, row.group_id, prime, row.requester_email);
