@@ -78,6 +78,15 @@ export function AppSidebar() {
               <div
                 className="flex items-center gap-3 flex-1 cursor-pointer hover:bg-gray-100 rounded-md transition-colors p-2 -m-2"
                 onClick={handleProfileClick}
+                role="button"
+                tabIndex={0}
+                aria-label="プロフィールを開く"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    handleProfileClick()
+                  }
+                }}
               >
                 <Avatar className="h-8 w-8">
                   <AvatarImage src={user.picture} alt={user.nickname || user.name || 'User'} />
@@ -98,6 +107,7 @@ export function AppSidebar() {
                   signOut();
                 }}
                 className="g_id_signout h-8 w-8 p-0 hover:bg-gray-200"
+                aria-label="ログアウト"
               >
                 <LogOutIcon className="h-4 w-4" />
               </Button>

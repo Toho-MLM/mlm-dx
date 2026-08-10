@@ -269,7 +269,7 @@ app.post('/auth/signin/google', async (c) => {
     const codeChallenge = await generateCodeChallenge(codeVerifier);
     const nonce = generateNonce();
 
-    setCookie(c, 'oauth_state', state, {
+    setCookie(c, `oauth_state_${state}`, state, {
       httpOnly: true,
       secure: c.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -277,7 +277,7 @@ app.post('/auth/signin/google', async (c) => {
       path: '/',
     });
 
-    setCookie(c, 'pkce_verifier', codeVerifier, {
+    setCookie(c, `pkce_verifier_${state}`, codeVerifier, {
       httpOnly: true,
       secure: c.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -285,7 +285,7 @@ app.post('/auth/signin/google', async (c) => {
       path: '/',
     });
 
-    setCookie(c, 'oauth_nonce', nonce, {
+    setCookie(c, `oauth_nonce_${state}`, nonce, {
       httpOnly: true,
       secure: c.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -312,17 +312,26 @@ app.get('/auth/callback/google', async (c) => {
   try {
     const code = c.req.query('code');
     const state = c.req.query('state');
-    const storedState = getCookie(c, 'oauth_state');
-    const storedVerifier = getCookie(c, 'pkce_verifier');
-    const storedNonce = getCookie(c, 'oauth_nonce');
+    if (!state || !/^[A-Za-z0-9_-]{20,200}$/.test(state)) {
+      return c.redirect(`${c.env.FRONTEND_URL}/login?error=invalid_state`);
+    }
+    const storedState = getCookie(c, `oauth_state_${state}`);
+    const storedVerifier = getCookie(c, `pkce_verifier_${state}`);
+    const storedNonce = getCookie(c, `oauth_nonce_${state}`);
 
-    if (!code || !state || !storedState || state !== storedState) {
+    if (!code || !storedState || !storedVerifier || !storedNonce || state !== storedState) {
       return c.redirect(`${c.env.FRONTEND_URL}/login?error=invalid_state`);
     }
 
-    deleteCookie(c, 'oauth_state');
-    deleteCookie(c, 'pkce_verifier');
-    deleteCookie(c, 'oauth_nonce');
+    const oauthCookieOptions = {
+      path: '/',
+      httpOnly: true,
+      secure: c.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
+    };
+    deleteCookie(c, `oauth_state_${state}`, oauthCookieOptions);
+    deleteCookie(c, `pkce_verifier_${state}`, oauthCookieOptions);
+    deleteCookie(c, `oauth_nonce_${state}`, oauthCookieOptions);
 
     const redirectUri = `${c.env.AUTH_URL}/auth/callback/google`;
     const tokenData = await exchangeCodeForToken(
@@ -538,13 +547,6 @@ app.post('/auth/passkey/register/finish', requireAuth, async (c) => {
     const credentialPublicKey = encodeBase64Url(credential.publicKey as unknown as Uint8Array);
     const counter = credential.counter ?? 0;
     const credentialTransports = credential.transports ? JSON.stringify(credential.transports) : null;
-    console.log('[Passkey Register] Credential extracted', { 
-      credentialId,
-      hasPublicKey: !!credentialPublicKey,
-      counter,
-      deviceType: credentialDeviceType,
-      backedUp: credentialBackedUp
-    });
     const existing = await c.env.DB.prepare('SELECT id FROM passkeys WHERE credential_id = ?').bind(credentialId).first<{ id: string }>();
     const timestamp = nowISO();
     if (existing) {
@@ -579,11 +581,6 @@ app.post('/auth/passkey/register/finish', requireAuth, async (c) => {
       ).run();
     }
     await deleteChallenge(c.env, challenge.id);
-    console.log('[Passkey Register] Registration successful', { 
-      credentialId,
-      userId: user.id,
-      action: existing ? 'updated' : 'created'
-    });
     return c.json({ success: true });
   } catch (error) {
     console.error('[Passkey Register] Registration error:', error);
@@ -657,29 +654,25 @@ app.post('/auth/passkey/login/finish', async (c) => {
       await deleteChallenge(c.env, challenge.id);
       return c.json({ success: false });
     }
-    console.log('[Passkey Login] Credential ID found', { credentialId });
     const matched = await fetchPasskeyByCredential(c.env, credentialId);
     if (!matched) {
-      console.warn('[Passkey Login] Passkey not found for credential', { credentialId });
+      console.warn('[Passkey Login] Passkey not found');
       await deleteChallenge(c.env, challenge.id);
       return c.json({ success: false, error: 'PASSKEY_NOT_FOUND' });
     }
-    console.log('[Passkey Login] Passkey found', { passkeyId: matched.id, userId: matched.user_id });
     const userRow = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(matched.user_id).first<UserRow>();
     if (!userRow) {
-      console.error('[Passkey Login] User not found', { userId: matched.user_id });
+      console.error('[Passkey Login] User not found');
       await deleteChallenge(c.env, challenge.id);
       return c.json({ success: false });
     }
-    console.log('[Passkey Login] User found', { userId: userRow.id, email: userRow.email });
     const verification = await verifyAuthentication(c.env, challenge.challenge, parsed.response, matched);
     if (!verification.verified || !verification.authenticationInfo) {
       console.error('[Passkey Login] Verification failed', { 
         verified: verification.verified,
         hasAuthInfo: !!verification.authenticationInfo,
         error: verification.verified === false ? 'Verification returned false' : 'No authentication info',
-        passkeyId: matched.id,
-        credentialId
+        hasMatchedPasskey: true
       });
       await deleteChallenge(c.env, challenge.id);
       return c.json({ success: false });
@@ -687,7 +680,7 @@ app.post('/auth/passkey/login/finish', async (c) => {
     const { authenticationInfo } = verification;
     console.log('[Passkey Login] Verification successful', { 
       newCounter: authenticationInfo.newCounter,
-      passkeyId: matched.id
+      counterUpdated: true
     });
     await c.env.DB.prepare(
       'UPDATE passkeys SET counter = ?, updated_at = ? WHERE id = ?'
@@ -711,7 +704,6 @@ app.post('/auth/passkey/login/finish', async (c) => {
       path: '/',
     });
     await deleteChallenge(c.env, challenge.id);
-    console.log('[Passkey Login] Login successful', { userId: userRow.id, email: userRow.email });
     return c.json({ success: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -797,15 +789,6 @@ app.get('/auth/check-first-user', async (c) => {
 
 app.post('/auth/create-first-user', async (c) => {
   try {
-    const userCount = await c.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM users'
-    ).first<{ count: number }>();
-
-    const count = userCount?.count ?? 0;
-    if (count > 0) {
-      return c.json({ success: false, error: 'USERS_ALREADY_EXIST' }, 403);
-    }
-
     const requestData = z.object({
       name: z.string().min(1),
       email: z.string().email(),
@@ -824,9 +807,10 @@ app.post('/auth/create-first-user', async (c) => {
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
     
-    await c.env.DB.prepare(`
+    const insertResult = await c.env.DB.prepare(`
       INSERT INTO users (id, name, nickname, email, grade, instruments, role, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (SELECT 1 FROM users)
     `).bind(
       newId,
       requestData.name,
@@ -838,6 +822,10 @@ app.post('/auth/create-first-user', async (c) => {
       now,
       now
     ).run();
+
+    if (Number(insertResult.meta.changes ?? 0) === 0) {
+      return c.json({ success: false, error: 'USERS_ALREADY_EXIST' }, 403);
+    }
     
     return c.json({ success: true });
   } catch (error) {

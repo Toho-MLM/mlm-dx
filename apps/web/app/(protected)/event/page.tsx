@@ -23,9 +23,11 @@ import { showSuccessToast } from '@/lib/utils'
 export default function Page() {
   const [events, setEvents] = useState<Event[]>([])
   const [loadingEvents, setLoadingEvents] = useState(true)
+  const [eventsError, setEventsError] = useState<string | null>(null)
   const [groupOptions, setGroupOptions] = useState<Array<{ id: string; name: string; is_main: boolean }>>([])
   const [entries, setEntries] = useState<Array<{ id: string; event_id: string; group_id: string; note?: string | null }>>([])
   const [loadingEntries, setLoadingEntries] = useState(true)
+  const [aggregatesError, setAggregatesError] = useState(false)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<Event | undefined>()
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -36,12 +38,16 @@ export default function Page() {
   const fetchAggregates = useCallback(async () => {
     try {
       setLoadingEntries(true)
+      setAggregatesError(false)
       const [groupsRes, entriesRes] = await Promise.all([
         apiClient.getGroupOptions(!!isUserAdmin),
         apiClient.getEntries(),
       ])
       if (groupsRes.success && groupsRes.data) setGroupOptions(groupsRes.data)
       if (entriesRes.success && entriesRes.data) setEntries(entriesRes.data)
+      if (!groupsRes.success || !entriesRes.success) throw new Error('AGGREGATES_FETCH_FAILED')
+    } catch {
+      setAggregatesError(true)
     } finally {
       setLoadingEntries(false)
     }
@@ -50,8 +56,12 @@ export default function Page() {
   const fetchEvents = async () => {
     try {
       setLoadingEvents(true)
+      setEventsError(null)
       const res = await apiClient.getEvents()
-      if (res.success && res.data) setEvents(res.data)
+      if (!res.success) throw new Error(res.error || 'EVENT_FETCH_FAILED')
+      setEvents(res.data || [])
+    } catch {
+      setEventsError('イベントを読み込めませんでした。')
     } finally {
       setLoadingEvents(false)
     }
@@ -152,9 +162,22 @@ export default function Page() {
         onAddEvent={isUserAdmin ? handleAdd : undefined}
       />
       <div className="p-4 pt-0 mx-auto">
+      {eventsError ? (
+        <div className="rounded-md border border-destructive/50 bg-white p-4 text-sm text-destructive">
+          {eventsError}
+          <button className="ml-3 underline" onClick={() => void fetchEvents()}>再読み込み</button>
+        </div>
+      ) : aggregatesError ? (
+        <div className="mb-4 rounded-md border border-destructive/50 bg-white p-4 text-sm text-destructive">
+          参加状況を読み込めませんでした。
+          <button className="ml-3 underline" onClick={() => void fetchAggregates()}>再読み込み</button>
+        </div>
+      ) : null}
       <EventProvider value={{ groupOptions, userEntries: entries, loadingEntries, onEntriesChanged: handleEntriesChanged, onEdit: isUserAdmin ? handleEdit : undefined, onDelete: isUserAdmin ? handleDeleteClick : undefined }}>
         <div className="space-y-5">
-          {events.map((event) => (
+          {!eventsError && events.length === 0 ? (
+            <div className="rounded-md border bg-white p-6 text-center text-sm text-muted-foreground">イベントはありません。</div>
+          ) : events.map((event) => (
             <EventCard
               key={event.id}
               event={event}

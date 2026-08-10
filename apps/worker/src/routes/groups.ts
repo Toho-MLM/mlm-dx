@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema, DeleteGroupsRequestSchema, type Group } from '../schemas';
-import { requireAdmin } from '../utils/admin';
+import { isAdmin, requireAdmin } from '../utils/admin';
 import { ZodError } from 'zod';
 import { parseUuid } from '../utils/uuid';
 
@@ -13,6 +13,8 @@ type GroupAssignmentRow = {
   instrument: string;
   user_id: string;
 };
+
+const ALLOWED_INSTRUMENTS = new Set(['VO', 'GT', 'KEY', 'DR', 'BA']);
 
 function normalizeAssignments(assignmentsInput: unknown): Record<string, string[]> | null {
   const rawAssignments = typeof assignmentsInput === 'string'
@@ -26,12 +28,15 @@ function normalizeAssignments(assignmentsInput: unknown): Record<string, string[
   const normalizedAssignments: Record<string, string[]> = {};
 
   for (const [instrument, memberUserIds] of Object.entries(rawAssignments)) {
+    if (!ALLOWED_INSTRUMENTS.has(instrument)) {
+      return null;
+    }
     if (Array.isArray(memberUserIds)) {
       const parsedMemberUserIds = memberUserIds.map(parseUuid);
       if (parsedMemberUserIds.some(memberUserId => memberUserId === null)) {
         return null;
       }
-      normalizedAssignments[instrument] = parsedMemberUserIds as string[];
+      normalizedAssignments[instrument] = [...new Set(parsedMemberUserIds as string[])];
       continue;
     }
 
@@ -45,6 +50,44 @@ function normalizeAssignments(assignmentsInput: unknown): Record<string, string[
   }
 
   return normalizedAssignments;
+}
+
+async function validateAssignments(
+  env: Bindings,
+  assignmentsInput: unknown,
+  options: { requiredUserId?: string; minimumMembers?: number } = {}
+): Promise<Record<string, string[]> | null> {
+  let assignments: Record<string, string[]> | null;
+  try {
+    assignments = normalizeAssignments(assignmentsInput);
+  } catch {
+    return null;
+  }
+  if (!assignments) return null;
+
+  const memberIds = [...new Set(Object.values(assignments).flat())];
+  if (memberIds.length < (options.minimumMembers ?? 0)) return null;
+  if (options.requiredUserId && !memberIds.includes(options.requiredUserId)) return null;
+  if (memberIds.length === 0) return assignments;
+
+  const placeholders = memberIds.map(() => '?').join(',');
+  const users = await env.DB.prepare(`SELECT id FROM users WHERE id IN (${placeholders})`)
+    .bind(...memberIds).all<{ id: string }>();
+  return users.results.length === memberIds.length ? assignments : null;
+}
+
+function createAssignmentStatements(
+  env: Bindings,
+  groupId: string,
+  assignments: Record<string, string[]>,
+  now: string
+) {
+  return Object.entries(assignments).flatMap(([instrument, memberUserIds]) => (
+    memberUserIds.map((memberUserId) => env.DB.prepare(`
+      INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(crypto.randomUUID(), groupId, memberUserId, instrument, now, now))
+  ));
 }
 
 export async function isUserInGroup(env: Bindings, userId: string, groupId: string): Promise<boolean> {
@@ -74,43 +117,34 @@ groupRoutes.use('*', requireAuth);
 
 groupRoutes.post('/', async (c) => {
   try {
+    const user = c.get('user');
     const requestData = CreateGroupRequestSchema.parse(await c.req.json());
+
+    if (requestData.is_main && !isAdmin(user.role)) {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    if (!requestData.assignments) {
+      return c.json({ success: false, error: 'INVALID_ASSIGNMENTS_FORMAT' }, 400);
+    }
+    const assignments = await validateAssignments(c.env, requestData.assignments, {
+      requiredUserId: isAdmin(user.role) ? undefined : user.id,
+      minimumMembers: 2,
+    });
+    if (!assignments) {
+      return c.json({ success: false, error: 'INVALID_ASSIGNMENTS_FORMAT' }, 400);
+    }
 
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
-    
-    await c.env.DB.prepare(`
-      INSERT INTO groups (id, name, is_main, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, TRUE, ?, ?)
-    `).bind(newId, requestData.name, requestData.is_main, now, now).run();
-    
-    if (requestData.assignments) {
-      let assignments: Record<string, string[]> | null;
-      try {
-        assignments = normalizeAssignments(requestData.assignments);
-      } catch (parseError) {
-        return c.json({
-          success: false,
-          error: 'INVALID_ASSIGNMENTS_FORMAT'
-        }, 400);
-      }
 
-      if (!assignments) {
-        return c.json({
-          success: false,
-          error: 'INVALID_ASSIGNMENTS_FORMAT'
-        }, 400);
-      }
-
-      for (const [instrument, memberUserIds] of Object.entries(assignments)) {
-        for (const memberUserId of memberUserIds) {
-          await c.env.DB.prepare(`
-            INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).bind(crypto.randomUUID(), newId, memberUserId, instrument, now, now).run();
-        }
-      }
-    }
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        INSERT INTO groups (id, name, is_main, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, TRUE, ?, ?)
+      `).bind(newId, requestData.name, requestData.is_main ? 1 : 0, now, now),
+      ...createAssignmentStatements(c.env, newId, assignments, now),
+    ]);
     
     return c.json({ success: true });
   } catch (error) {
@@ -213,51 +247,55 @@ groupRoutes.get('/', async (c) => {
 
 groupRoutes.put('/:id', async (c) => {
   try {
+    const user = c.get('user');
     const groupId = parseUuid(c.req.param('id'));
     if (!groupId) {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     }
     const requestData = UpdateGroupRequestSchema.parse(await c.req.json());
 
-    const now = new Date().toISOString();
+    const currentGroup = await c.env.DB.prepare(`
+      SELECT id, is_main, is_active FROM groups WHERE id = ?
+    `).bind(groupId).first<{ id: string; is_main: number; is_active: number }>();
+    if (!currentGroup) {
+      return c.json({ success: false, error: 'GROUP_NOT_FOUND' }, 404);
+    }
 
-    await c.env.DB.prepare(`
-      UPDATE groups 
-      SET name = ?, is_main = ?, is_active = ?, updated_at = ?
-      WHERE id = ?
-    `).bind(requestData.name, requestData.is_main, requestData.is_active, now, groupId).run();
-
-    if (requestData.assignments) {
-      let assignments: Record<string, string[]> | null;
-      try {
-        assignments = normalizeAssignments(requestData.assignments);
-      } catch (parseError) {
-        return c.json({
-          success: false,
-          error: 'INVALID_ASSIGNMENTS_FORMAT'
-        }, 400);
+    const userIsAdmin = isAdmin(user.role);
+    if (!userIsAdmin) {
+      const isMember = await isUserInGroup(c.env, user.id, groupId);
+      if (!isMember || Boolean(currentGroup.is_main)) {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
       }
-
-      if (!assignments) {
-        return c.json({
-          success: false,
-          error: 'INVALID_ASSIGNMENTS_FORMAT'
-        }, 400);
-      }
-
-      await c.env.DB.prepare(`
-        DELETE FROM group_member_instruments WHERE group_id = ?
-      `).bind(groupId).run();
-
-      for (const [instrument, memberUserIds] of Object.entries(assignments)) {
-        for (const memberUserId of memberUserIds) {
-          await c.env.DB.prepare(`
-            INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).bind(crypto.randomUUID(), groupId, memberUserId, instrument, now, now).run();
-        }
+      if (requestData.is_main || requestData.is_active !== Boolean(currentGroup.is_active)) {
+        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
       }
     }
+
+    const assignments = requestData.assignments === undefined
+      ? undefined
+      : await validateAssignments(c.env, requestData.assignments, {
+          requiredUserId: userIsAdmin ? undefined : user.id,
+          minimumMembers: 2,
+        });
+    if (requestData.assignments !== undefined && !assignments) {
+      return c.json({ success: false, error: 'INVALID_ASSIGNMENTS_FORMAT' }, 400);
+    }
+
+    const now = new Date().toISOString();
+
+    const statements = [c.env.DB.prepare(`
+        UPDATE groups
+        SET name = ?, is_main = ?, is_active = ?, updated_at = ?
+        WHERE id = ?
+      `).bind(requestData.name, requestData.is_main ? 1 : 0, requestData.is_active ? 1 : 0, now, groupId)];
+    if (assignments) {
+      statements.push(
+        c.env.DB.prepare('DELETE FROM group_member_instruments WHERE group_id = ?').bind(groupId),
+        ...createAssignmentStatements(c.env, groupId, assignments, now)
+      );
+    }
+    await c.env.DB.batch(statements);
 
     return c.json({ success: true });
   } catch (error) {

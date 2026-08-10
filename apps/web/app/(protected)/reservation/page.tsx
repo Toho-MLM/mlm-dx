@@ -32,6 +32,7 @@ import {
   toEventCalendarEvents,
   toReservationCalendarEvents,
   toUnavailableCalendarEvents,
+  toJSTWallClockDate,
   type CalendarEvent,
   type ReservationDraft,
 } from './reservation-calendar'
@@ -39,6 +40,11 @@ type GroupOption = {
   id: string;
   name: string;
   is_main: boolean;
+}
+
+const toJSTISOString = (date: Date, hour: number, minute: number) => {
+  const dateKey = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-')
+  return new Date(`${dateKey}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+09:00`).toISOString()
 }
 
 import { apiClient } from '@/lib/api'
@@ -146,7 +152,7 @@ export default function Page() {
 function ReservationContent() {
   const [isMobile, setIsMobile] = useState(false)
   const [reservationDraft, setReservationDraft] = useState<ReservationDraft>({
-    date: startOfDay(new Date()),
+    date: startOfDay(toJSTWallClockDate(new Date())),
     group: null as string | null,
     startHour: null as number | null,
     startMinute: null as number | null,
@@ -155,7 +161,7 @@ function ReservationContent() {
   })
   const [isReservationFormOpen, setIsReservationFormOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<CalendarEvent | null>(null)
-  const [currentDate, setCurrentDate] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(toJSTWallClockDate(new Date()))
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -167,12 +173,16 @@ function ReservationContent() {
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
   const [reservationData, setReservationData] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [reservationError, setReservationError] = useState<string | null>(null)
   const [myGroups, setMyGroups] = useState<GroupOption[]>([])
   const [isGroupsLoading, setIsGroupsLoading] = useState(false)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [unavailablePeriods, setUnavailablePeriods] = useState<CalendarEvent[]>([])
   const [reservationLimits, setReservationLimits] = useState<ReservationLimit[]>([])
   const [reservationLimitRemaining, setReservationLimitRemaining] = useState<ReservationLimitRemaining[]>([])
+  const [reservationLimitError, setReservationLimitError] = useState(false)
+  const [reservationLimitLoading, setReservationLimitLoading] = useState(true)
+  const reservationLimitRequestIdRef = useRef(0)
   const { user, loading: authLoading } = useAuth();
   const [isAdminMode] = useAdminMode(user && isAdmin(user.role));
   const router = useRouter()
@@ -184,23 +194,35 @@ function ReservationContent() {
 
     const scope = reservationDraft.group ? 'GROUP' : 'PERSONAL'
     const targetId = reservationDraft.group || user.id
-    const referenceTime = startOfDay(reservationDraft.date).toISOString()
+    const referenceTime = toJSTISOString(reservationDraft.date, 0, 0)
+    const requestId = ++reservationLimitRequestIdRef.current
 
     try {
+      setReservationLimitLoading(true)
+      setReservationLimitError(false)
       const response = await apiClient.getReservationLimitRemaining(scope, targetId, referenceTime)
+      if (requestId !== reservationLimitRequestIdRef.current) return
       if (response.success && response.data) {
         setReservationLimitRemaining(response.data)
       } else {
         setReservationLimitRemaining([])
+        setReservationLimitError(true)
       }
     } catch (err) {
+      if (requestId !== reservationLimitRequestIdRef.current) return
       console.error('Failed to fetch reservation limit remaining:', err)
       setReservationLimitRemaining([])
+      setReservationLimitError(true)
+    } finally {
+      if (requestId === reservationLimitRequestIdRef.current) {
+        setReservationLimitLoading(false)
+      }
     }
   }, [user, reservationDraft.group, reservationDraft.date])
 
   const fetchReservations = useCallback(async () => {
     try {
+      setReservationError(null)
       const [reservationsResponse, eventsResponse, unavailablePeriodsResponse, reservationLimitsResponse] = await Promise.all([
         apiClient.getReservations(isAdminMode),
         apiClient.getEvents(),
@@ -208,20 +230,17 @@ function ReservationContent() {
         apiClient.getReservationLimits(),
       ])
 
-      if (reservationsResponse.success && reservationsResponse.data) {
-        setReservationData(toReservationCalendarEvents(reservationsResponse.data))
+      if (!reservationsResponse.success || !eventsResponse.success || !unavailablePeriodsResponse.success || !reservationLimitsResponse.success) {
+        throw new Error('RESERVATION_FETCH_FAILED')
       }
-      if (eventsResponse.success && eventsResponse.data) {
-        setEvents(toEventCalendarEvents(eventsResponse.data))
-      }
-      if (unavailablePeriodsResponse.success && unavailablePeriodsResponse.data) {
-        setUnavailablePeriods(toUnavailableCalendarEvents(unavailablePeriodsResponse.data))
-      }
-      if (reservationLimitsResponse.success && reservationLimitsResponse.data) {
-        setReservationLimits(reservationLimitsResponse.data)
-      }
+
+      setReservationData(toReservationCalendarEvents(reservationsResponse.data || []))
+      setEvents(toEventCalendarEvents(eventsResponse.data || []))
+      setUnavailablePeriods(toUnavailableCalendarEvents(unavailablePeriodsResponse.data || []))
+      setReservationLimits(reservationLimitsResponse.data || [])
     } catch (error) {
       console.error('Failed to fetch reservation data:', error)
+      setReservationError('予約情報を読み込めませんでした。')
     }
   }, [isAdminMode])
 
@@ -290,12 +309,10 @@ function ReservationContent() {
       return
     }
 
-    const start = new Date(reservationDraft.date)
-    start.setHours(reservationDraft.startHour, reservationDraft.startMinute)
-    const end = new Date(reservationDraft.date)
-    end.setHours(reservationDraft.endHour, reservationDraft.endMinute)
+    const startISOString = toJSTISOString(reservationDraft.date, reservationDraft.startHour, reservationDraft.startMinute)
+    const endISOString = toJSTISOString(reservationDraft.date, reservationDraft.endHour, reservationDraft.endMinute)
 
-    const validation = validateReservationTime(start.toISOString(), end.toISOString());
+    const validation = validateReservationTime(startISOString, endISOString);
     if (!validation.isValid) {
       toast.error('予約時間が無効です', {
         description: validation.error || '予約時間が無効です。'
@@ -310,8 +327,8 @@ function ReservationContent() {
       
       const response = await apiClient.createReservation({
         group_id: !isPersonalReservation && reservationDraft.group ? reservationDraft.group : undefined,
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
+        start_time: startISOString,
+        end_time: endISOString,
         admin: isAdminMode || undefined,
       });
 
@@ -319,7 +336,7 @@ function ReservationContent() {
         showSuccessToast({ message: '予約を送信しました' })
         
         setReservationDraft({
-          date: new Date(),
+          date: startOfDay(toJSTWallClockDate(new Date())),
           group: null,
           startHour: null,
           startMinute: null,
@@ -494,10 +511,10 @@ function ReservationContent() {
   const getStartTimeMin = () => {
     const earliest = new Date(reservationDraft.date)
     earliest.setHours(6, 0, 0, 0)
-    const today = startOfDay(new Date())
+    const today = startOfDay(toJSTWallClockDate(new Date()))
     if (startOfDay(reservationDraft.date).getTime() !== today.getTime()) return '06:00'
 
-    const now = new Date()
+    const now = toJSTWallClockDate(new Date())
     const hadPartialMinute = now.getSeconds() > 0 || now.getMilliseconds() > 0
     now.setSeconds(0, 0)
     const remainder = now.getMinutes() % 5
@@ -509,6 +526,8 @@ function ReservationContent() {
 
   const isReservationButtonDisabled = () => {
     return isSending ||
+      reservationLimitLoading ||
+      reservationLimitError ||
       reservationDraft.startHour === null ||
       reservationDraft.startMinute === null ||
       reservationDraft.endHour === null ||
@@ -665,7 +684,10 @@ function ReservationContent() {
       return
     }
 
-    const validation = validateReservationTime(start.toISOString(), end.toISOString())
+    const validation = validateReservationTime(
+      toJSTISOString(start, start.getHours(), start.getMinutes()),
+      toJSTISOString(end, end.getHours(), end.getMinutes())
+    )
     if (!validation.isValid) {
       toast.error('この時間は予約できません', {
         description: validation.error || '予約時間が無効です。',
@@ -719,7 +741,10 @@ function ReservationContent() {
     }
 
     if (limit.start_datetime && limit.end_datetime) {
-      return `${format(new Date(limit.start_datetime), 'M/d H:mm', { locale: jaLocale })} 〜 ${format(new Date(limit.end_datetime), 'M/d H:mm', { locale: jaLocale })}`
+      const formatter = new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      })
+      return `${formatter.format(new Date(limit.start_datetime))} 〜 ${formatter.format(new Date(limit.end_datetime))}`
     }
 
     return '期間限定'
@@ -733,8 +758,8 @@ function ReservationContent() {
       .filter((item) => {
         if (item.limit_type === 'ROLLING') return true
         if (!item.start_datetime || !item.end_datetime) return false
-        const limitStart = new Date(item.start_datetime)
-        const limitEnd = new Date(item.end_datetime)
+        const limitStart = toJSTWallClockDate(item.start_datetime)
+        const limitEnd = toJSTWallClockDate(item.end_datetime)
         return limitStart < selectedDayEnd && limitEnd > selectedDayStart
       })
       .map((item) => ({
@@ -751,8 +776,8 @@ function ReservationContent() {
       .filter((limit) => {
         if (limit.limit_type === 'ROLLING') return true
         if (!limit.start_datetime || !limit.end_datetime) return false
-        const limitStart = new Date(limit.start_datetime)
-        const limitEnd = new Date(limit.end_datetime)
+        const limitStart = toJSTWallClockDate(limit.start_datetime)
+        const limitEnd = toJSTWallClockDate(limit.end_datetime)
         return limitStart < selectedDayEnd && limitEnd > selectedDayStart
       })
   }, [reservationDraft.date, reservationLimits])
@@ -775,7 +800,7 @@ function ReservationContent() {
                 <Skeleton className="h-9 w-40" />
                 <Skeleton className="h-9 w-10" />
               </div>
-            ) : (
+            ) : reservationError ? null : (
               <div className="space-y-2">
                 <div className={"p-2 pb-0 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
                   <Button variant="outline" onClick={() => handleNavigate(subDays(currentDate, getRangeSkip()), currentView)}>
@@ -835,6 +860,13 @@ function ReservationContent() {
             {loading ? (
               <div className="w-full h-[720px]">
                 <Skeleton className="w-full h-full" />
+              </div>
+            ) : reservationError ? (
+              <div className="flex h-[720px] items-center justify-center rounded-md border bg-white p-6 text-sm text-destructive">
+                <div className="text-center">
+                  <p>{reservationError}</p>
+                  <Button variant="link" onClick={() => void handleRefresh()}>再読み込み</Button>
+                </div>
               </div>
             ) : (
               <BigCalendar
@@ -962,7 +994,7 @@ function ReservationContent() {
                       <p><strong>ステータス</strong> {eventStateNames[selectedReservation.resource.state]}</p>
                     )}
                   </div>
-                  {selectedReservation.resource.cancellable && selectedReservation.end > new Date() && (
+                  {selectedReservation.resource.cancellable && selectedReservation.resource.end_time && new Date(selectedReservation.resource.end_time) > new Date() && (
                     <Button
                       type="button"
                       variant="outline"
@@ -1069,8 +1101,8 @@ function ReservationContent() {
         <ReservationEditDialog
           open={isEditOpen}
           onOpenChange={setIsEditOpen}
-          start={selectedReservation.start}
-          end={selectedReservation.end}
+          start={new Date(selectedReservation.resource.start_time || selectedReservation.start)}
+          end={new Date(selectedReservation.resource.end_time || selectedReservation.end)}
           isSaving={isSending}
           onSave={handleUpdateReservation}
         />
@@ -1143,14 +1175,23 @@ function ReservationContent() {
                     ))}
                   </div>
                 )}
+                {reservationLimitLoading && (
+                  <p className="mt-2 text-xs text-muted-foreground">予約上限の残り時間を確認しています…</p>
+                )}
+                {reservationLimitError && (
+                  <div className="mt-2 rounded-md border border-destructive/50 p-2 text-xs text-destructive">
+                    予約上限の残り時間を確認できません。再読み込みしてから予約してください。
+                    <Button type="button" variant="link" className="ml-2 h-auto p-0 text-xs" onClick={() => void fetchReservationLimitRemaining()}>再読み込み</Button>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="date" className="text-sm font-medium">予約日</Label>
                 <Input
                   id="date"
                   type="date"
-                  min={format(startOfDay(new Date()), 'yyyy-MM-dd')}
-                  max={format(addDays(startOfDay(new Date()), 14), 'yyyy-MM-dd')}
+                  min={format(startOfDay(toJSTWallClockDate(new Date())), 'yyyy-MM-dd')}
+                  max={format(addDays(startOfDay(toJSTWallClockDate(new Date())), 14), 'yyyy-MM-dd')}
                   value={format(reservationDraft.date, 'yyyy-MM-dd')}
                   onChange={(event) => {
                     const date = new Date(`${event.target.value}T00:00:00`)
@@ -1162,6 +1203,7 @@ function ReservationContent() {
                 />
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <p className="text-xs text-muted-foreground sm:col-span-2">時刻は日本時間（JST）で入力してください。</p>
                 <div className="space-y-2">
                   <Label htmlFor="reservation-start-time" className="text-sm font-medium">開始時刻</Label>
                   <Input

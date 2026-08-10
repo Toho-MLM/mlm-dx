@@ -10,8 +10,8 @@ type AdminModeToggleProps = {
 export function AdminModeToggle({ checked, onCheckedChange }: AdminModeToggleProps) {
   return (
     <div className="flex w-full items-center justify-between gap-2">
-      <span className="text-left text-sm text-gray-600">管理者モード</span>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      <label htmlFor="admin-mode-toggle" className="text-left text-sm text-gray-600">管理者モード</label>
+      <Switch id="admin-mode-toggle" checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   )
 }

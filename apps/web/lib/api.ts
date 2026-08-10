@@ -3,7 +3,7 @@ import * as SharedSchemas from '../../../lib/shared-schemas'
 import { httpClient } from './http-client'
 import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, AuthenticatorAttestationResponseJSON, AuthenticatorAssertionResponseJSON } from '@simplewebauthn/types'
 
-type User = SharedSchemas.User
+type UserWithInstruments = SharedSchemas.UserWithInstruments
 type Group = SharedSchemas.Group
 type Reservation = SharedSchemas.Reservation
 type External = SharedSchemas.External
@@ -117,8 +117,8 @@ class ApiClient {
     return httpClient.delete<{ success: boolean }>(`/auth/passkey/credentials/${id}`)
   }
 
-  async getCurrentUserData(): Promise<ApiResponse<User>> {
-    return httpClient.get<ApiResponse<User>>(`/me`)
+  async getCurrentUserData(): Promise<ApiResponse<UserWithInstruments>> {
+    return httpClient.get<ApiResponse<UserWithInstruments>>(`/me`)
   }
 
   async updateUserData(data: UpdateUserRequest): Promise<ApiResponse<void>> {
@@ -469,10 +469,6 @@ class ApiClient {
     return httpClient.put<ApiResponse<void>>(`/entries/${id}`, data)
   }
 
-  async getSetlistItems(entryId: string): Promise<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string }>>> {
-    return httpClient.get<ApiResponse<Array<{ id: string; entry_id: string; position: number; title: string; artist: string }>>>(`/setlist/entry/${entryId}`)
-  }
-
   async getEventSetlist(eventId: string, admin: boolean = false): Promise<ApiResponse<EventSetlistBundleItem[]>> {
     const params = admin ? '?admin=true' : '';
     return httpClient.get<ApiResponse<EventSetlistBundleItem[]>>(`/setlist/event/${eventId}${params}`)
@@ -487,19 +483,11 @@ class ApiClient {
   }
 
   async createSetlistItem(data: { entry_id: string; position: number; title: string; artist: string; admin?: boolean }): Promise<ApiResponse<void>> {
-    return httpClient.post<ApiResponse<void>>(`/setlist`, data)
+    return httpClient.post<ApiResponse<void>>('/setlist', data)
   }
 
-  async updateSetlistItem(id: string, data: { position?: number; title?: string; artist?: string; admin?: boolean }): Promise<ApiResponse<void>> {
-    return httpClient.put<ApiResponse<void>>(`/setlist/${id}`, data)
-  }
-
-  async deleteSetlistItem(id: string): Promise<ApiResponse<void>> {
-    return httpClient.delete<ApiResponse<void>>(`/setlist/${id}`)
-  }
-
-  async replaceSetlistItems(entryId: string, items: ReplaceSetlistItemsRequest['items'], hasSE: boolean, admin?: boolean): Promise<ApiResponse<void>> {
-    const body: ReplaceSetlistItemsRequest = { items, hasSE, admin }
+  async replaceSetlistItems(entryId: string, items: ReplaceSetlistItemsRequest['items'], hasSE: boolean, note: string | null, admin?: boolean): Promise<ApiResponse<void>> {
+    const body: ReplaceSetlistItemsRequest = { items, hasSE, note, admin }
     return httpClient.put<ApiResponse<void>>(`/setlist?entryId=${entryId}`, body)
   }
 }
