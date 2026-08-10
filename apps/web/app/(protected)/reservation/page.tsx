@@ -3,15 +3,16 @@
 import React, { Suspense, useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
-import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, startOfDay, subDays } from 'date-fns'
+import { format, parse, startOfWeek, getDay, addDays, addMinutes, startOfDay, subDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { Card, CardContent, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, CalendarRangeIcon, Trash2 } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, CalendarRangeIcon, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
 import {
@@ -154,10 +155,8 @@ function ReservationContent() {
   })
   const [isReservationFormOpen, setIsReservationFormOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<CalendarEvent | null>(null)
-  const [openPicker, setOpenPicker] = useState<string | null>(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
-  const [isFormDatePickerOpen, setIsFormDatePickerOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false)
@@ -264,29 +263,6 @@ function ReservationContent() {
   }, [fetchReservationLimitRemaining])
 
   const calendarRef = useRef<HTMLDivElement>(null)
-
-  const handleInputChange = (name: string, value: number | Date | string | null) => {
-    setReservationDraft(prev => {
-      const updated = { ...prev, [name]: value }
-
-      if (name === 'startHour') {
-        updated.startMinute = null
-        updated.endHour = null
-        updated.endMinute = null
-      }
-
-      if (name === 'startMinute') {
-        updated.endHour = null
-        updated.endMinute = null
-      }
-
-      if (name === 'endHour') {
-        updated.endMinute = null
-      }
-
-      return updated
-    })
-  }
 
   const handleReservationDateSelect = (date: Date) => {
     setReservationDraft((prev) => adjustReservationDraftForDate(
@@ -476,52 +452,54 @@ function ReservationContent() {
     }
   }
 
-  const generateStartHourOptions = () => {
-    return Array.from({ length: 17 }, (_, i) => i + 6)
+  const getDraftTimeValue = (hour: number | null, minute: number | null) => (
+    hour === null || minute === null
+      ? ''
+      : `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+  )
+
+  const handleDraftTimeChange = (target: 'start' | 'end', value: string) => {
+    const [hour, minute] = value.split(':').map(Number)
+    setReservationDraft((previous) => ({
+      ...previous,
+      ...(target === 'start'
+        ? {
+            startHour: Number.isFinite(hour) ? hour : null,
+            startMinute: Number.isFinite(minute) ? minute : null,
+            endHour: null,
+            endMinute: null,
+          }
+        : {
+            endHour: Number.isFinite(hour) ? hour : null,
+            endMinute: Number.isFinite(minute) ? minute : null,
+          }),
+    }))
   }
 
-  const generateEndHourOptions = () => {
-    return Array.from({ length: 18 }, (_, i) => i + 6)
+  const getEndTimeBound = (minutesToAdd: number) => {
+    if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return undefined
+    const start = new Date(reservationDraft.date)
+    start.setHours(reservationDraft.startHour, reservationDraft.startMinute, 0, 0)
+    const bound = addMinutes(start, minutesToAdd)
+    const latest = new Date(reservationDraft.date)
+    latest.setHours(23, 0, 0, 0)
+    return format(bound > latest ? latest : bound, 'HH:mm')
   }
 
-  const generateMinuteOptions = () => {
-    return Array.from({ length: 12 }, (_, i) => i * 5)
-  }
+  const getStartTimeMin = () => {
+    const earliest = new Date(reservationDraft.date)
+    earliest.setHours(6, 0, 0, 0)
+    const today = startOfDay(new Date())
+    if (startOfDay(reservationDraft.date).getTime() !== today.getTime()) return '06:00'
 
-
-  const isStartTimeDisabled = (hour: number, minute: number) => {
-    return !isReservationTimeValid(reservationDraft.date, hour, minute);
-  }
-
-  const isStartTimeSelectable = (hour: number, minute: number) => {
-    if (isStartTimeDisabled(hour, minute)) return false
-    const startDate = new Date(reservationDraft.date)
-    startDate.setHours(hour, minute, 0, 0)
-    const latestEndTime = new Date(reservationDraft.date)
-    latestEndTime.setHours(23, 0, 0, 0)
-    return addMinutes(startDate, MIN_RESERVATION_MINUTES).getTime() <= latestEndTime.getTime()
-  }
-
-  const isStartHourSelectable = (hour: number) => {
-    return generateMinuteOptions().some((minute) => isStartTimeSelectable(hour, minute))
-  }
-
-  const isEndHourSelectable = (hour: number) => {
-    if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return false
-    return generateMinuteOptions().some((minute) => !isEndTimeDisabled(hour, minute))
-  }
-
-  const isEndTimeDisabled = (hour: number, minute: number) => {
-    if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return true
-    const startDate = new Date(reservationDraft.date)
-    startDate.setHours(reservationDraft.startHour, reservationDraft.startMinute, 0, 0)
-    const endDate = new Date(reservationDraft.date)
-    endDate.setHours(hour, minute, 0, 0)
-    const minEndTime = addMinutes(startDate, MIN_RESERVATION_MINUTES)
-    const maxEndTime = addHours(startDate, 4)
-    if (isBefore(endDate, minEndTime)) return true
-    if (endDate.getTime() > maxEndTime.getTime()) return true
-    return false
+    const now = new Date()
+    const hadPartialMinute = now.getSeconds() > 0 || now.getMilliseconds() > 0
+    now.setSeconds(0, 0)
+    const remainder = now.getMinutes() % 5
+    if (remainder > 0 || hadPartialMinute) {
+      now.setMinutes(now.getMinutes() + (remainder > 0 ? 5 - remainder : 5))
+    }
+    return format(now > earliest ? now : earliest, 'HH:mm')
   }
 
   const isReservationButtonDisabled = () => {
@@ -1106,132 +1084,50 @@ function ReservationContent() {
                   </div>
                 )}
               </div>
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="date" className="text-sm font-medium">予約日</Label>
-                <Popover open={isFormDatePickerOpen} onOpenChange={setIsFormDatePickerOpen} modal={true}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {reservationDraft.date ? format(reservationDraft.date, "PPP", { locale: jaLocale }) : <span>日付を選択</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarPrimitive
-                      mode="single"
-                      selected={reservationDraft.date}
-                      onSelect={(date) => {
-                        if (date) {
-                          handleReservationDateSelect(date)
-                        }
-                        setIsFormDatePickerOpen(false)
-                      }}
-                      disabled={(date) =>
-                        !isReservationDateValid(date)
-                      }
-                      initialFocus
-                      locale={jaLocale}
-                    />
-                  </PopoverContent>
-                </Popover>
+                <Input
+                  id="date"
+                  type="date"
+                  min={format(startOfDay(new Date()), 'yyyy-MM-dd')}
+                  max={format(addDays(startOfDay(new Date()), 14), 'yyyy-MM-dd')}
+                  value={format(reservationDraft.date, 'yyyy-MM-dd')}
+                  onChange={(event) => {
+                    const date = new Date(`${event.target.value}T00:00:00`)
+                    if (!Number.isNaN(date.getTime()) && isReservationDateValid(date)) {
+                      handleReservationDateSelect(date)
+                    }
+                  }}
+                  required
+                />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="startHour" className="text-sm font-medium">開始時刻（時）</Label>
-                  <Select
-                    open={openPicker === 'startHour'}
-                    onOpenChange={(isOpen) => {
-                      if (isOpen) setOpenPicker('startHour')
-                      else setOpenPicker(null)
-                    }}
-                    onValueChange={(value) => handleInputChange('startHour', parseInt(value))}
-                    value={reservationDraft.startHour !== null ? reservationDraft.startHour.toString() : ''}
-                  >
-                    <SelectTrigger id="startHour">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {generateStartHourOptions().filter(isStartHourSelectable).map((hour) => (
-                        <SelectItem key={hour} value={hour.toString()}>
-                          {hour.toString().padStart(2, '0')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="reservation-start-time" className="text-sm font-medium">開始時刻</Label>
+                  <Input
+                    id="reservation-start-time"
+                    type="time"
+                    min={getStartTimeMin()}
+                    max="22:50"
+                    step={300}
+                    value={getDraftTimeValue(reservationDraft.startHour, reservationDraft.startMinute)}
+                    onChange={(event) => handleDraftTimeChange('start', event.target.value)}
+                    required
+                  />
                 </div>
-                <div>
-                  <Label htmlFor="startMinute" className="text-sm font-medium">開始時刻（分）</Label>
-                  <Select
-                    open={openPicker === 'startMinute'}
-                    onOpenChange={(isOpen) => {
-                      if (isOpen) setOpenPicker('startMinute')
-                      else setOpenPicker(null)
-                    }}
-                    onValueChange={(value) => handleInputChange('startMinute', parseInt(value))}
-                    value={reservationDraft.startMinute !== null ? reservationDraft.startMinute.toString() : ''}
-                    disabled={reservationDraft.startHour === null}
-                  >
-                    <SelectTrigger id="startMinute">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {generateMinuteOptions().filter(minute => reservationDraft.startHour !== null && isStartTimeSelectable(reservationDraft.startHour, minute)).map((minute) => (
-                        <SelectItem key={minute} value={minute.toString()}>
-                          {minute.toString().padStart(2, '0')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="endHour" className="text-sm font-medium">終了時刻（時）</Label>
-                  <Select
-                    open={openPicker === 'endHour'}
-                    onOpenChange={(isOpen) => {
-                      if (isOpen) setOpenPicker('endHour')
-                      else setOpenPicker(null)
-                    }}
-                    onValueChange={(value) => handleInputChange('endHour', parseInt(value))}
-                    value={reservationDraft.endHour !== null ? reservationDraft.endHour.toString() : ''}
-                    disabled={reservationDraft.startMinute === null}
-                  >
-                    <SelectTrigger id="endHour">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {generateEndHourOptions().filter(isEndHourSelectable).map((hour) => (
-                        <SelectItem key={hour} value={hour.toString()}>
-                          {hour.toString().padStart(2, '0')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="endMinute" className="text-sm font-medium">終了時刻（分）</Label>
-                  <Select
-                    open={openPicker === 'endMinute'}
-                    onOpenChange={(isOpen) => {
-                      if (isOpen) setOpenPicker('endMinute')
-                      else setOpenPicker(null)
-                    }}
-                    onValueChange={(value) => handleInputChange('endMinute', parseInt(value))}
-                    value={reservationDraft.endMinute !== null ? reservationDraft.endMinute.toString() : ''}
-                    disabled={reservationDraft.endHour === null}
-                  >
-                    <SelectTrigger id="endMinute">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {generateMinuteOptions().filter(minute => reservationDraft.endHour !== null && !isEndTimeDisabled(reservationDraft.endHour, minute)).map((minute) => (
-                        <SelectItem key={minute} value={minute.toString()}>
-                          {minute.toString().padStart(2, '0')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-2">
+                  <Label htmlFor="reservation-end-time" className="text-sm font-medium">終了時刻</Label>
+                  <Input
+                    id="reservation-end-time"
+                    type="time"
+                    min={getEndTimeBound(MIN_RESERVATION_MINUTES)}
+                    max={getEndTimeBound(240)}
+                    step={300}
+                    value={getDraftTimeValue(reservationDraft.endHour, reservationDraft.endMinute)}
+                    disabled={reservationDraft.startHour === null || reservationDraft.startMinute === null}
+                    onChange={(event) => handleDraftTimeChange('end', event.target.value)}
+                    required
+                  />
                 </div>
               </div>
               <LoadingButton

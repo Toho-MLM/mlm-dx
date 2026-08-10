@@ -4,20 +4,18 @@ import { Suspense, useState, useEffect, type FormEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format, addDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
-import { CalendarIcon, Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Calendar } from '@/components/ui/calendar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { apiClient } from '@/lib/api'
-import { cn, showSuccessToast } from '@/lib/utils'
+import { showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
 import { useAuth } from '@/app/context/AuthContext'
 import { getLoginPath } from '@/lib/auth-redirect'
@@ -27,21 +25,21 @@ import { toast } from 'sonner'
 type LimitFormState = {
   scope: ReservationLimitScope
   limitType: 'FIXED' | 'ROLLING'
-  startDate: Date | undefined
-  startTime: string
-  endDate: Date | undefined
-  endTime: string
+  startDateTime: string
+  endDateTime: string
   windowDays: string
   maxHours: string
 }
 
+const toJSTLocalInputValue = (value: Date) => (
+  new Date(value.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16)
+)
+
 const defaultFormState = (): LimitFormState => ({
   scope: 'PERSONAL',
   limitType: 'FIXED',
-  startDate: new Date(),
-  startTime: '00:00',
-  endDate: addDays(new Date(), 7),
-  endTime: '00:00',
+  startDateTime: `${toJSTLocalInputValue(new Date()).slice(0, 10)}T00:00`,
+  endDateTime: `${toJSTLocalInputValue(addDays(new Date(), 7)).slice(0, 10)}T00:00`,
   windowDays: '7',
   maxHours: '4',
 })
@@ -133,27 +131,18 @@ function ReservationLimitsContent() {
     setForm({
       scope: limit.scope,
       limitType: limit.limit_type,
-      startDate: start || new Date(),
-      startTime: start ? format(start, 'HH:mm') : '00:00',
-      endDate: end || addDays(new Date(), 7),
-      endTime: end ? format(end, 'HH:mm') : '00:00',
+      startDateTime: start ? toJSTLocalInputValue(start) : defaultFormState().startDateTime,
+      endDateTime: end ? toJSTLocalInputValue(end) : defaultFormState().endDateTime,
       windowDays: limit.window_days ? String(limit.window_days) : '7',
       maxHours: String(limit.max_minutes / 60),
     })
     setIsFormOpen(true)
   }
 
-  const buildDateTime = (date: Date, time: string) => {
-    const result = new Date(date)
-    const [hour, minute] = time.split(':').map(Number)
-    result.setHours(hour, minute, 0, 0)
-    return result
-  }
-
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
-    if (form.limitType === 'FIXED' && (!form.startDate || !form.endDate)) {
-      toast.error('開始日と終了日を選択してください')
+    if (form.limitType === 'FIXED' && (!form.startDateTime || !form.endDateTime)) {
+      toast.error('開始日時と終了日時を選択してください')
       return
     }
 
@@ -179,8 +168,12 @@ function ReservationLimitsContent() {
     let start: Date | null = null
     let end: Date | null = null
     if (form.limitType === 'FIXED') {
-      start = buildDateTime(form.startDate as Date, form.startTime)
-      end = buildDateTime(form.endDate as Date, form.endTime)
+      start = new Date(`${form.startDateTime}:00+09:00`)
+      end = new Date(`${form.endDateTime}:00+09:00`)
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        toast.error('日時を正しく入力してください')
+        return
+      }
       if (end <= start) {
         toast.error('終了日時は開始日時より後である必要があります')
         return
@@ -369,61 +362,28 @@ function ReservationLimitsContent() {
               </div>
 
               {form.limitType === 'FIXED' ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>開始日</Label>
-                    <Popover modal={true}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !form.startDate && "text-muted-foreground")}>
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.startDate ? format(form.startDate, 'PPP', { locale: jaLocale }) : '日付を選択'}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={form.startDate}
-                          onSelect={(date) => setForm((prev) => ({ ...prev, startDate: date }))}
-                          initialFocus
-                          locale={jaLocale}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div>
-                    <Label>開始時刻</Label>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="reservation-limit-start-datetime">開始日時</Label>
                     <Input
-                      type="time"
-                      value={form.startTime}
-                      onChange={(event) => setForm((prev) => ({ ...prev, startTime: event.target.value }))}
+                      id="reservation-limit-start-datetime"
+                      type="datetime-local"
+                      step={300}
+                      value={form.startDateTime}
+                      onChange={(event) => setForm((prev) => ({ ...prev, startDateTime: event.target.value }))}
+                      required
                     />
                   </div>
-                  <div>
-                    <Label>終了日</Label>
-                    <Popover modal={true}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !form.endDate && "text-muted-foreground")}>
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.endDate ? format(form.endDate, 'PPP', { locale: jaLocale }) : '日付を選択'}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={form.endDate}
-                          onSelect={(date) => setForm((prev) => ({ ...prev, endDate: date }))}
-                          initialFocus
-                          locale={jaLocale}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div>
-                    <Label>終了時刻</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="reservation-limit-end-datetime">終了日時</Label>
                     <Input
-                      type="time"
-                      value={form.endTime}
-                      onChange={(event) => setForm((prev) => ({ ...prev, endTime: event.target.value }))}
+                      id="reservation-limit-end-datetime"
+                      type="datetime-local"
+                      step={300}
+                      min={form.startDateTime}
+                      value={form.endDateTime}
+                      onChange={(event) => setForm((prev) => ({ ...prev, endDateTime: event.target.value }))}
+                      required
                     />
                   </div>
                 </div>
