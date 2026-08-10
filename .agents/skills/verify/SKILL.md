@@ -13,6 +13,7 @@ description: MLM-DX のコード変更を安全に検証する。実装後、バ
 
 - `apps/web/**`: Web の type-check。UI/route/build 設定なら lint と build も検討する。
 - `apps/worker/**`: Worker の type-check。route、binding、Durable Object、wrangler 設定なら build も検討する。
+- `apps/worker/src/features/**`: `pnpm test:worker` で境界検査、純粋 domain、fake repository を使う application テストを実行する。
 - `lib/shared-schemas.ts`: Web と Worker の両方を検証する。
 - `package.json`、lockfile、tsconfig、workspace 設定: 原則としてルート type-check、lint、build を検討する。
 - migration/schema: SQL の構文、既存 schema との整合、適用順、backfill、破壊性を確認する。
@@ -22,6 +23,7 @@ description: MLM-DX のコード変更を安全に検証する。実装後、バ
 最小の関連チェックから始め、失敗を解消してから広いチェックへ進む。
 
 ```bash
+pnpm test:worker
 pnpm type-check
 pnpm lint
 pnpm build
@@ -34,6 +36,8 @@ pnpm lint:web
 pnpm lint:worker
 pnpm build:web
 pnpm build:worker
+pnpm --filter mlm-dx-worker run check:boundaries
+pnpm --filter mlm-dx-worker run test
 pnpm --filter mlm-dx-web run type-check
 pnpm --filter mlm-dx-worker run type-check
 ```

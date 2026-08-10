@@ -1,6 +1,7 @@
 import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { Bindings } from '../index';
 import { DraftStateSchema } from '../band-draft-state';
+import { createD1BandDraftRepository } from '../features/band-draft/infrastructure/d1-repository';
 
 type CloudflareWebSocket = WebSocket & {
   accept(): void;
@@ -115,12 +116,9 @@ export class BandDraftRoom {
     };
     const now = new Date().toISOString();
 
-    const updateResult = await this.env.DB.prepare(`
-      UPDATE main_band_drafts
-      SET state_json = ?, updated_at = ?
-      WHERE id = ? AND state_json = ?
-    `).bind(JSON.stringify(nextState), now, draft.id, draft.state_json).run();
-    if (Number(updateResult.meta.changes ?? 0) === 0) {
+    if (!await createD1BandDraftRepository(this.env.DB).updateState(
+      draft.id, draft.state_json, JSON.stringify(nextState), now,
+    )) {
       const latest = await this.fetchDraft(token);
       if (latest) {
         this.send(sender, { type: 'snapshot', state: DraftStateSchema.parse(JSON.parse(latest.state_json)) });
@@ -136,11 +134,8 @@ export class BandDraftRoom {
   }
 
   private async fetchDraft(token: string): Promise<DraftRow | null> {
-    return await this.env.DB.prepare(`
-      SELECT id, state_json
-      FROM main_band_drafts
-      WHERE share_token = ?
-    `).bind(token).first<DraftRow>();
+    const draft = await createD1BandDraftRepository(this.env.DB).findByToken(token);
+    return draft ? { id: draft.id, state_json: draft.state_json } : null;
   }
 
   private broadcast(message: ServerMessage): void {

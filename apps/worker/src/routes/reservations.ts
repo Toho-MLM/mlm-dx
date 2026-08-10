@@ -1,74 +1,22 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
-import { isUserInGroup } from './groups';
-import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationLimitRemainingSchema, ReservationSchema, isAdmin, UpdateReservationRequestSchema, UpdateReservationStatusRequestSchema, type ReservationState } from '../../../../lib/shared-schemas';
-import { processReservationState, isTodayInJST, getJSTDateString, getJSTDayRange, getAvailableIntervals, selectLongestInterval, validateReservationDateRange } from '../utils/reservation-processor';
+import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationSchema, isAdmin, UpdateReservationRequestSchema, UpdateReservationStatusRequestSchema, type ReservationState } from '../../../../lib/shared-schemas';
+import { processReservationState, isTodayInJST, getJSTDateString, getAvailableIntervals, validateReservationDateRange } from '../utils/reservation-processor';
 import { requireAdmin } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
 import type { EmailNotificationType } from '../../../../lib/shared-schemas';
 import { prepareAndSendReservationEmail } from '../utils/reservation-email';
 import { parseUuid } from '../utils/uuid';
 import { ZodError } from 'zod';
+import { getRemainingIntervalAfterUnavailablePeriod } from '../features/reservations/domain/time';
+import { createReservationLimitService, type ReservationLimitScope, type ReservationLimitType } from '../features/reservations/application/limits';
+import { createD1ReservationLimitRepository } from '../features/reservations/infrastructure/d1-limit-repository';
+import { createD1GroupMembershipReader } from '../features/reservations/infrastructure/d1-membership-reader';
+import { createD1HallReservationRepository } from '../features/reservations/infrastructure/d1-hall-repository';
+import { createD1ReservationProcessingRepository } from '../features/reservations/infrastructure/d1-processing-repository';
 
 const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
-
-type ReservationLimitScope = 'PERSONAL' | 'GROUP';
-type ReservationLimitType = 'FIXED' | 'ROLLING';
-
-type ReservationLimitRow = {
-  id: string;
-  scope: ReservationLimitScope;
-  limit_type: ReservationLimitType;
-  start_datetime: string | null;
-  end_datetime: string | null;
-  window_days: number | null;
-  max_minutes: number;
-};
-
-type AffectedReservationRow = {
-  id: string;
-  start_time: string;
-  end_time: string;
-};
-
-function getRemainingIntervalAfterUnavailablePeriod(
-  reservationStartTime: string,
-  reservationEndTime: string,
-  unavailableStartTime: string,
-  unavailableEndTime: string
-): { startTime: string; endTime: string } | null {
-  const reservationStart = new Date(reservationStartTime);
-  const reservationEnd = new Date(reservationEndTime);
-  const unavailableStart = new Date(unavailableStartTime);
-  const unavailableEnd = new Date(unavailableEndTime);
-  const remainingIntervals = [];
-
-  if (reservationStart < unavailableStart) {
-    const beforeEnd = new Date(Math.min(reservationEnd.getTime(), unavailableStart.getTime()));
-    if (reservationStart < beforeEnd) {
-      remainingIntervals.push({ start: reservationStart, end: beforeEnd });
-    }
-  }
-
-  if (unavailableEnd < reservationEnd) {
-    const afterStart = new Date(Math.max(reservationStart.getTime(), unavailableEnd.getTime()));
-    if (afterStart < reservationEnd) {
-      remainingIntervals.push({ start: afterStart, end: reservationEnd });
-    }
-  }
-
-  const longestInterval = selectLongestInterval(remainingIntervals);
-  if (!longestInterval) return null;
-  if (longestInterval.end.getTime() - longestInterval.start.getTime() < 10 * 60 * 1000) {
-    return null;
-  }
-
-  return {
-    startTime: longestInterval.start.toISOString(),
-    endTime: longestInterval.end.toISOString(),
-  };
-}
 
 async function isReservationCancellable(
   env: Bindings, 
@@ -84,7 +32,7 @@ async function isReservationCancellable(
   }
   
   if (reservation.group_id) {
-    const isInGroup = await isUserInGroup(env, userId, reservation.group_id);
+    const isInGroup = await createD1GroupMembershipReader(env.DB).isUserInGroup(userId, reservation.group_id);
     if (isInGroup) {
       return true;
     }
@@ -93,145 +41,7 @@ async function isReservationCancellable(
   return false;
 }
 
-function calculateOverlapMinutes(
-  startTime: string,
-  endTime: string,
-  rangeStartTime: string,
-  rangeEndTime: string
-): number {
-  const start = new Date(startTime).getTime();
-  const end = new Date(endTime).getTime();
-  const rangeStart = new Date(rangeStartTime).getTime();
-  const rangeEnd = new Date(rangeEndTime).getTime();
-  const overlapStart = Math.max(start, rangeStart);
-  const overlapEnd = Math.min(end, rangeEnd);
-
-  if (overlapEnd <= overlapStart) {
-    return 0;
-  }
-
-  return Math.ceil((overlapEnd - overlapStart) / (1000 * 60));
-}
-
-function getRollingWindow(referenceTime: string, windowDays: number): { startTime: string; endTime: string } {
-  const end = new Date(referenceTime);
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - windowDays);
-  return {
-    startTime: start.toISOString(),
-    endTime: end.toISOString(),
-  };
-}
-
-function getReferenceDayRange(referenceTime: string): { startTime: string; endTime: string } {
-  const jstDateString = getJSTDateString(new Date(referenceTime));
-  const { startUTC, endUTC } = getJSTDayRange(jstDateString);
-  return {
-    startTime: startUTC.toISOString(),
-    endTime: endUTC.toISOString(),
-  };
-}
-
-async function getUsedReservationMinutes(
-  env: Bindings,
-  scope: ReservationLimitScope,
-  targetId: string,
-  rangeStartTime: string,
-  rangeEndTime: string,
-  exclude?: { kind: 'HALL' | 'EXTERNAL' | 'LOTTERY'; id: string }
-): Promise<number> {
-  const excludeHall = exclude?.kind === 'HALL';
-  const excludeExternal = exclude?.kind === 'EXTERNAL';
-  const excludeLottery = exclude?.kind === 'LOTTERY';
-  const reservations = scope === 'GROUP'
-    ? await env.DB.prepare(`
-        SELECT start_time, end_time
-        FROM reservations
-        WHERE group_id = ?
-          AND state IN ('PENDING', 'CONFIRMED')
-          AND start_time < ?
-          AND end_time > ?
-          ${excludeHall ? 'AND id != ?' : ''}
-      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeHall ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>()
-    : await env.DB.prepare(`
-        SELECT start_time, end_time
-        FROM reservations
-        WHERE user_id = ?
-          AND group_id IS NULL
-          AND state IN ('PENDING', 'CONFIRMED')
-          AND start_time < ?
-          AND end_time > ?
-          ${excludeHall ? 'AND id != ?' : ''}
-      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeHall ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>();
-
-  const externalReservations = scope === 'GROUP'
-    ? await env.DB.prepare(`
-        SELECT start_time, end_time
-        FROM external_reservations
-        WHERE group_id = ?
-          AND state IN ('PENDING', 'CONFIRMED')
-          AND start_time < ?
-          AND end_time > ?
-          ${excludeExternal ? 'AND id != ?' : ''}
-      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeExternal ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>()
-    : await env.DB.prepare(`
-        SELECT start_time, end_time
-        FROM external_reservations
-        WHERE user_id = ?
-          AND group_id IS NULL
-          AND state IN ('PENDING', 'CONFIRMED')
-          AND start_time < ?
-          AND end_time > ?
-          ${excludeExternal ? 'AND id != ?' : ''}
-      `).bind(targetId, rangeEndTime, rangeStartTime, ...(excludeExternal ? [exclude.id] : [])).all<{ start_time: string; end_time: string }>();
-
-  const lotteryApplications = scope === 'GROUP'
-    ? await env.DB.prepare(`
-        SELECT COALESCE(application.preferred_start_datetime, studio.start_datetime) AS start_time,
-               COALESCE(application.preferred_end_datetime, studio.end_datetime) AS available_end_time,
-               application.requested_duration_minutes
-        FROM external_lottery_applications application
-        INNER JOIN external_studios studio ON studio.id = application.external_studio_id
-        WHERE application.group_id = ?
-          AND application.state = 'PENDING'
-          ${excludeLottery ? 'AND application.id != ?' : ''}
-      `).bind(targetId, ...(excludeLottery ? [exclude.id] : [])).all<{
-        start_time: string; available_end_time: string; requested_duration_minutes: number | null;
-      }>()
-    : await env.DB.prepare(`
-        SELECT COALESCE(application.preferred_start_datetime, studio.start_datetime) AS start_time,
-               COALESCE(application.preferred_end_datetime, studio.end_datetime) AS available_end_time,
-               application.requested_duration_minutes
-        FROM external_lottery_applications application
-        INNER JOIN external_studios studio ON studio.id = application.external_studio_id
-        WHERE application.user_id = ?
-          AND application.group_id IS NULL
-          AND application.state = 'PENDING'
-          ${excludeLottery ? 'AND application.id != ?' : ''}
-      `).bind(targetId, ...(excludeLottery ? [exclude.id] : [])).all<{
-        start_time: string; available_end_time: string; requested_duration_minutes: number | null;
-      }>();
-  const lotteryReservations = lotteryApplications.results.map((application) => ({
-    start_time: application.start_time,
-    end_time: new Date(
-      new Date(application.start_time).getTime() + (
-        application.requested_duration_minutes
-          ?? Math.round((new Date(application.available_end_time).getTime() - new Date(application.start_time).getTime()) / 60000)
-      ) * 60000
-    ).toISOString(),
-  }));
-
-  return [...reservations.results, ...externalReservations.results, ...lotteryReservations].reduce((total, reservation) => (
-    total + calculateOverlapMinutes(
-      reservation.start_time,
-      reservation.end_time,
-      rangeStartTime,
-      rangeEndTime
-    )
-  ), 0);
-}
-
-export async function hasReservationLimitConflict(
+async function hasReservationLimitConflict(
   env: Bindings,
   userId: string,
   groupId: string | null,
@@ -239,52 +49,13 @@ export async function hasReservationLimitConflict(
   endTime: string,
   exclude?: { kind: 'HALL' | 'EXTERNAL' | 'LOTTERY'; id: string }
 ): Promise<boolean> {
-  const scope: ReservationLimitScope = groupId ? 'GROUP' : 'PERSONAL';
-  const limits = await env.DB.prepare(`
-    SELECT id, scope, limit_type, start_datetime, end_datetime, window_days, max_minutes
-    FROM reservation_limits
-    WHERE scope = ?
-    ORDER BY start_datetime ASC
-  `).bind(scope).all<ReservationLimitRow>();
-
-  const targetId = groupId || userId;
-  const newReservationMinutes = calculateOverlapMinutes(startTime, endTime, startTime, endTime);
-
-  for (const limit of limits.results) {
-    let rangeStartTime: string;
-    let rangeEndTime: string;
-    let newMinutesInRange = newReservationMinutes;
-
-    if (limit.limit_type === 'FIXED') {
-      if (!limit.start_datetime || !limit.end_datetime) {
-        continue;
-      }
-
-      newMinutesInRange = calculateOverlapMinutes(startTime, endTime, limit.start_datetime, limit.end_datetime);
-      rangeStartTime = limit.start_datetime;
-      rangeEndTime = limit.end_datetime;
-    } else {
-      if (!limit.window_days) {
-        continue;
-      }
-
-      const window = getRollingWindow(startTime, Number(limit.window_days));
-      rangeStartTime = window.startTime;
-      rangeEndTime = window.endTime;
-    }
-
-    if (newMinutesInRange === 0) {
-      continue;
-    }
-
-    const usedMinutes = await getUsedReservationMinutes(env, scope, targetId, rangeStartTime, rangeEndTime, exclude);
-
-    if (usedMinutes + newMinutesInRange > Number(limit.max_minutes)) {
-      return true;
-    }
-  }
-
-  return false;
+  return createReservationLimitService(createD1ReservationLimitRepository(env.DB)).hasConflict({
+    userId,
+    groupId,
+    startTime,
+    endTime,
+    exclude,
+  });
 }
 
 function notificationForStatus(state: ReservationState): EmailNotificationType | null {
@@ -321,23 +92,13 @@ async function hasOverlappingReservationLimit(
   endDatetime: string,
   excludeId?: string
 ): Promise<boolean> {
-  if (limitType !== 'FIXED') {
-    return false;
-  }
-
-  const hasExcludeId = Boolean(excludeId);
-  const existing = await env.DB.prepare(`
-    SELECT id
-    FROM reservation_limits
-    WHERE scope = ?
-      AND limit_type = 'FIXED'
-      AND start_datetime < ?
-      AND end_datetime > ?
-      ${hasExcludeId ? 'AND id != ?' : ''}
-    LIMIT 1
-  `).bind(scope, endDatetime, startDatetime, ...(hasExcludeId ? [excludeId] : [])).first();
-
-  return Boolean(existing);
+  return limitType === 'FIXED'
+    && createD1ReservationLimitRepository(env.DB).hasOverlappingFixedLimit(
+      scope,
+      startDatetime,
+      endDatetime,
+      excludeId
+    );
 }
 
 async function hasDuplicateRollingReservationLimit(
@@ -345,17 +106,7 @@ async function hasDuplicateRollingReservationLimit(
   scope: ReservationLimitScope,
   excludeId?: string
 ): Promise<boolean> {
-  const hasExcludeId = Boolean(excludeId);
-  const existing = await env.DB.prepare(`
-    SELECT id
-    FROM reservation_limits
-    WHERE scope = ?
-      AND limit_type = 'ROLLING'
-      ${hasExcludeId ? 'AND id != ?' : ''}
-    LIMIT 1
-  `).bind(scope, ...(hasExcludeId ? [excludeId] : [])).first();
-
-  return Boolean(existing);
+  return createD1ReservationLimitRepository(env.DB).hasRollingLimit(scope, excludeId);
 }
 
 async function getReservationLimitRemaining(
@@ -364,52 +115,11 @@ async function getReservationLimitRemaining(
   targetId: string,
   referenceTime: string
 ) {
-  const referenceDayRange = getReferenceDayRange(referenceTime);
-  const limits = await env.DB.prepare(`
-    SELECT id, scope, limit_type, start_datetime, end_datetime, window_days, max_minutes, created_at, updated_at
-    FROM reservation_limits
-    WHERE scope = ?
-    ORDER BY start_datetime ASC
-  `).bind(scope).all<ReservationLimitRow & { created_at: string; updated_at: string }>();
-
-  const results = [];
-
-  for (const limit of limits.results) {
-    let rangeStartTime: string;
-    let rangeEndTime: string;
-
-    if (limit.limit_type === 'FIXED') {
-      if (!limit.start_datetime || !limit.end_datetime) {
-        continue;
-      }
-
-      const overlapsReferenceDay = limit.start_datetime < referenceDayRange.endTime && limit.end_datetime > referenceDayRange.startTime;
-      if (!overlapsReferenceDay) {
-        continue;
-      }
-
-      rangeStartTime = limit.start_datetime;
-      rangeEndTime = limit.end_datetime;
-    } else {
-      if (!limit.window_days) {
-        continue;
-      }
-
-      const window = getRollingWindow(referenceTime, Number(limit.window_days));
-      rangeStartTime = window.startTime;
-      rangeEndTime = window.endTime;
-    }
-
-    const usedMinutes = await getUsedReservationMinutes(env, scope, targetId, rangeStartTime, rangeEndTime);
-
-    results.push(ReservationLimitRemainingSchema.parse({
-      ...limit,
-      used_minutes: usedMinutes,
-      remaining_minutes: Math.max(0, Number(limit.max_minutes) - usedMinutes),
-    }));
-  }
-
-  return results;
+  return createReservationLimitService(createD1ReservationLimitRepository(env.DB)).getRemaining({
+    scope,
+    targetId,
+    referenceTime,
+  });
 }
 
 reservationRoutes.use('*', requireAuth);
@@ -446,60 +156,18 @@ reservationRoutes.get('/', async (c) => {
     twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
     const twoWeeksAgoIso = twoWeeksAgo.toISOString();
 
-    if (isAdminMode) {
-      const reservations = await c.env.DB.prepare(`
-        SELECT r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
-               COALESCE(u.nickname, u.name) as user_name,
-               ug.name as group_name,
-               CASE 
-                 WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0
-                 ELSE 1
-               END as cancellable
-        FROM reservations r
-        LEFT JOIN users u ON r.user_id = u.id
-        LEFT JOIN groups ug ON r.group_id = ug.id
-        WHERE r.start_time >= ?
-        ORDER BY r.start_time ASC
-      `).bind(twoWeeksAgoIso).all();
-
-      return c.json({
-        success: true,
-        data: reservations.results.map((reservation) => ReservationSchema.parse({
-          ...reservation,
-          cancellable: Boolean(reservation.cancellable),
-        })),
-      });
-    } else {
-      const reservations = await c.env.DB.prepare(`
-        SELECT r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
-               COALESCE(u.nickname, u.name) as user_name,
-               ug.name as group_name,
-               CASE 
-                 WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0
-                 WHEN r.user_id = ? THEN 1
-                 WHEN r.group_id IS NOT NULL AND EXISTS (
-                   SELECT 1 FROM group_member_instruments gm 
-                   WHERE gm.group_id = r.group_id AND gm.user_id = ?
-                 ) THEN 1
-                 ELSE 0
-               END as cancellable
-        FROM reservations r
-        LEFT JOIN users u ON r.user_id = u.id
-        LEFT JOIN groups ug ON r.group_id = ug.id
-        WHERE (r.state IN ('PENDING', 'CONFIRMED')
-           OR (r.state NOT IN ('PENDING', 'CONFIRMED') AND r.user_id = ?))
-           AND r.start_time >= ?
-        ORDER BY r.start_time ASC
-      `).bind(user.id, user.id, user.id, twoWeeksAgoIso).all();
-
-      return c.json({
-        success: true,
-        data: reservations.results.map((reservation) => ReservationSchema.parse({
-          ...reservation,
-          cancellable: Boolean(reservation.cancellable),
-        })),
-      });
-    }
+    const reservations = await createD1HallReservationRepository(c.env.DB).listVisibleReservations({
+      userId: user.id,
+      admin: isAdminMode,
+      since: twoWeeksAgoIso,
+    });
+    return c.json({
+      success: true,
+      data: reservations.map((reservation) => ReservationSchema.parse({
+        ...reservation,
+        cancellable: Boolean(reservation.cancellable),
+      })),
+    });
   } catch (error) {
     console.error('Error fetching reservations:', error);
     
@@ -542,18 +210,14 @@ reservationRoutes.post('/', async (c) => {
     }
 
     if (group_id) {
-      const groupExists = await c.env.DB.prepare(`
-        SELECT 1 FROM groups WHERE id = ? AND is_active = TRUE
-      `).bind(group_id).first();
-      
-      if (!groupExists) {
+      if (!await createD1GroupMembershipReader(c.env.DB).isActiveGroup(group_id)) {
         return c.json({
           success: false,
           error: 'GROUP_NOT_FOUND'
         }, 400);
       }
 
-      const isMember = isAdminMode || await isUserInGroup(c.env, user.id, group_id);
+      const isMember = isAdminMode || await createD1GroupMembershipReader(c.env.DB).isUserInGroup(user.id, group_id);
       if (!isMember) {
         return c.json({
           success: false,
@@ -562,13 +226,8 @@ reservationRoutes.post('/', async (c) => {
       }
     }
 
-    const unavailablePeriods = await c.env.DB.prepare(`
-      SELECT start_datetime, end_datetime
-      FROM unavailable_periods
-      WHERE start_datetime < ? AND end_datetime > ?
-    `).bind(end_time, start_time).all();
-
-    if (unavailablePeriods.results.length > 0) {
+    const hallRepository = createD1HallReservationRepository(c.env.DB);
+    if (await hallRepository.hasUnavailableOverlap(start_time, end_time)) {
       return c.json({
         success: false,
         error: 'BLOCKED_PERIOD_CONFLICT'
@@ -591,10 +250,14 @@ reservationRoutes.post('/', async (c) => {
       }
     }
 
-    await c.env.DB.prepare(`
-      INSERT INTO reservations (id, user_id, group_id, start_time, end_time, state, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(reservationId, userId, groupId, start_time, end_time, 'PENDING', now, now).run();
+    await hallRepository.createReservation({
+      id: reservationId,
+      userId,
+      groupId,
+      startTime: start_time,
+      endTime: end_time,
+      createdAt: now,
+    });
 
     if (!isAdminMode && await hasReservationLimitConflict(
       c.env,
@@ -604,7 +267,7 @@ reservationRoutes.post('/', async (c) => {
       end_time,
       { kind: 'HALL', id: reservationId }
     )) {
-      await c.env.DB.prepare('DELETE FROM reservations WHERE id = ?').bind(reservationId).run();
+      await hallRepository.deleteReservation(reservationId);
       return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
     }
 
@@ -623,58 +286,28 @@ reservationRoutes.post('/', async (c) => {
           notificationType = 'RESERVATION_ADJUSTED';
           requestedStartTime = start_time;
           requestedEndTime = end_time;
-          const updateResult = await c.env.DB.prepare(`
-            UPDATE reservations 
-            SET state = ?, start_time = ?, end_time = ?, updated_at = ?
-            WHERE id = ?
-              AND NOT EXISTS (
-                SELECT 1 FROM reservations other
-                WHERE other.id != ? AND other.state = 'CONFIRMED'
-                  AND other.start_time < ? AND other.end_time > ?
-              )
-          `).bind(
-            processResult.state, 
-            processResult.adjustedStartTime, 
-            processResult.adjustedEndTime, 
-            updateTime, 
-            reservationId,
-            reservationId,
-            processResult.adjustedEndTime,
-            processResult.adjustedStartTime
-          ).run();
-          if (Number(updateResult.meta.changes ?? 0) === 0) {
-            await c.env.DB.prepare("UPDATE reservations SET state = 'DECLINED', updated_at = ? WHERE id = ?")
-              .bind(updateTime, reservationId).run();
+          const processingRepository = createD1ReservationProcessingRepository(c.env.DB);
+          const updateResult = await processingRepository.applyHallProcessResult(
+            { id: reservationId, start_time, end_time, state: 'PENDING' },
+            processResult,
+            updateTime
+          );
+          if (updateResult === 'CONFLICT') {
+            await processingRepository.declineHallReservation(reservationId, updateTime);
             notificationType = 'RESERVATION_DECLINED';
           }
         } else {
           notificationType = processResult.state === 'CONFIRMED'
             ? 'RESERVATION_CONFIRMED'
             : 'RESERVATION_DECLINED';
-          const updateResult = await c.env.DB.prepare(`
-            UPDATE reservations 
-            SET state = ?, updated_at = ?
-            WHERE id = ?
-              AND (
-                ? != 'CONFIRMED'
-                OR NOT EXISTS (
-                  SELECT 1 FROM reservations other
-                  WHERE other.id != ? AND other.state = 'CONFIRMED'
-                    AND other.start_time < ? AND other.end_time > ?
-                )
-              )
-          `).bind(
-            processResult.state,
-            updateTime,
-            reservationId,
-            processResult.state,
-            reservationId,
-            end_time,
-            start_time
-          ).run();
-          if (Number(updateResult.meta.changes ?? 0) === 0) {
-            await c.env.DB.prepare("UPDATE reservations SET state = 'DECLINED', updated_at = ? WHERE id = ?")
-              .bind(updateTime, reservationId).run();
+          const processingRepository = createD1ReservationProcessingRepository(c.env.DB);
+          const updateResult = await processingRepository.applyHallProcessResult(
+            { id: reservationId, start_time, end_time, state: 'PENDING' },
+            processResult,
+            updateTime
+          );
+          if (updateResult === 'CONFLICT') {
+            await processingRepository.declineHallReservation(reservationId, updateTime);
             notificationType = 'RESERVATION_DECLINED';
           }
         }
@@ -732,18 +365,8 @@ reservationRoutes.put('/:id', async (c) => {
       }
     }
 
-    const reservation = await c.env.DB.prepare(`
-      SELECT user_id, group_id, start_time, end_time, state, updated_at
-      FROM reservations
-      WHERE id = ?
-    `).bind(reservationId).first<{
-      user_id: string;
-      group_id: string | null;
-      start_time: string;
-      end_time: string;
-      state: string;
-      updated_at: string;
-    }>();
+    const hallRepository = createD1HallReservationRepository(c.env.DB);
+    const reservation = await hallRepository.findReservation(reservationId);
     if (!reservation) {
       return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     }
@@ -786,13 +409,7 @@ reservationRoutes.put('/:id', async (c) => {
       return c.json({ success: false, error: dateValidation.error }, 400);
     }
 
-    const unavailable = await c.env.DB.prepare(`
-      SELECT id
-      FROM unavailable_periods
-      WHERE start_datetime < ? AND end_datetime > ?
-      LIMIT 1
-    `).bind(normalizedEndTime, normalizedStartTime).first();
-    if (unavailable) {
+    if (await hallRepository.hasUnavailableOverlap(normalizedStartTime, normalizedEndTime)) {
       return c.json({ success: false, error: 'BLOCKED_PERIOD_CONFLICT' }, 400);
     }
 
@@ -808,16 +425,7 @@ reservationRoutes.put('/:id', async (c) => {
     }
 
     if (!isTodayInJST(nextStart)) {
-      const confirmedConflict = await c.env.DB.prepare(`
-        SELECT id
-        FROM reservations
-        WHERE id != ?
-          AND state = 'CONFIRMED'
-          AND start_time < ?
-          AND end_time > ?
-        LIMIT 1
-      `).bind(reservationId, normalizedEndTime, normalizedStartTime).first();
-      if (confirmedConflict) {
+      if (await hallRepository.hasConfirmedConflict(reservationId, normalizedStartTime, normalizedEndTime)) {
         return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
       }
     }
@@ -832,34 +440,15 @@ reservationRoutes.put('/:id', async (c) => {
     const finalStartTime = processResult.adjustedStartTime ?? normalizedStartTime;
     const finalEndTime = processResult.adjustedEndTime ?? normalizedEndTime;
     const updateTime = new Date().toISOString();
-    const updateResult = await c.env.DB.prepare(`
-      UPDATE reservations
-      SET start_time = ?, end_time = ?, state = ?, updated_at = ?
-      WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
-        AND (
-          ? != 'CONFIRMED'
-          OR NOT EXISTS (
-            SELECT 1 FROM reservations other
-            WHERE other.id != ? AND other.state = 'CONFIRMED'
-              AND other.start_time < ? AND other.end_time > ?
-          )
-        )
-    `).bind(
-      finalStartTime,
-      finalEndTime,
-      processResult.state,
-      updateTime,
-      reservationId,
-      reservation.start_time,
-      reservation.end_time,
-      reservation.state,
-      reservation.updated_at,
-      processResult.state,
-      reservationId,
-      finalEndTime,
-      finalStartTime
-    ).run();
-    if (Number(updateResult.meta.changes ?? 0) === 0) {
+    const updated = await hallRepository.updateReservationOptimistically({
+      id: reservationId,
+      previous: reservation,
+      startTime: finalStartTime,
+      endTime: finalEndTime,
+      state: processResult.state,
+      updatedAt: updateTime,
+    });
+    if (!updated) {
       return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
     }
     if (!isAdminMode && await hasReservationLimitConflict(
@@ -870,21 +459,15 @@ reservationRoutes.put('/:id', async (c) => {
       finalEndTime,
       { kind: 'HALL', id: reservationId }
     )) {
-      await c.env.DB.prepare(`
-        UPDATE reservations
-        SET start_time = ?, end_time = ?, state = ?, updated_at = ?
-        WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
-      `).bind(
-        reservation.start_time,
-        reservation.end_time,
-        reservation.state,
-        new Date().toISOString(),
-        reservationId,
-        finalStartTime,
-        finalEndTime,
-        processResult.state,
-        updateTime
-      ).run();
+      await hallRepository.restoreReservation({
+        id: reservationId,
+        previous: reservation,
+        currentStartTime: finalStartTime,
+        currentEndTime: finalEndTime,
+        currentState: processResult.state,
+        currentUpdatedAt: updateTime,
+        restoredAt: new Date().toISOString(),
+      });
       return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
     }
 
@@ -917,11 +500,8 @@ reservationRoutes.put('/:id/status', async (c) => {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     }
     const data = UpdateReservationStatusRequestSchema.parse(await c.req.json());
-    const reservation = await c.env.DB.prepare(`
-      SELECT state, start_time, end_time, updated_at
-      FROM reservations
-      WHERE id = ?
-    `).bind(reservationId).first<{ state: ReservationState; start_time: string; end_time: string; updated_at: string }>();
+    const hallRepository = createD1HallReservationRepository(c.env.DB);
+    const reservation = await hallRepository.findReservation(reservationId);
     if (!reservation) {
       return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     }
@@ -930,42 +510,21 @@ reservationRoutes.put('/:id/status', async (c) => {
     }
 
     if (data.state === 'CONFIRMED') {
-      const conflict = await c.env.DB.prepare(`
-        SELECT id
-        FROM reservations
-        WHERE id != ?
-          AND state = 'CONFIRMED'
-          AND start_time < ?
-          AND end_time > ?
-        LIMIT 1
-      `).bind(reservationId, reservation.end_time, reservation.start_time).first();
-      if (conflict) {
+      if (await hallRepository.hasConfirmedConflict(reservationId, reservation.start_time, reservation.end_time)) {
         return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
       }
     }
 
-    const updateResult = await c.env.DB.prepare(`
-      UPDATE reservations SET state = ?, updated_at = ? WHERE id = ? AND state = ? AND updated_at = ?
-        AND (
-          ? != 'CONFIRMED'
-          OR NOT EXISTS (
-            SELECT 1 FROM reservations other
-            WHERE other.id != ? AND other.state = 'CONFIRMED'
-              AND other.start_time < ? AND other.end_time > ?
-          )
-        )
-    `).bind(
-      data.state,
-      new Date().toISOString(),
-      reservationId,
-      reservation.state,
-      reservation.updated_at,
-      data.state,
-      reservationId,
-      reservation.end_time,
-      reservation.start_time
-    ).run();
-    if (Number(updateResult.meta.changes ?? 0) === 0) {
+    const updated = await hallRepository.updateStatusOptimistically({
+      id: reservationId,
+      previousState: reservation.state,
+      previousUpdatedAt: reservation.updated_at,
+      nextState: data.state,
+      startTime: reservation.start_time,
+      endTime: reservation.end_time,
+      updatedAt: new Date().toISOString(),
+    });
+    if (!updated) {
       return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
     }
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
@@ -992,13 +551,8 @@ reservationRoutes.put('/:id/status', async (c) => {
 
 reservationRoutes.get('/limits', async (c) => {
   try {
-    const limits = await c.env.DB.prepare(`
-      SELECT id, scope, limit_type, start_datetime, end_datetime, window_days, max_minutes, created_at, updated_at
-      FROM reservation_limits
-      ORDER BY start_datetime ASC
-    `).all();
-
-    const validatedLimits = limits.results.map(limit => 
+    const limits = await createD1ReservationLimitRepository(c.env.DB).listLimits();
+    const validatedLimits = limits.map(limit =>
       ReservationLimitSchema.parse(limit)
     );
 
@@ -1026,7 +580,7 @@ reservationRoutes.get('/limits/remaining', async (c) => {
       }
 
       if (scope === 'GROUP') {
-        const isMember = await isUserInGroup(c.env, user.id, targetId);
+        const isMember = await createD1GroupMembershipReader(c.env.DB).isUserInGroup(user.id, targetId);
         if (!isMember) {
           return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
         }
@@ -1068,20 +622,15 @@ reservationRoutes.post('/limits', async (c) => {
     const now = new Date().toISOString();
     const limitId = crypto.randomUUID();
 
-    await c.env.DB.prepare(`
-      INSERT INTO reservation_limits (id, scope, limit_type, start_datetime, end_datetime, window_days, max_minutes, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      limitId,
+    await createD1ReservationLimitRepository(c.env.DB).createLimit({
+      id: limitId,
       scope,
       limit_type,
-      limit_type === 'FIXED' ? start_datetime || null : null,
-      limit_type === 'FIXED' ? end_datetime || null : null,
-      limit_type === 'ROLLING' ? window_days || null : null,
+      start_datetime: limit_type === 'FIXED' ? start_datetime || null : null,
+      end_datetime: limit_type === 'FIXED' ? end_datetime || null : null,
+      window_days: limit_type === 'ROLLING' ? window_days || null : null,
       max_minutes,
-      now,
-      now
-    ).run();
+    }, now);
 
     await broadcastReservationRealtimeEvent(c.env, 'reservation_limits_changed');
 
@@ -1113,11 +662,8 @@ reservationRoutes.put('/limits/:id', async (c) => {
     const validatedData = UpdateReservationLimitRequestSchema.parse(requestData);
     const { scope, limit_type, start_datetime, end_datetime, window_days, max_minutes } = validatedData;
 
-    const existingLimit = await c.env.DB.prepare(
-      'SELECT id FROM reservation_limits WHERE id = ?'
-    ).bind(limitId).first();
-
-    if (!existingLimit) {
+    const limitRepository = createD1ReservationLimitRepository(c.env.DB);
+    if (!await limitRepository.existsLimit(limitId)) {
       return c.json({ success: false, error: 'RESERVATION_LIMIT_NOT_FOUND' }, 404);
     }
 
@@ -1137,20 +683,15 @@ reservationRoutes.put('/limits/:id', async (c) => {
 
     const now = new Date().toISOString();
 
-    await c.env.DB.prepare(`
-      UPDATE reservation_limits
-      SET scope = ?, limit_type = ?, start_datetime = ?, end_datetime = ?, window_days = ?, max_minutes = ?, updated_at = ?
-      WHERE id = ?
-    `).bind(
+    await limitRepository.updateLimit({
+      id: limitId,
       scope,
       limit_type,
-      limit_type === 'FIXED' ? start_datetime || null : null,
-      limit_type === 'FIXED' ? end_datetime || null : null,
-      limit_type === 'ROLLING' ? window_days || null : null,
+      start_datetime: limit_type === 'FIXED' ? start_datetime || null : null,
+      end_datetime: limit_type === 'FIXED' ? end_datetime || null : null,
+      window_days: limit_type === 'ROLLING' ? window_days || null : null,
       max_minutes,
-      now,
-      limitId
-    ).run();
+    }, now);
 
     await broadcastReservationRealtimeEvent(c.env, 'reservation_limits_changed');
 
@@ -1179,17 +720,12 @@ reservationRoutes.delete('/limits/:id', async (c) => {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     }
 
-    const existingLimit = await c.env.DB.prepare(
-      'SELECT id FROM reservation_limits WHERE id = ?'
-    ).bind(limitId).first();
-
-    if (!existingLimit) {
+    const limitRepository = createD1ReservationLimitRepository(c.env.DB);
+    if (!await limitRepository.existsLimit(limitId)) {
       return c.json({ success: false, error: 'RESERVATION_LIMIT_NOT_FOUND' }, 404);
     }
 
-    await c.env.DB.prepare(
-      'DELETE FROM reservation_limits WHERE id = ?'
-    ).bind(limitId).run();
+    await limitRepository.deleteLimit(limitId);
 
     await broadcastReservationRealtimeEvent(c.env, 'reservation_limits_changed');
 
@@ -1207,13 +743,8 @@ reservationRoutes.delete('/limits/:id', async (c) => {
 
 reservationRoutes.get('/unavailable', async (c) => {
   try {
-    const unavailablePeriods = await c.env.DB.prepare(`
-      SELECT id, start_datetime, end_datetime, reason, created_at, updated_at
-      FROM unavailable_periods
-      ORDER BY start_datetime ASC
-    `).all();
-
-    const validatedPeriods = unavailablePeriods.results.map(period => 
+    const unavailablePeriods = await createD1HallReservationRepository(c.env.DB).listUnavailablePeriods();
+    const validatedPeriods = unavailablePeriods.map(period =>
       UnavailablePeriodSchema.parse(period)
     );
 
@@ -1235,12 +766,8 @@ reservationRoutes.post('/unavailable', async (c) => {
 
     const now = new Date().toISOString();
     const periodId = crypto.randomUUID();
-    const affectedReservations = await c.env.DB.prepare(`
-      SELECT id, start_time, end_time
-      FROM reservations
-      WHERE state IN ('PENDING', 'CONFIRMED')
-        AND start_time < ? AND end_time > ?
-    `).bind(end_datetime, start_datetime).all<AffectedReservationRow>();
+    const hallRepository = createD1HallReservationRepository(c.env.DB);
+    const affectedReservations = await hallRepository.listAffectedReservations(start_datetime, end_datetime);
 
     const notificationJobs: Array<{
       reservationId: string;
@@ -1248,14 +775,9 @@ reservationRoutes.post('/unavailable', async (c) => {
       requestedStartTime?: string;
       requestedEndTime?: string;
     }> = [];
-    const statements = [
-      c.env.DB.prepare(`
-        INSERT INTO unavailable_periods (id, start_datetime, end_datetime, reason, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(periodId, start_datetime, end_datetime, reason || null, now, now),
-    ];
+    const adjustments = [];
 
-    for (const reservation of affectedReservations.results) {
+    for (const reservation of affectedReservations) {
       const remainingInterval = getRemainingIntervalAfterUnavailablePeriod(
         reservation.start_time,
         reservation.end_time,
@@ -1264,16 +786,12 @@ reservationRoutes.post('/unavailable', async (c) => {
       );
 
       if (remainingInterval) {
-        statements.push(c.env.DB.prepare(`
-          UPDATE reservations
-          SET start_time = ?, end_time = ?, updated_at = ?
-          WHERE id = ? AND state IN ('PENDING', 'CONFIRMED')
-        `).bind(
-          remainingInterval.startTime,
-          remainingInterval.endTime,
-          now,
-          reservation.id
-        ));
+        adjustments.push({
+          reservationId: reservation.id,
+          startTime: remainingInterval.startTime,
+          endTime: remainingInterval.endTime,
+          decline: false,
+        });
         notificationJobs.push({
           reservationId: reservation.id,
           notificationType: 'RESERVATION_ADJUSTED',
@@ -1281,11 +799,7 @@ reservationRoutes.post('/unavailable', async (c) => {
           requestedEndTime: reservation.end_time,
         });
       } else {
-        statements.push(c.env.DB.prepare(`
-          UPDATE reservations
-          SET state = 'DECLINED', updated_at = ?
-          WHERE id = ? AND state IN ('PENDING', 'CONFIRMED')
-        `).bind(now, reservation.id));
+        adjustments.push({ reservationId: reservation.id, decline: true });
         notificationJobs.push({
           reservationId: reservation.id,
           notificationType: 'RESERVATION_REVOKED',
@@ -1293,7 +807,14 @@ reservationRoutes.post('/unavailable', async (c) => {
       }
     }
 
-    await c.env.DB.batch(statements);
+    await hallRepository.createUnavailablePeriodWithAdjustments({
+      id: periodId,
+      startTime: start_datetime,
+      endTime: end_datetime,
+      reason: reason || null,
+      createdAt: now,
+      adjustments,
+    });
 
     c.executionCtx.waitUntil((async () => {
       for (const job of notificationJobs) {
@@ -1331,17 +852,12 @@ reservationRoutes.delete('/unavailable/:id', async (c) => {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     }
 
-    const period = await c.env.DB.prepare(
-      'SELECT id FROM unavailable_periods WHERE id = ?'
-    ).bind(periodId).first();
-
-    if (!period) {
+    const hallRepository = createD1HallReservationRepository(c.env.DB);
+    if (!await hallRepository.existsUnavailablePeriod(periodId)) {
       return c.json({ success: false, error: 'UNAVAILABLE_PERIOD_NOT_FOUND' }, 404);
     }
 
-    await c.env.DB.prepare(
-      'DELETE FROM unavailable_periods WHERE id = ?'
-    ).bind(periodId).run();
+    await hallRepository.deleteUnavailablePeriod(periodId);
 
     return c.json({ success: true });
   } catch (error) {
@@ -1366,17 +882,12 @@ reservationRoutes.delete('/:id', async (c) => {
     if (!reservationId) {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     }
-    const reservation = await c.env.DB.prepare(
-      'SELECT id FROM reservations WHERE id = ?'
-    ).bind(reservationId).first();
-
-    if (!reservation) {
+    const hallRepository = createD1HallReservationRepository(c.env.DB);
+    if (!await hallRepository.existsReservation(reservationId)) {
       return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     }
 
-    await c.env.DB.prepare(
-      'DELETE FROM reservations WHERE id = ?'
-    ).bind(reservationId).run();
+    await hallRepository.deleteReservation(reservationId);
 
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
 
@@ -1410,9 +921,8 @@ reservationRoutes.post('/:id/cancel', async (c) => {
       }
     }
 
-    const reservation = await c.env.DB.prepare(
-      'SELECT user_id, group_id, state FROM reservations WHERE id = ?'
-    ).bind(reservationId).first<{ user_id: string; group_id: string | null; state: string }>();
+    const hallRepository = createD1HallReservationRepository(c.env.DB);
+    const reservation = await hallRepository.findReservation(reservationId);
 
     if (!reservation) {
       return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
@@ -1425,9 +935,7 @@ reservationRoutes.post('/:id/cancel', async (c) => {
 
       const now = new Date().toISOString();
 
-      await c.env.DB.prepare(
-        'UPDATE reservations SET state = ?, updated_at = ? WHERE id = ?'
-      ).bind('DECLINED', now, reservationId).run();
+      await hallRepository.updateState(reservationId, 'DECLINED', now);
 
       await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
 
@@ -1446,9 +954,7 @@ reservationRoutes.post('/:id/cancel', async (c) => {
 
       const now = new Date().toISOString();
 
-      await c.env.DB.prepare(
-        'UPDATE reservations SET state = ?, updated_at = ? WHERE id = ?'
-      ).bind('CANCELLED', now, reservationId).run();
+      await hallRepository.updateState(reservationId, 'CANCELLED', now);
 
       await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
 

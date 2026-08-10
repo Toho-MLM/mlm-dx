@@ -1,7 +1,22 @@
 import type { Bindings } from '../index';
+import { createExternalReservationProcessingService } from '../features/reservations/application/external-processing';
+import { createD1ExternalReservationProcessingRepository } from '../features/reservations/infrastructure/d1-external-processing-repository';
+import type { AvailableInterval, ProcessResult } from './reservation-processor';
 import { broadcastReservationRealtimeEvent } from './reservation-realtime';
-import { getJSTDateString, getJSTDayRange, getJSTTimeRange, isTodayInJST, selectLongestInterval, type AvailableInterval, type ProcessResult } from './reservation-processor';
 import { prepareAndSendReservationEmail } from './reservation-email';
+
+function createService(env: Bindings) {
+  return createExternalReservationProcessingService({
+    repository: createD1ExternalReservationProcessingRepository(env.DB),
+    effects: {
+      broadcastReservationsChanged: () => broadcastReservationRealtimeEvent(env, 'reservations_changed'),
+      sendExternalNotification: (input) => prepareAndSendReservationEmail(env, {
+        kind: 'EXTERNAL',
+        ...input,
+      }),
+    },
+  });
+}
 
 export async function getAvailableExternalIntervals(
   env: Bindings,
@@ -11,39 +26,13 @@ export async function getAvailableExternalIntervals(
   endTime: string,
   reservationId: string | number
 ): Promise<AvailableInterval[]> {
-  const hasReservationId = reservationId !== 0 && reservationId !== '';
-  const overlappingReservations = await env.DB.prepare(`
-    SELECT start_time, end_time
-    FROM external_reservations
-    WHERE external_studio_id = ?
-      AND room_number = ?
-      AND state = 'CONFIRMED'
-      AND start_time < ?
-      AND end_time > ?
-      ${hasReservationId ? 'AND id != ?' : ''}
-    ORDER BY start_time ASC
-  `).bind(externalStudioId, roomNumber, endTime, startTime, ...(hasReservationId ? [reservationId] : [])).all<{ start_time: string; end_time: string }>();
-
-  const reservationStart = new Date(startTime);
-  const reservationEnd = new Date(endTime);
-  const available: AvailableInterval[] = [];
-  let currentStart = new Date(reservationStart);
-
-  overlappingReservations.results.forEach((res) => {
-    const slotStart = new Date(res.start_time);
-    const slotEnd = new Date(res.end_time);
-
-    if (slotStart > currentStart) {
-      available.push({ start: new Date(currentStart), end: new Date(slotStart) });
-    }
-    currentStart = new Date(Math.max(currentStart.getTime(), slotEnd.getTime()));
+  return createService(env).getAvailableIntervals({
+    studioId: externalStudioId,
+    roomNumber,
+    startTime,
+    endTime,
+    reservationId,
   });
-
-  if (currentStart < reservationEnd) {
-    available.push({ start: new Date(currentStart), end: new Date(reservationEnd) });
-  }
-
-  return available;
 }
 
 export async function processExternalReservationState(
@@ -54,158 +43,23 @@ export async function processExternalReservationState(
   startTime: string,
   endTime: string
 ): Promise<ProcessResult> {
-  const reservationStart = new Date(startTime);
-  const reservationEnd = new Date(endTime);
-  const reservationDateJST = getJSTDateString(reservationStart);
-
-  if (!isTodayInJST(reservationStart)) {
-    return { state: 'PENDING' };
-  }
-
-  const timeRange = getJSTTimeRange(reservationDateJST, 6, 23);
-  if (reservationStart < timeRange.startUTC || reservationEnd > timeRange.endUTC) {
-    return { state: 'DECLINED' };
-  }
-
-  const availableIntervals = await getAvailableExternalIntervals(env, externalStudioId, roomNumber, startTime, endTime, reservationId);
-  const longestInterval = selectLongestInterval(availableIntervals);
-
-  if (!longestInterval) {
-    return { state: 'DECLINED' };
-  }
-
-  const isFullRange = longestInterval.start.getTime() === reservationStart.getTime()
-    && longestInterval.end.getTime() === reservationEnd.getTime();
-
-  if (isFullRange) {
-    return { state: 'CONFIRMED' };
-  }
-
-  return {
-    state: 'CONFIRMED',
-    adjustedStartTime: longestInterval.start.toISOString(),
-    adjustedEndTime: longestInterval.end.toISOString(),
-  };
+  return createService(env).determineState({
+    studioId: externalStudioId,
+    roomNumber,
+    reservationId,
+    startTime,
+    endTime,
+  });
 }
 
 export async function processTodayExternalReservations(env: Bindings): Promise<number> {
-  const todayJST = getJSTDateString(new Date());
-  const dayRange = getJSTDayRange(todayJST);
-  const pendingReservations = await env.DB.prepare(`
-    SELECT id, external_studio_id, room_number, user_id, group_id, start_time, end_time
-    FROM external_reservations
-    WHERE state = 'PENDING'
-      AND start_time >= ?
-      AND start_time <= ?
-    ORDER BY start_time ASC
-  `).bind(dayRange.startUTC.toISOString(), dayRange.endUTC.toISOString()).all<{
-    id: string;
-    external_studio_id: string;
-    room_number: number;
-    user_id: string;
-    group_id: string | null;
-    start_time: string;
-    end_time: string;
-  }>();
-
-  let changedCount = 0;
-
-  for (const reservation of pendingReservations.results) {
-    const processResult = await processExternalReservationState(
-      env,
-      reservation.external_studio_id,
-      reservation.room_number,
-      reservation.id,
-      reservation.start_time,
-      reservation.end_time
-    );
-
-    if (processResult.state === 'PENDING') {
-      continue;
-    }
-
-    const now = new Date().toISOString();
-    if (processResult.adjustedStartTime && processResult.adjustedEndTime) {
-      await env.DB.prepare(`
-        UPDATE external_reservations
-        SET state = ?, start_time = ?, end_time = ?, updated_at = ?
-        WHERE id = ?
-      `).bind(processResult.state, processResult.adjustedStartTime, processResult.adjustedEndTime, now, reservation.id).run();
-    } else {
-      await env.DB.prepare(`
-        UPDATE external_reservations
-        SET state = ?, updated_at = ?
-        WHERE id = ?
-      `).bind(processResult.state, now, reservation.id).run();
-    }
-    changedCount += 1;
-
-    await prepareAndSendReservationEmail(env, {
-      kind: 'EXTERNAL',
-      reservationId: reservation.id,
-      notificationType: processResult.adjustedStartTime && processResult.adjustedEndTime
-        ? 'RESERVATION_ADJUSTED'
-        : processResult.state === 'CONFIRMED'
-          ? 'RESERVATION_CONFIRMED'
-          : 'RESERVATION_DECLINED',
-      requestedStartTime: processResult.adjustedStartTime ? reservation.start_time : undefined,
-      requestedEndTime: processResult.adjustedEndTime ? reservation.end_time : undefined,
-    });
-  }
-
-  if (changedCount > 0) {
-    await broadcastReservationRealtimeEvent(env, 'reservations_changed');
-  }
-
-  return changedCount;
+  return createService(env).processToday();
 }
 
 export async function processPastExternalReservations(env: Bindings): Promise<number> {
-  const todayJST = getJSTDateString(new Date());
-  const todayRange = getJSTDayRange(todayJST);
-  const startOfTodayIso = todayRange.startUTC.toISOString();
-  const updateTime = new Date().toISOString();
-  const targetCount = await env.DB.prepare(`
-    SELECT COUNT(*) as count
-    FROM external_reservations
-    WHERE state IN ('CONFIRMED', 'PENDING')
-      AND end_time < ?
-  `).bind(startOfTodayIso).first<{ count: number }>();
-
-  await env.DB.prepare(`
-    UPDATE external_reservations
-    SET state = 'COMPLETED', updated_at = ?
-    WHERE state IN ('CONFIRMED', 'PENDING')
-      AND end_time < ?
-  `).bind(updateTime, startOfTodayIso).run();
-
-  const changedCount = Number(targetCount?.count ?? 0);
-  if (changedCount > 0) {
-    await broadcastReservationRealtimeEvent(env, 'reservations_changed');
-  }
-
-  return changedCount;
+  return createService(env).processPast();
 }
 
 export async function deleteExpiredExternals(env: Bindings): Promise<number> {
-  const now = new Date().toISOString();
-  const expired = await env.DB.prepare(`
-    SELECT id
-    FROM external_studios
-    WHERE end_datetime < ?
-  `).bind(now).all<{ id: string }>();
-
-  if (expired.results.length === 0) {
-    return 0;
-  }
-
-  const ids = expired.results.map((item) => item.id);
-  for (const id of ids) {
-    await env.DB.prepare('DELETE FROM external_lottery_applications WHERE external_studio_id = ?').bind(id).run();
-    await env.DB.prepare('DELETE FROM external_reservations WHERE external_studio_id = ?').bind(id).run();
-    await env.DB.prepare('DELETE FROM external_studios WHERE id = ?').bind(id).run();
-  }
-
-  await broadcastReservationRealtimeEvent(env, 'reservations_changed');
-  return ids.length;
+  return createService(env).deleteExpired();
 }

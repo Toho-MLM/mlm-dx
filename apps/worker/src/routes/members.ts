@@ -4,63 +4,16 @@ import { requireAdmin } from '../utils/admin';
 import type { Bindings, Variables } from '../index';
 import { z } from 'zod';
 import { parseUuid } from '../utils/uuid';
-
-function safeJsonParse<T>(json: string, fallback: T): T {
-  try {
-    return JSON.parse(json);
-  } catch {
-    return fallback;
-  }
-}
+import { duplicateEmails } from '../features/members/domain/bulk';
+import { createD1MemberRepository } from '../features/members/infrastructure/d1-repository';
 
 const memberRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
-
-type MemberListRow = {
-  id: string;
-  name: string;
-  nickname: string | null;
-  email: string;
-  grade: number;
-  instruments: string;
-  role: string;
-  groups: string | null;
-  student_number: string;
-};
-
-type MemberSelectRow = Pick<
-  MemberListRow,
-  'id' | 'name' | 'nickname' | 'grade' | 'instruments' | 'student_number'
->;
 
 memberRoutes.use('*', requireAuth);
 
 memberRoutes.get('/', async (c) => {
   try {
-    const members = await c.env.DB.prepare(`
-      SELECT 
-        u.id,
-        u.name,
-        u.nickname,
-        u.email,
-        u.grade,
-        u.instruments,
-        u.role,
-        GROUP_CONCAT(DISTINCT g.name) as groups,
-        UPPER(SUBSTR(u.email, 1, 6)) as student_number
-      FROM users u
-      LEFT JOIN group_member_instruments gmi ON u.id = gmi.user_id
-      LEFT JOIN groups g ON gmi.group_id = g.id AND g.is_active = TRUE
-      GROUP BY u.id
-      ORDER BY u.grade DESC, UPPER(SUBSTR(u.email, 1, 6)) ASC
-    `).all<MemberListRow>();
-
-    const processedMembers = members.results.map((member) => ({
-      ...member,
-      groups: member.groups ? member.groups.split(',') : [],
-      instruments: safeJsonParse(member.instruments, [])
-    }));
-
-    return c.json({ success: true, data: processedMembers });
+    return c.json({ success: true, data: await createD1MemberRepository(c.env.DB).list() });
   } catch (error) {
     console.error('Error fetching member list:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
@@ -80,30 +33,18 @@ memberRoutes.post('/', async (c) => {
 
     const normalizedEmail = requestData.email.trim().toLowerCase();
 
-    const existing = await c.env.DB.prepare(
-      'SELECT id FROM users WHERE lower(email) = lower(?)'
-    ).bind(normalizedEmail).first();
-    if (existing) {
+    const repository = createD1MemberRepository(c.env.DB);
+    if (await repository.emailExists(normalizedEmail)) {
       return c.json({ success: false, error: 'EMAIL_ALREADY_EXISTS' }, 409);
     }
 
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
     
-    await c.env.DB.prepare(`
-      INSERT INTO users (id, name, nickname, email, grade, instruments, role, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      newId,
-      requestData.name,
-      null,
-      normalizedEmail,
-      requestData.grade,
-      JSON.stringify([]),
-      'MBR',
-      now,
-      now
-    ).run();
+    await repository.create({
+      id: newId, name: requestData.name, nickname: null, email: normalizedEmail,
+      grade: requestData.grade, instruments: [], role: 'MBR',
+    }, now);
     
     return c.json({ success: true });
   } catch (error) {
@@ -141,18 +82,12 @@ memberRoutes.put('/:id', async (c) => {
 
     const now = new Date().toISOString();
 
-    await c.env.DB.prepare(`
-      UPDATE users 
-      SET nickname = ?, grade = ?, instruments = ?, role = ?, updated_at = ?
-      WHERE id = ?
-    `).bind(
-      requestData.nickname || null,
-      requestData.grade,
-      JSON.stringify(requestData.instruments),
-      requestData.role,
-      now,
-      memberId
-    ).run();
+    await createD1MemberRepository(c.env.DB).update(memberId, {
+      nickname: requestData.nickname || null,
+      grade: requestData.grade,
+      instruments: requestData.instruments,
+      role: requestData.role,
+    }, now);
 
     return c.json({ success: true });
   } catch (error) {
@@ -203,29 +138,16 @@ memberRoutes.post('/bulk', async (c) => {
       role: m.role,
     }));
 
-    const seen = new Set<string>();
-    const inputDuplicates = new Set<string>();
-    for (const m of normalizedMembers) {
-      if (seen.has(m.email)) {
-        inputDuplicates.add(m.email);
-      } else {
-        seen.add(m.email);
-      }
-    }
+    const inputDuplicates = duplicateEmails(normalizedMembers);
 
     for (const dup of inputDuplicates) {
       results.failed.push({ email: dup, error: 'DUPLICATE_IN_INPUT' });
     }
 
-    const uniqueEmails = [...seen];
+    const uniqueEmails = [...new Set(normalizedMembers.map((member) => member.email))];
     if (uniqueEmails.length > 0) {
-      const placeholders = uniqueEmails.map(() => '?').join(',');
-      const existingRows = await c.env.DB.prepare(
-        `SELECT email FROM users WHERE lower(email) IN (${placeholders})`
-      ).bind(...uniqueEmails).all();
-      const existingEmails = new Set(
-        (existingRows.results as Array<{ email: string }>).map(r => String(r.email).toLowerCase())
-      );
+      const repository = createD1MemberRepository(c.env.DB);
+      const existingEmails = await repository.existingEmails(uniqueEmails);
 
       for (const m of normalizedMembers) {
         if (inputDuplicates.has(m.email)) {
@@ -237,20 +159,8 @@ memberRoutes.post('/bulk', async (c) => {
         }
         try {
           const newId = crypto.randomUUID();
-          await c.env.DB.prepare(
-            `INSERT INTO users (id, name, nickname, email, grade, instruments, role, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).bind(
-            newId,
-            m.name,
-            m.nickname,
-            m.email,
-            m.grade,
-            JSON.stringify(m.instruments || []),
-            m.role ?? 'MBR',
-            now,
-            now
-          ).run();
+          await repository.create({ id: newId, name: m.name, nickname: m.nickname, email: m.email,
+            grade: m.grade, instruments: m.instruments, role: m.role ?? 'MBR' }, now);
           results.created.push(m.email);
         } catch (error) {
           results.failed.push({ email: m.email, error: 'INTERNAL_ERROR' });
@@ -280,42 +190,8 @@ memberRoutes.post('/move-up-grade', async (c) => {
     const user = c.get('user');
     requireAdmin(user.role);
 
-    const deleteTargetCountRow = await c.env.DB.prepare(
-      `
-      SELECT COUNT(*) as count
-      FROM users
-      WHERE
-        (LOWER(SUBSTR(email, 1, 1)) = 'n' AND grade = 4)
-        OR (LOWER(SUBSTR(email, 1, 1)) = 'm' AND grade = 6)
-      `
-    ).first<{ count: number | string }>();
-    const moveUpGradeTargetCountRow = await c.env.DB.prepare(
-      `
-      SELECT COUNT(*) as count
-      FROM users
-      WHERE grade BETWEEN 1 AND 5
-        AND NOT (LOWER(SUBSTR(email, 1, 1)) = 'n' AND grade = 4)
-      `
-    ).first<{ count: number | string }>();
-
-    const deletedCount = Number(deleteTargetCountRow?.count ?? 0);
-    const movedUpCount = Number(moveUpGradeTargetCountRow?.count ?? 0);
     const now = new Date().toISOString();
-
-    await c.env.DB.batch([
-      c.env.DB.prepare(`
-        DELETE FROM users
-        WHERE
-          (LOWER(SUBSTR(email, 1, 1)) = 'n' AND grade = 4)
-          OR (LOWER(SUBSTR(email, 1, 1)) = 'm' AND grade = 6)
-      `),
-      c.env.DB.prepare(`
-        UPDATE users
-        SET grade = grade + 1, updated_at = ?
-        WHERE grade BETWEEN 1 AND 5
-          AND NOT (LOWER(SUBSTR(email, 1, 1)) = 'n' AND grade = 4)
-      `).bind(now),
-    ]);
+    const { deletedCount, movedUpCount } = await createD1MemberRepository(c.env.DB).moveUpGrades(now);
 
     return c.json({
       success: true,
@@ -340,17 +216,12 @@ memberRoutes.delete('/:id', async (c) => {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     }
 
-    const existingMember = await c.env.DB.prepare(
-      'SELECT id FROM users WHERE id = ?'
-    ).bind(memberId).first();
-
-    if (!existingMember) {
+    const repository = createD1MemberRepository(c.env.DB);
+    if (!await repository.exists(memberId)) {
       return c.json({ success: false, error: 'MEMBER_NOT_FOUND' }, 404);
     }
 
-    await c.env.DB.prepare(
-      'DELETE FROM users WHERE id = ?'
-    ).bind(memberId).run();
+    await repository.delete(memberId);
 
     return c.json({ success: true, message: 'Member deleted successfully' });
   } catch (error) {
@@ -364,36 +235,7 @@ memberRoutes.get('/select', async (c) => {
     const user = c.get('user');
     const currentUserId = user.id;
 
-    const members = await c.env.DB.prepare(`
-      SELECT 
-        u.id,
-        u.name,
-        u.nickname,
-        u.instruments,
-        u.grade,
-        UPPER(SUBSTR(u.email, 1, 6)) as student_number
-      FROM users u
-      WHERE u.name IS NOT NULL
-      ORDER BY 
-        CASE WHEN u.id = ? THEN 0 ELSE 1 END,
-        u.grade DESC,
-        UPPER(SUBSTR(u.email, 1, 6)) ASC
-    `).bind(currentUserId).all<MemberSelectRow>();
-
-    const processedMembers = members.results.map((member) => {
-      const displayName = `${member.student_number} ${member.nickname || member.name}`;
-      const realName = `${member.student_number} ${member.name}`;
-      const instruments = safeJsonParse<string[]>(member.instruments || '[]', []);
-      return {
-        id: member.id,
-        name: displayName,
-        display_name: displayName,
-        real_name: realName,
-        instruments,
-      };
-    });
-
-    return c.json({ success: true, data: processedMembers });
+    return c.json({ success: true, data: await createD1MemberRepository(c.env.DB).listForSelect(currentUserId) });
   } catch (error) {
     console.error('Error fetching member select:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);

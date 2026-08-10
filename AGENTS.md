@@ -29,6 +29,16 @@
 - 画面タイトルやセクション見出しから内容が明らかな場合、同じ意味の説明文や案内文を重ねない。ユーザーの判断や操作に必要な文言だけを表示する。
 - ユーザー向け文言は日本語を基本とし、API の機械可読エラーコードは既存の大文字スネークケースに合わせる。
 
+## Worker の責務境界
+
+- 新規または移行済み機能は `apps/worker/src/features/<feature>` に置き、`domain`、`application`、`infrastructure` の責務を分ける。HTTP adapter は現行 mount と互換性を保つため `apps/worker/src/routes` に置く。
+- `domain` は純粋な業務計算だけを持ち、Hono、Cloudflare bindings、D1、現在時刻、乱数、通知へ直接依存しない。
+- `application` はユースケースと repository / clock / notification などの port を定義し、SQL や HTTP ステータスを扱わない。
+- D1 SQL、batch、row の boolean・JSON・数値変換は `infrastructure` の repository 実装に限定する。
+- HTTP ルートは入力検証、認証情報の受け渡し、application の結果から既存 API レスポンスへの変換を担当する。route 同士を import しない。
+- `prepare()` と `batch()` は `features/*/infrastructure` 以外へ置かない。例外を追加せず、必要な操作を repository port として定義する。
+- 時刻、ID、乱数、メール、WebSocket は注入可能な依存にし、計算ロジックとユースケースを fake repository でテストする。
+
 ## データベースと運用
 
 - スキーマ変更は既存データを保持する新しい連番 migration として追加する。
@@ -44,6 +54,7 @@
 - 生成物 (`.next`、`.open-next`、`.wrangler`、`.worker-bundle`) を編集・コミットしない。
 - 最低限、変更したアプリの type-check を行う。可能なら lint、境界をまたぐ変更では両アプリの type-check、リリース影響が大きい変更では build まで行う。
 - ルートコマンドを優先する: `pnpm type-check`、`pnpm lint`、`pnpm build`。範囲を限定する場合は定義済みのアプリ別スクリプトを使う。
+- Worker の domain、application、repository 境界を変更した場合は `pnpm test:worker` を実行する。
 - 自動テストがない領域では、代表的な正常系・権限エラー・入力エラー・境界日時を手動確認項目として報告する。
 
 ## プロジェクト skills

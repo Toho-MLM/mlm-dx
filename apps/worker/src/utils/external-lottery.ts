@@ -1,8 +1,14 @@
 import type { Bindings } from '../index';
-import { getJSTDateString, getJSTDayRange, type AvailableInterval } from './reservation-processor';
+import { getJSTDateString, getJSTDayRange } from './reservation-processor';
 import { broadcastReservationRealtimeEvent } from './reservation-realtime';
 import { prepareAndSendReservationEmail } from './reservation-email';
-import { hasReservationLimitConflict } from '../routes/reservations';
+import { createReservationLimitService } from '../features/reservations/application/limits';
+import { createD1ReservationLimitRepository } from '../features/reservations/infrastructure/d1-limit-repository';
+import { createD1GroupMembershipReader } from '../features/reservations/infrastructure/d1-membership-reader';
+import { createD1ExternalLotteryRepository } from '../features/reservations/infrastructure/d1-external-lottery-repository';
+import type {
+  LotteryApplicationRecord as ApplicationRow,
+} from '../features/reservations/application/external-lottery-repository';
 import {
   EXTERNAL_LOTTERY_DURATION_STEP_MINUTES,
   EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
@@ -10,24 +16,18 @@ import {
   calculateExternalLotteryWeights,
   getExternalLotteryWeightedOrderKey,
 } from '../../../../lib/shared-schemas';
-
-type StudioRow = {
-  id: string;
-  start_datetime: string;
-  end_datetime: string;
-  room_names: string;
-};
-
-type ApplicationRow = {
-  id: string;
-  external_studio_id: string;
-  user_id: string;
-  group_id: string | null;
-  preferred_start_datetime: string | null;
-  preferred_end_datetime: string | null;
-  requested_duration_minutes: number | null;
-  created_at: string;
-};
+import {
+  enumerateStarts,
+  getApplicationRange,
+  getFairShareMinutes,
+  getMemberSchedulingImpact,
+  hasMemberConflict,
+  overlaps,
+  parseRoomNames,
+  subtractRoomReservations,
+  type AllocatedIdentity,
+  type RoomOption,
+} from '../features/reservations/domain/external-lottery';
 
 type PreparedApplication = ApplicationRow & {
   priority: number;
@@ -40,75 +40,29 @@ type PreparedApplication = ApplicationRow & {
   weightedOrder: number;
 };
 
-type ExistingReservation = {
-  room_number: number;
-  start_time: string;
-  end_time: string;
-};
-
-type AllocatedIdentity = {
-  memberIds: Set<string>;
-  start: Date;
-  end: Date;
-};
-
-type ReservationIdentityRow = {
-  user_id: string;
-  group_id: string | null;
-  start_time: string;
-  end_time: string;
-};
-
-type RoomOption = {
-  roomNumber: number;
-  intervals: AvailableInterval[];
-  longestMinutes: number;
-};
-
-const parseRoomNames = (value: string): string[] => {
-  const parsed: unknown = JSON.parse(value);
-  if (!Array.isArray(parsed) || parsed.some((name) => typeof name !== 'string' || name.trim() === '')) {
-    throw new Error('INVALID_EXTERNAL_ROOM_NAMES');
-  }
-  return parsed;
-};
-
-const overlaps = (startA: Date, endA: Date, startB: Date, endB: Date) => startA < endB && endA > startB;
-
-function subtractReservations(start: Date, end: Date, reservations: ExistingReservation[]): AvailableInterval[] {
-  const available: AvailableInterval[] = [];
-  let cursor = new Date(start);
-  for (const reservation of reservations.sort((a, b) => a.start_time.localeCompare(b.start_time))) {
-    const blockedStart = new Date(Math.max(start.getTime(), new Date(reservation.start_time).getTime()));
-    const blockedEnd = new Date(Math.min(end.getTime(), new Date(reservation.end_time).getTime()));
-    if (blockedEnd <= cursor || blockedStart >= end) continue;
-    if (blockedStart > cursor) available.push({ start: new Date(cursor), end: blockedStart });
-    if (blockedEnd > cursor) cursor = blockedEnd;
-  }
-  if (cursor < end) available.push({ start: cursor, end: new Date(end) });
-  return available;
+function hasReservationLimitConflict(
+  env: Bindings,
+  userId: string,
+  groupId: string | null,
+  startTime: string,
+  endTime: string,
+  exclude?: { kind: 'HALL' | 'EXTERNAL' | 'LOTTERY'; id: string }
+): Promise<boolean> {
+  return createReservationLimitService(createD1ReservationLimitRepository(env.DB)).hasConflict({
+    userId,
+    groupId,
+    startTime,
+    endTime,
+    exclude,
+  });
 }
 
 async function getGroupMemberIds(env: Bindings, groupId: string): Promise<string[]> {
-  const members = await env.DB.prepare(`
-    SELECT DISTINCT user_id
-    FROM group_member_instruments
-    WHERE group_id = ?
-    ORDER BY user_id ASC
-  `).bind(groupId).all<{ user_id: string }>();
-  return members.results.map((member) => member.user_id);
+  return createD1GroupMembershipReader(env.DB).listGroupMemberIds(groupId);
 }
 
 async function getGroup(env: Bindings, groupId: string) {
-  const group = await env.DB.prepare(`
-    SELECT id, is_main, is_active
-    FROM groups
-    WHERE id = ?
-  `).bind(groupId).first<{ id: string; is_main: number; is_active: number }>();
-  if (!group || !group.is_active) return null;
-  const memberIds = await getGroupMemberIds(env, groupId);
-  if (memberIds.length === 0) return null;
-  return { isMain: Boolean(group.is_main), memberIds };
+  return createD1GroupMembershipReader(env.DB).getActiveGroupIdentity(groupId);
 }
 
 async function getExistingReservationAllocations(
@@ -116,23 +70,11 @@ async function getExistingReservationAllocations(
   rangeStart: string,
   rangeEnd: string
 ): Promise<AllocatedIdentity[]> {
-  const [hallReservations, externalReservations] = await Promise.all([
-    env.DB.prepare(`
-      SELECT user_id, group_id, start_time, end_time
-      FROM reservations
-      WHERE state IN ('PENDING', 'CONFIRMED')
-        AND start_time < ? AND end_time > ?
-    `).bind(rangeEnd, rangeStart).all<ReservationIdentityRow>(),
-    env.DB.prepare(`
-      SELECT user_id, group_id, start_time, end_time
-      FROM external_reservations
-      WHERE state = 'CONFIRMED'
-        AND start_time < ? AND end_time > ?
-    `).bind(rangeEnd, rangeStart).all<ReservationIdentityRow>(),
-  ]);
+  const reservations = await createD1ExternalLotteryRepository(env.DB)
+    .listExistingReservationIdentities(rangeStart, rangeEnd);
   const memberCache = new Map<string, string[]>();
   const allocations: AllocatedIdentity[] = [];
-  for (const reservation of [...hallReservations.results, ...externalReservations.results]) {
+  for (const reservation of reservations) {
     let memberIds: string[];
     if (reservation.group_id) {
       const cached = memberCache.get(reservation.group_id);
@@ -158,149 +100,16 @@ export async function getExternalLotteryFairnessScore(
 ): Promise<number> {
   const rangeStart = new Date(rangeEnd);
   rangeStart.setUTCDate(rangeStart.getUTCDate() - 30);
-  const usage = await env.DB.prepare(`
-    SELECT COALESCE(ROUND(SUM((julianday(end_time) - julianday(start_time)) * 1440)), 0) AS minutes
-    FROM external_reservations
-    WHERE ((? IS NULL AND group_id IS NULL AND user_id = ?) OR group_id = ?)
-      AND state IN ('CONFIRMED', 'CANCELLED', 'COMPLETED', 'WITHDRAWN')
-      AND start_time >= ?
-      AND start_time < ?
-  `).bind(groupId, userId, groupId, rangeStart.toISOString(), rangeEnd.toISOString()).first<{ minutes: number }>();
-  return Number(usage?.minutes ?? 0);
-}
-
-function getApplicationRange(
-  application: ApplicationRow,
-  studio: StudioRow,
-  targetStart: Date,
-  targetEnd: Date
-) {
-  const studioStart = new Date(studio.start_datetime);
-  const studioEnd = new Date(studio.end_datetime);
-  const requestedRangeStart = application.preferred_start_datetime
-    ? new Date(application.preferred_start_datetime)
-    : studioStart;
-  const requestedRangeEnd = application.preferred_end_datetime
-    ? new Date(application.preferred_end_datetime)
-    : studioEnd;
-  if (
-    requestedRangeStart < studioStart
-    || requestedRangeEnd > studioEnd
-    || requestedRangeEnd <= requestedRangeStart
-  ) return null;
-  if (requestedRangeStart < targetStart || requestedRangeStart >= targetEnd) return null;
-  const rangeStart = requestedRangeStart;
-  const rangeEnd = requestedRangeEnd;
-  if (rangeEnd <= rangeStart) return null;
-  const requestedMinutes = application.requested_duration_minutes
-    ?? Math.round((rangeEnd.getTime() - rangeStart.getTime()) / 60000);
-  return { rangeStart, rangeEnd, requestedMinutes };
-}
-
-function hasMemberConflict(
-  memberIds: string[],
-  start: Date,
-  end: Date,
-  allocated: AllocatedIdentity[]
-): boolean {
-  return allocated.some((item) => (
-    overlaps(start, end, item.start, item.end)
-    && memberIds.some((memberId) => item.memberIds.has(memberId))
-  ));
-}
-
-function sharesMember(memberIdsA: string[], memberIdsB: string[]): boolean {
-  const members = new Set(memberIdsA);
-  return memberIdsB.some((memberId) => members.has(memberId));
-}
-
-function countTemporalStarts(
-  application: PreparedApplication,
-  blockedStart?: Date,
-  blockedEnd?: Date
-): number {
-  // 公平配分で希望時間より短くなる場合も、最短枠を確保できれば当選候補になれる。
-  const durationMs = EXTERNAL_LOTTERY_MIN_DURATION_MINUTES * 60000;
-  const stepMs = 5 * 60000;
-  const firstStart = Math.ceil(application.rangeStart.getTime() / stepMs) * stepMs;
-  const lastStart = application.rangeEnd.getTime() - durationMs;
-  let count = 0;
-
-  for (let startMs = firstStart; startMs <= lastStart; startMs += stepMs) {
-    const endMs = startMs + durationMs;
-    if (
-      blockedStart
-      && blockedEnd
-      && startMs < blockedEnd.getTime()
-      && endMs > blockedStart.getTime()
-    ) continue;
-    count += 1;
-  }
-  return count;
-}
-
-function getMemberSchedulingImpact(
-  application: PreparedApplication,
-  start: Date,
-  end: Date,
-  remainingApplications: PreparedApplication[]
-): { madeUnschedulable: number; lostOptions: number } {
-  let madeUnschedulable = 0;
-  let lostOptions = 0;
-
-  for (const remaining of remainingApplications) {
-    if (!sharesMember(application.memberIds, remaining.memberIds)) continue;
-    const optionsBefore = countTemporalStarts(remaining);
-    if (optionsBefore === 0) continue;
-    const optionsAfter = countTemporalStarts(remaining, start, end);
-    if (optionsAfter === 0) madeUnschedulable += 1;
-    lostOptions += optionsBefore - optionsAfter;
-  }
-
-  return { madeUnschedulable, lostOptions };
-}
-
-function enumerateStarts(interval: AvailableInterval, durationMinutes: number, latestStartExclusive: Date): Date[] {
-  const step = 5 * 60000;
-  const first = Math.ceil(interval.start.getTime() / step) * step;
-  const latest = Math.min(
-    interval.end.getTime() - durationMinutes * 60000,
-    latestStartExclusive.getTime() - 1
+  return createD1ExternalLotteryRepository(env.DB).getFairnessUsageMinutes(
+    userId,
+    groupId,
+    rangeStart.toISOString(),
+    rangeEnd.toISOString()
   );
-  const starts: Date[] = [];
-  for (let value = first; value <= latest; value += step) starts.push(new Date(value));
-  return starts;
-}
-
-function getFairShareMinutes(
-  application: PreparedApplication,
-  remainingApplications: PreparedApplication[],
-  roomOptions: RoomOption[]
-): number {
-  const availableMinutes = roomOptions.reduce((total, room) => total + room.intervals.reduce((roomTotal, interval) => {
-    const minutes = Math.floor((interval.end.getTime() - interval.start.getTime()) / 60000);
-    return roomTotal + (minutes >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES ? minutes : 0);
-  }, 0), 0);
-  const contenders = remainingApplications.filter((remaining) => (
-    overlaps(application.rangeStart, application.rangeEnd, remaining.rangeStart, remaining.rangeEnd)
-  )).length;
-  const possibleWinners = Math.min(
-    contenders,
-    Math.floor(availableMinutes / EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
-  );
-  if (possibleWinners === 0) return 0;
-  const fairShare = Math.floor(
-    availableMinutes / possibleWinners / EXTERNAL_LOTTERY_DURATION_STEP_MINUTES
-  ) * EXTERNAL_LOTTERY_DURATION_STEP_MINUTES;
-  return Math.min(application.requestedMinutes, fairShare);
 }
 
 async function markLost(env: Bindings, applicationId: string, score: number | null) {
-  await env.DB.prepare(`
-    UPDATE external_lottery_applications
-    SET state = 'LOST', fairness_score = ?, updated_at = ?
-    WHERE id = ? AND state = 'PENDING'
-  `).bind(score, new Date().toISOString(), applicationId).run();
+  await createD1ExternalLotteryRepository(env.DB).markLost(applicationId, score, new Date().toISOString());
 }
 
 export async function processExternalLotteryForNextDay(env: Bindings): Promise<number> {
@@ -308,14 +117,13 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
   nextDay.setUTCDate(nextDay.getUTCDate() + 1);
   const targetDate = getJSTDateString(nextDay);
   const dayRange = getJSTDayRange(targetDate);
-  const studios = await env.DB.prepare(`
-    SELECT id, start_datetime, end_datetime, room_names
-    FROM external_studios
-    WHERE start_datetime < ? AND end_datetime > ?
-    ORDER BY start_datetime ASC, id ASC
-  `).bind(dayRange.endUTC.toISOString(), dayRange.startUTC.toISOString()).all<StudioRow>();
+  const lotteryRepository = createD1ExternalLotteryRepository(env.DB);
+  const studios = await lotteryRepository.listStudios(
+    dayRange.startUTC.toISOString(),
+    dayRange.endUTC.toISOString()
+  );
 
-  const allocationRangeEnd = studios.results.reduce(
+  const allocationRangeEnd = studios.reduce(
     (latest, studio) => Math.max(latest, new Date(studio.end_datetime).getTime()),
     dayRange.endUTC.getTime()
   );
@@ -326,27 +134,16 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
   );
 
   let processed = 0;
-  for (const studio of studios.results) {
+  for (const studio of studios) {
     const roomNames = parseRoomNames(studio.room_names);
-    const applications = await env.DB.prepare(`
-      SELECT id, external_studio_id, user_id, group_id,
-             preferred_start_datetime, preferred_end_datetime,
-             requested_duration_minutes, created_at
-      FROM external_lottery_applications
-      WHERE external_studio_id = ? AND state = 'PENDING'
-        AND COALESCE(preferred_start_datetime, ?) >= ?
-        AND COALESCE(preferred_start_datetime, ?) < ?
-      ORDER BY created_at ASC, id ASC
-    `).bind(
-      studio.id,
-      studio.start_datetime,
+    const applications = await lotteryRepository.listPendingApplications(
+      studio,
       dayRange.startUTC.toISOString(),
-      studio.start_datetime,
       dayRange.endUTC.toISOString()
-    ).all<ApplicationRow>();
+    );
 
     const prepared: PreparedApplication[] = [];
-    for (const application of applications.results) {
+    for (const application of applications) {
       const identity = application.group_id ? await getGroup(env, application.group_id) : { isMain: false, memberIds: [application.user_id] };
       const range = getApplicationRange(application, studio, dayRange.startUTC, dayRange.endUTC);
       if (
@@ -389,20 +186,15 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
     prepared.sort((a, b) => a.priority - b.priority || a.weightedOrder - b.weightedOrder);
     for (let index = 0; index < prepared.length; index += 1) {
       const application = prepared[index];
-      const alreadyCreated = await env.DB.prepare(`
-        SELECT id, user_id, group_id, room_number, start_time, end_time
-        FROM external_reservations WHERE id = ?
-      `).bind(application.id).first<{
-        id: string; user_id: string; group_id: string | null; room_number: number; start_time: string; end_time: string;
-      }>();
+      const alreadyCreated = await lotteryRepository.findCreatedReservation(application.id);
       if (alreadyCreated) {
-        const recoverResult = await env.DB.prepare(`
-          UPDATE external_lottery_applications
-          SET state = 'WON', fairness_score = ?, assigned_room_number = ?,
-              assigned_start_datetime = ?, assigned_end_datetime = ?, updated_at = ?
-          WHERE id = ? AND state = 'PENDING'
-        `).bind(application.fairnessScore, alreadyCreated.room_number, alreadyCreated.start_time, alreadyCreated.end_time, new Date().toISOString(), application.id).run();
-        if (Number(recoverResult.meta.changes ?? 0) === 0) continue;
+        const recovered = await lotteryRepository.recoverWon({
+          applicationId: application.id,
+          score: application.fairnessScore,
+          reservation: alreadyCreated,
+          updatedAt: new Date().toISOString(),
+        });
+        if (!recovered) continue;
         allocated.push({
           memberIds: new Set(application.memberIds),
           start: new Date(alreadyCreated.start_time),
@@ -415,18 +207,17 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
         continue;
       }
 
-      const reservations = await env.DB.prepare(`
-        SELECT room_number, start_time, end_time
-        FROM external_reservations
-        WHERE external_studio_id = ? AND state = 'CONFIRMED'
-          AND start_time < ? AND end_time > ?
-      `).bind(studio.id, application.rangeEnd.toISOString(), application.rangeStart.toISOString()).all<ExistingReservation>();
+      const reservations = await lotteryRepository.listConfirmedRoomReservations(
+        studio.id,
+        application.rangeStart.toISOString(),
+        application.rangeEnd.toISOString()
+      );
       const roomOptions: RoomOption[] = roomNames.map((_, roomIndex) => {
         const roomNumber = roomIndex + 1;
-        const intervals = subtractReservations(
+        const intervals = subtractRoomReservations(
           application.rangeStart,
           application.rangeEnd,
-          reservations.results.filter((reservation) => reservation.room_number === roomNumber)
+          reservations.filter((reservation) => reservation.room_number === roomNumber)
         );
         const longestMinutes = intervals.reduce((max, interval) => Math.max(max, Math.floor((interval.end.getTime() - interval.start.getTime()) / 60000)), 0);
         return { roomNumber, intervals, longestMinutes };
@@ -483,29 +274,16 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
       }
 
       const now = new Date().toISOString();
-      const [insertResult] = await env.DB.batch([
-        env.DB.prepare(`
-          INSERT INTO external_reservations
-            (id, external_studio_id, room_number, user_id, group_id, start_time, end_time, state, created_at, updated_at)
-          SELECT ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?
-          WHERE EXISTS (
-            SELECT 1 FROM external_lottery_applications WHERE id = ? AND state = 'PENDING'
-          )
-        `).bind(
-          application.id, studio.id, assignment.roomNumber, application.user_id, application.group_id,
-          assignment.start.toISOString(), assignment.end.toISOString(), now, now, application.id
-        ),
-        env.DB.prepare(`
-          UPDATE external_lottery_applications
-          SET state = 'WON', fairness_score = ?, assigned_room_number = ?,
-              assigned_start_datetime = ?, assigned_end_datetime = ?, updated_at = ?
-          WHERE id = ? AND state = 'PENDING'
-        `).bind(
-          application.fairnessScore, assignment.roomNumber,
-          assignment.start.toISOString(), assignment.end.toISOString(), now, application.id
-        ),
-      ]);
-      if (Number(insertResult.meta.changes ?? 0) === 0) continue;
+      const inserted = await lotteryRepository.allocateWon({
+        application,
+        studioId: studio.id,
+        roomNumber: assignment.roomNumber,
+        startTime: assignment.start.toISOString(),
+        endTime: assignment.end.toISOString(),
+        score: application.fairnessScore,
+        updatedAt: now,
+      });
+      if (!inserted) continue;
       await prepareAndSendReservationEmail(env, {
         kind: 'EXTERNAL', reservationId: application.id, notificationType: 'RESERVATION_CONFIRMED',
       });
