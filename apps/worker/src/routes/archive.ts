@@ -7,6 +7,7 @@ import type { ApiResponse, Archive } from '../types';
 import { parseUuid } from '../utils/uuid';
 import { CreateArchiveRequestSchema, UpdateArchiveRequestSchema } from '../schemas';
 import { z } from 'zod';
+import { createD1ArchiveRepository } from '../features/archive/infrastructure/d1-repository';
 
 const archiveRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -14,14 +15,11 @@ archiveRoutes.use('*', requireAuth);
 
 archiveRoutes.get('/', async (c: Context<{ Bindings: Bindings; Variables: Variables }>) => {
   try {
-    const { results } = await c.env.DB.prepare(`
-      SELECT id, title, youtube_url, year FROM archives
-      ORDER BY year DESC, created_at DESC
-    `).all();
+    const results = await createD1ArchiveRepository(c.env.DB).list();
 
     return c.json<ApiResponse<Archive[]>>({
       success: true,
-      data: results as unknown as Archive[]
+      data: results as Archive[]
     });
 
   } catch (error) {
@@ -42,16 +40,7 @@ archiveRoutes.post('/', async (c: Context<{ Bindings: Bindings; Variables: Varia
     const archiveId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    await c.env.DB.prepare(
-      'INSERT INTO archives (id, title, youtube_url, year, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(
-      archiveId,
-      title,
-      youtube_url,
-      year,
-      now,
-      now
-    ).run();
+    await createD1ArchiveRepository(c.env.DB).create({ id: archiveId, title, youtube_url, year }, now);
 
     return c.json<ApiResponse>({ success: true }, 201);
 
@@ -83,26 +72,15 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings; Variables: Var
     }
     const { title, youtube_url, year } = UpdateArchiveRequestSchema.parse(await c.req.json());
 
-    const archive = await c.env.DB.prepare(
-      'SELECT * FROM archives WHERE id = ?'
-    ).bind(archiveId).first() as Partial<Archive> | null;
-
-    if (!archive) {
+    const repository = createD1ArchiveRepository(c.env.DB);
+    if (!await repository.exists(archiveId)) {
       return c.json<ApiResponse>({
         success: false,
         error: 'ARCHIVE_NOT_FOUND'
       }, 404);
     }
 
-    await c.env.DB.prepare(
-      'UPDATE archives SET title = ?, youtube_url = ?, year = ?, updated_at = ? WHERE id = ?'
-    ).bind(
-      title,
-      youtube_url,
-      year,
-      new Date().toISOString(),
-      archiveId
-    ).run();
+    await repository.update({ id: archiveId, title, youtube_url, year }, new Date().toISOString());
 
     return c.json<ApiResponse>({ success: true });
 
@@ -133,18 +111,15 @@ archiveRoutes.delete('/:id', async (c: Context<{ Bindings: Bindings; Variables: 
       return c.json<ApiResponse>({ success: false, error: 'INVALID_INPUT' }, 400);
     }
 
-    const archive = await c.env.DB.prepare(
-      'SELECT * FROM archives WHERE id = ?'
-    ).bind(archiveId).first() as Partial<Archive> | null;
-
-    if (!archive) {
+    const repository = createD1ArchiveRepository(c.env.DB);
+    if (!await repository.exists(archiveId)) {
       return c.json<ApiResponse>({
         success: false,
         error: 'ARCHIVE_NOT_FOUND'
       }, 404);
     }
 
-    await c.env.DB.prepare('DELETE FROM archives WHERE id = ?').bind(archiveId).run();
+    await repository.delete(archiveId);
 
     return c.json<ApiResponse>({
       success: true,

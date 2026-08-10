@@ -2,8 +2,6 @@ import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
-import { isUserInGroup } from './groups';
-import { hasReservationLimitConflict } from './reservations';
 import { requireAdmin } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
 import type { EmailNotificationType } from '../../../../lib/shared-schemas';
@@ -29,57 +27,46 @@ import {
 import { parseUuid } from '../utils/uuid';
 import { getJSTDateString, getJSTDayRange } from '../utils/reservation-processor';
 import { getExternalLotteryFairnessScore } from '../utils/external-lottery';
+import { createReservationLimitService } from '../features/reservations/application/limits';
+import { createD1ReservationLimitRepository } from '../features/reservations/infrastructure/d1-limit-repository';
+import { createD1GroupMembershipReader } from '../features/reservations/infrastructure/d1-membership-reader';
+import { parseRoomNames } from '../features/reservations/domain/external-lottery';
+import { createD1ExternalReservationRepository } from '../features/reservations/infrastructure/d1-external-repository';
+import type { ExternalStudioRecord as StudioRow } from '../features/reservations/application/external-repository';
 
 const externalStudioRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 const externalReservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-type StudioRow = { id: string; start_datetime: string; end_datetime: string; room_names: string; created_at: string; updated_at: string };
-type GroupMemberRow = { id: string; name: string };
-type ConflictRow = {
-  reservation_id: string;
-  reservation_type: 'HALL' | 'EXTERNAL';
-  reservation_name: string | null;
-  location_name: string;
-  start_time: string;
-  end_time: string;
-  member_id: string;
-};
-
-function parseRoomNames(value: string): string[] {
-  const parsed: unknown = JSON.parse(value);
-  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some((name) => typeof name !== 'string' || name.trim() === '')) {
-    throw new Error('INVALID_EXTERNAL_ROOM_NAMES');
-  }
-  return parsed;
+function hasReservationLimitConflict(
+  env: Bindings,
+  userId: string,
+  groupId: string | null,
+  startTime: string,
+  endTime: string,
+  exclude?: { kind: 'HALL' | 'EXTERNAL' | 'LOTTERY'; id: string }
+): Promise<boolean> {
+  return createReservationLimitService(createD1ReservationLimitRepository(env.DB)).hasConflict({
+    userId,
+    groupId,
+    startTime,
+    endTime,
+    exclude,
+  });
 }
+
+type GroupMemberRow = { id: string; name: string };
 
 function normalizeStudio(row: StudioRow) {
   return ExternalSchema.parse({ ...row, room_names: parseRoomNames(row.room_names) });
 }
 
 async function getStudio(env: Bindings, id: string): Promise<(StudioRow & { roomNames: string[] }) | null> {
-  const row = await env.DB.prepare(`
-    SELECT id, start_datetime, end_datetime, room_names, created_at, updated_at
-    FROM external_studios WHERE id = ?
-  `).bind(id).first<StudioRow>();
+  const row = await createD1ExternalReservationRepository(env.DB).findStudio(id);
   return row ? { ...row, roomNames: parseRoomNames(row.room_names) } : null;
 }
 
 async function getIdentityMembers(env: Bindings, userId: string, groupId: string | null): Promise<GroupMemberRow[]> {
-  if (!groupId) {
-    const user = await env.DB.prepare(`
-      SELECT id, COALESCE(nickname, name) AS name FROM users WHERE id = ?
-    `).bind(userId).first<GroupMemberRow>();
-    return user ? [user] : [];
-  }
-  const members = await env.DB.prepare(`
-    SELECT DISTINCT u.id, COALESCE(u.nickname, u.name) AS name
-    FROM group_member_instruments gm
-    INNER JOIN users u ON u.id = gm.user_id
-    WHERE gm.group_id = ?
-    ORDER BY name ASC
-  `).bind(groupId).all<GroupMemberRow>();
-  return members.results;
+  return createD1GroupMembershipReader(env.DB).listIdentityMembers(userId, groupId);
 }
 
 async function validateReservationBase(
@@ -101,9 +88,10 @@ async function validateReservationBase(
   if (!validation.isValid) return { error: validation.error || 'INVALID_RESERVATION_TIME', status: 400 };
 
   if (groupId) {
-    const group = await env.DB.prepare('SELECT id FROM groups WHERE id = ? AND is_active = TRUE').bind(groupId).first();
-    if (!group) return { error: 'GROUP_NOT_FOUND', status: 400 };
-    if (!isAdminMode && !await isUserInGroup(env, userId, groupId)) return { error: 'NOT_GROUP_MEMBER', status: 403 };
+    if (!await createD1GroupMembershipReader(env.DB).isActiveGroup(groupId)) {
+      return { error: 'GROUP_NOT_FOUND', status: 400 };
+    }
+    if (!isAdminMode && !await createD1GroupMembershipReader(env.DB).isUserInGroup(userId, groupId)) return { error: 'NOT_GROUP_MEMBER', status: 403 };
   }
 
   const studio = await getStudio(env, externalStudioId);
@@ -115,14 +103,13 @@ async function validateReservationBase(
   if (!isAdminMode && isExternalLotteryReservationProtected(startTime, endTime)) {
     return { error: 'EXTERNAL_LOTTERY_PERIOD_PROTECTED', status: 409 };
   }
-  const conflict = await env.DB.prepare(`
-    SELECT id FROM external_reservations
-    WHERE external_studio_id = ? AND room_number = ? AND state = 'CONFIRMED'
-      AND start_time < ? AND end_time > ?
-      ${excludeReservationId ? 'AND id != ?' : ''}
-    LIMIT 1
-  `).bind(externalStudioId, roomNumber, endTime, startTime, ...(excludeReservationId ? [excludeReservationId] : [])).first();
-  if (conflict) return { error: 'RESERVATION_CONFLICT', status: 409 };
+  if (await createD1ExternalReservationRepository(env.DB).hasRoomConflict({
+    studioId: externalStudioId,
+    roomNumber,
+    startTime,
+    endTime,
+    excludeId: excludeReservationId,
+  })) return { error: 'RESERVATION_CONFLICT', status: 409 };
   if (!isAdminMode && await hasReservationLimitConflict(
     env, userId, groupId, startTime, endTime,
     excludeReservationId ? { kind: 'EXTERNAL', id: excludeReservationId } : undefined
@@ -135,52 +122,14 @@ async function getMemberConflicts(env: Bindings, userId: string, groupId: string
   if (members.length === 0) return [];
   const memberIds = members.map((member) => member.id);
   const names = new Map(members.map((member) => [member.id, member.name]));
-  const placeholders = memberIds.map(() => '?').join(',');
-  const queries = await Promise.all([
-    env.DB.prepare(`
-      SELECT r.id reservation_id, 'HALL' reservation_type,
-             COALESCE(g.name, 'ホール予約') reservation_name, 'ホール' location_name,
-             r.start_time, r.end_time, gm.user_id member_id
-      FROM reservations r
-      INNER JOIN group_member_instruments gm ON gm.group_id = r.group_id
-      LEFT JOIN groups g ON g.id = r.group_id
-      WHERE gm.user_id IN (${placeholders}) AND r.state IN ('PENDING','CONFIRMED')
-        AND r.start_time < ? AND r.end_time > ?
-    `).bind(...memberIds, endTime, startTime).all<ConflictRow>(),
-    env.DB.prepare(`
-      SELECT r.id reservation_id, 'HALL' reservation_type,
-             COALESCE(u.nickname, u.name, '個人予約') reservation_name, 'ホール' location_name,
-             r.start_time, r.end_time, r.user_id member_id
-      FROM reservations r LEFT JOIN users u ON u.id = r.user_id
-      WHERE r.group_id IS NULL AND r.user_id IN (${placeholders}) AND r.state IN ('PENDING','CONFIRMED')
-        AND r.start_time < ? AND r.end_time > ?
-    `).bind(...memberIds, endTime, startTime).all<ConflictRow>(),
-    env.DB.prepare(`
-      SELECT er.id reservation_id, 'EXTERNAL' reservation_type,
-             COALESCE(g.name, '外部予約') reservation_name,
-             COALESCE(json_extract(es.room_names, '$[' || (er.room_number - 1) || ']'), '外部スタジオ') location_name,
-             er.start_time, er.end_time, gm.user_id member_id
-      FROM external_reservations er
-      INNER JOIN group_member_instruments gm ON gm.group_id = er.group_id
-      INNER JOIN external_studios es ON es.id = er.external_studio_id
-      LEFT JOIN groups g ON g.id = er.group_id
-      WHERE gm.user_id IN (${placeholders}) AND er.state = 'CONFIRMED'
-        AND er.start_time < ? AND er.end_time > ? ${excludeId ? 'AND er.id != ?' : ''}
-    `).bind(...memberIds, endTime, startTime, ...(excludeId ? [excludeId] : [])).all<ConflictRow>(),
-    env.DB.prepare(`
-      SELECT er.id reservation_id, 'EXTERNAL' reservation_type,
-             COALESCE(u.nickname, u.name, '個人予約') reservation_name,
-             COALESCE(json_extract(es.room_names, '$[' || (er.room_number - 1) || ']'), '外部スタジオ') location_name,
-             er.start_time, er.end_time, er.user_id member_id
-      FROM external_reservations er
-      INNER JOIN external_studios es ON es.id = er.external_studio_id
-      LEFT JOIN users u ON u.id = er.user_id
-      WHERE er.group_id IS NULL AND er.user_id IN (${placeholders}) AND er.state = 'CONFIRMED'
-        AND er.start_time < ? AND er.end_time > ? ${excludeId ? 'AND er.id != ?' : ''}
-    `).bind(...memberIds, endTime, startTime, ...(excludeId ? [excludeId] : [])).all<ConflictRow>(),
-  ]);
+  const rows = await createD1ExternalReservationRepository(env.DB).listMemberConflictRows({
+    memberIds,
+    startTime,
+    endTime,
+    excludeId,
+  });
   const seen = new Set<string>();
-  return queries.flatMap((query) => query.results).map((row) => ({
+  return rows.map((row) => ({
     member_id: row.member_id,
     member_name: names.get(row.member_id) || 'メンバー',
     reservation_id: row.reservation_id,
@@ -208,11 +157,8 @@ externalReservationRoutes.use('*', requireAuth);
 
 externalStudioRoutes.get('/studios', async (c) => {
   try {
-    const rows = await c.env.DB.prepare(`
-      SELECT id, start_datetime, end_datetime, room_names, created_at, updated_at
-      FROM external_studios ORDER BY start_datetime ASC, id ASC
-    `).all<StudioRow>();
-    return c.json({ success: true, data: rows.results.map(normalizeStudio) });
+    const rows = await createD1ExternalReservationRepository(c.env.DB).listStudios();
+    return c.json({ success: true, data: rows.map(normalizeStudio) });
   } catch (error) {
     console.error('Error fetching external studios:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
@@ -229,10 +175,13 @@ externalStudioRoutes.post('/studios/bulk', async (c) => {
     }
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    await c.env.DB.prepare(`
-      INSERT INTO external_studios (id, start_datetime, end_datetime, room_names, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(id, data.start_datetime, data.end_datetime, JSON.stringify(roomNames), now, now).run();
+    await createD1ExternalReservationRepository(c.env.DB).createStudio({
+      id,
+      startTime: data.start_datetime,
+      endTime: data.end_datetime,
+      roomNames,
+      createdAt: now,
+    });
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     return c.json({ success: true, data: { id, start_datetime: data.start_datetime, end_datetime: data.end_datetime, room_names: roomNames } });
   } catch (error) {
@@ -249,22 +198,18 @@ externalStudioRoutes.delete('/studios/:id', async (c) => {
     const id = parseUuid(c.req.param('id'));
     if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     if (!await getStudio(c.env, id)) return c.json({ success: false, error: 'EXTERNAL_NOT_FOUND' }, 404);
-    const affected = await c.env.DB.prepare(`
-      SELECT id FROM external_reservations WHERE external_studio_id = ? AND state = 'CONFIRMED'
-    `).bind(id).all<{ id: string }>();
+    const externalRepository = createD1ExternalReservationRepository(c.env.DB);
+    const affected = await externalRepository.listConfirmedReservationIdsByStudio(id);
     const preparedEmails = [];
-    for (const reservation of affected.results) {
+    for (const reservationId of affected) {
       try {
         preparedEmails.push(await prepareReservationEmail(c.env, {
-          kind: 'EXTERNAL', reservationId: reservation.id,
+          kind: 'EXTERNAL', reservationId,
           notificationType: 'RESERVATION_REVOKED', reservationStatusOverride: 'DECLINED',
         }));
       } catch (error) { console.error('Failed to prepare revoked external email:', error); }
     }
-    await c.env.DB.prepare("UPDATE external_lottery_applications SET state = 'CANCELLED', updated_at = ? WHERE external_studio_id = ? AND state = 'PENDING'")
-      .bind(new Date().toISOString(), id).run();
-    await c.env.DB.prepare('DELETE FROM external_reservations WHERE external_studio_id = ?').bind(id).run();
-    await c.env.DB.prepare('DELETE FROM external_studios WHERE id = ?').bind(id).run();
+    await externalRepository.deleteStudioCascade(id, new Date().toISOString());
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     c.executionCtx.waitUntil((async () => { for (const email of preparedEmails) await sendPreparedReservationEmail(c.env, email); })());
     return c.json({ success: true });
@@ -280,27 +225,10 @@ externalReservationRoutes.get('/', async (c) => {
     const user = c.get('user');
     const admin = c.req.query('admin') === 'true';
     if (admin) { try { requireAdmin(user.role); } catch { return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403); } }
-    const query = `
-      SELECT er.id, er.external_studio_id, er.room_number,
-             json_extract(es.room_names, '$[' || (er.room_number - 1) || ']') room_name,
-             er.user_id, er.group_id, COALESCE(u.nickname, u.name) user_name, g.name group_name,
-             er.start_time, er.end_time, er.state,
-             CASE WHEN er.state != 'CONFIRMED' THEN 0
-               ${admin ? 'ELSE 1' : `WHEN er.user_id = ? THEN 1
-               WHEN er.group_id IS NOT NULL AND EXISTS (
-                 SELECT 1 FROM group_member_instruments gm WHERE gm.group_id = er.group_id AND gm.user_id = ?
-               ) THEN 1 ELSE 0`} END cancellable
-      FROM external_reservations er
-      INNER JOIN external_studios es ON es.id = er.external_studio_id
-      LEFT JOIN users u ON u.id = er.user_id LEFT JOIN groups g ON g.id = er.group_id
-      ${admin ? '' : `WHERE er.state = 'CONFIRMED' OR er.user_id = ? OR EXISTS (
-        SELECT 1 FROM group_member_instruments gm WHERE gm.group_id = er.group_id AND gm.user_id = ?
-      )`}
-      ORDER BY er.start_time ASC, er.room_number ASC`;
-    const rows = admin ? await c.env.DB.prepare(query).all() : await c.env.DB.prepare(query).bind(user.id, user.id, user.id, user.id).all();
+    const rows = await createD1ExternalReservationRepository(c.env.DB).listVisibleReservations(user.id, admin);
     return c.json({
       success: true,
-      data: rows.results.map((row) => ExternalReservationSchema.parse({
+      data: rows.map((row) => ExternalReservationSchema.parse({
         ...row,
         cancellable: Boolean(row.cancellable),
       })),
@@ -340,21 +268,18 @@ externalReservationRoutes.post('/', async (c) => {
     const conflicts = await getMemberConflicts(c.env, user.id, groupId, data.start_time, data.end_time);
     if (conflicts.length && !data.acknowledged_member_conflicts) return c.json({ success: false, error: 'MEMBER_RESERVATION_CONFLICT_WARNING', data: conflicts });
     const id = crypto.randomUUID(); const now = new Date().toISOString();
-    const insertResult = await c.env.DB.prepare(`
-      INSERT INTO external_reservations
-        (id, external_studio_id, room_number, user_id, group_id, start_time, end_time, state, created_at, updated_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?
-      WHERE NOT EXISTS (
-        SELECT 1 FROM external_reservations
-        WHERE external_studio_id = ? AND room_number = ? AND state = 'CONFIRMED'
-          AND start_time < ? AND end_time > ?
-      )
-    `).bind(
-      id, data.external_studio_id, data.room_number, user.id, groupId,
-      data.start_time, data.end_time, now, now,
-      data.external_studio_id, data.room_number, data.end_time, data.start_time
-    ).run();
-    if (Number(insertResult.meta.changes ?? 0) === 0) {
+    const externalRepository = createD1ExternalReservationRepository(c.env.DB);
+    const inserted = await externalRepository.createReservationIfAvailable({
+      id,
+      studioId: data.external_studio_id,
+      roomNumber: data.room_number,
+      userId: user.id,
+      groupId,
+      startTime: data.start_time,
+      endTime: data.end_time,
+      createdAt: now,
+    });
+    if (!inserted) {
       return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
     }
     if (!admin && await hasReservationLimitConflict(
@@ -365,7 +290,7 @@ externalReservationRoutes.post('/', async (c) => {
       data.end_time,
       { kind: 'EXTERNAL', id }
     )) {
-      await c.env.DB.prepare('DELETE FROM external_reservations WHERE id = ?').bind(id).run();
+      await externalRepository.deleteReservation(id);
       return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
     }
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
@@ -380,19 +305,9 @@ externalReservationRoutes.post('/', async (c) => {
 
 externalReservationRoutes.get('/lottery', async (c) => {
   try {
-    const query = `
-      SELECT ela.*, COALESCE(u.nickname, u.name) user_name, g.name group_name, g.is_main,
-             es.start_datetime studio_start_datetime, es.end_datetime studio_end_datetime, es.room_names,
-             CASE WHEN ela.assigned_room_number IS NULL THEN NULL
-               ELSE json_extract(es.room_names, '$[' || (ela.assigned_room_number - 1) || ']') END assigned_room_name
-      FROM external_lottery_applications ela
-      INNER JOIN external_studios es ON es.id = ela.external_studio_id
-      INNER JOIN users u ON u.id = ela.user_id LEFT JOIN groups g ON g.id = ela.group_id
-      WHERE ela.state != 'CANCELLED'
-      ORDER BY es.start_datetime ASC, ela.created_at ASC`;
-    const rows = await c.env.DB.prepare(query).all<Record<string, unknown>>();
+    const rows = await createD1ExternalReservationRepository(c.env.DB).listLotteryApplications();
     const fairnessCache = new Map<string, Promise<number>>();
-    const data = await Promise.all(rows.results.map(async (row) => {
+    const data = await Promise.all(rows.map(async (row) => {
       let fairnessScore = row.fairness_score;
       if (row.state === 'PENDING') {
         const groupId = row.group_id === null ? null : String(row.group_id);
@@ -429,7 +344,7 @@ externalReservationRoutes.post('/lottery', async (c) => {
     const user = c.get('user');
     const data = CreateExternalLotteryApplicationRequestSchema.parse(await c.req.json());
     const groupId = data.group_id ?? null;
-    if (groupId && !await isUserInGroup(c.env, user.id, groupId)) return c.json({ success: false, error: 'NOT_GROUP_MEMBER' }, 403);
+    if (groupId && !await createD1GroupMembershipReader(c.env.DB).isUserInGroup(user.id, groupId)) return c.json({ success: false, error: 'NOT_GROUP_MEMBER' }, 403);
     const studio = await getStudio(c.env, data.external_studio_id);
     if (!studio) return c.json({ success: false, error: 'EXTERNAL_NOT_FOUND' }, 404);
     const preferredStart = data.preferred_start_datetime ? new Date(data.preferred_start_datetime) : null;
@@ -459,16 +374,13 @@ externalReservationRoutes.post('/lottery', async (c) => {
     }
     const rangeStart = preferredStart?.toISOString() ?? studio.start_datetime;
     const rangeEnd = preferredEnd?.toISOString() ?? studio.end_datetime;
-    const overlap = await c.env.DB.prepare(`
-      SELECT ela.id FROM external_lottery_applications ela
-      INNER JOIN external_studios es ON es.id = ela.external_studio_id
-      WHERE ela.state = 'PENDING'
-        AND ((? IS NULL AND ela.group_id IS NULL AND ela.user_id = ?) OR ela.group_id = ?)
-        AND COALESCE(ela.preferred_start_datetime, es.start_datetime) < ?
-        AND COALESCE(ela.preferred_end_datetime, es.end_datetime) > ?
-      LIMIT 1
-    `).bind(groupId, user.id, groupId, rangeEnd, rangeStart).first();
-    if (overlap) return c.json({ success: false, error: 'LOTTERY_APPLICATION_CONFLICT' }, 409);
+    const externalRepository = createD1ExternalReservationRepository(c.env.DB);
+    if (await externalRepository.hasLotteryOverlap({
+      userId: user.id,
+      groupId,
+      rangeStart,
+      rangeEnd,
+    })) return c.json({ success: false, error: 'LOTTERY_APPLICATION_CONFLICT' }, 409);
 
     const holdStart = preferredStart ?? new Date(studio.start_datetime);
     const availableEnd = preferredEnd ?? new Date(studio.end_datetime);
@@ -493,36 +405,19 @@ externalReservationRoutes.post('/lottery', async (c) => {
     }
 
     const id = crypto.randomUUID(); const now = new Date().toISOString();
-    const insertResult = await c.env.DB.prepare(`
-      INSERT INTO external_lottery_applications
-        (id, external_studio_id, user_id, group_id, preferred_start_datetime, preferred_end_datetime,
-         requested_duration_minutes, state, created_at, updated_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?
-      WHERE NOT EXISTS (
-        SELECT 1 FROM external_lottery_applications ela
-        INNER JOIN external_studios es ON es.id = ela.external_studio_id
-        WHERE ela.state = 'PENDING'
-          AND ((? IS NULL AND ela.group_id IS NULL AND ela.user_id = ?) OR ela.group_id = ?)
-          AND COALESCE(ela.preferred_start_datetime, es.start_datetime) < ?
-          AND COALESCE(ela.preferred_end_datetime, es.end_datetime) > ?
-      )
-    `).bind(
+    const inserted = await externalRepository.createLotteryApplicationIfAvailable({
       id,
-      studio.id,
-      user.id,
+      studioId: studio.id,
+      userId: user.id,
       groupId,
-      data.preferred_start_datetime,
-      data.preferred_end_datetime,
-      data.requested_duration_minutes,
-      now,
-      now,
-      groupId,
-      user.id,
-      groupId,
+      preferredStart: data.preferred_start_datetime,
+      preferredEnd: data.preferred_end_datetime,
+      requestedMinutes: data.requested_duration_minutes,
+      rangeStart,
       rangeEnd,
-      rangeStart
-    ).run();
-    if (Number(insertResult.meta.changes ?? 0) === 0) {
+      createdAt: now,
+    });
+    if (!inserted) {
       return c.json({ success: false, error: 'LOTTERY_APPLICATION_CONFLICT' }, 409);
     }
     if (await hasReservationLimitConflict(
@@ -533,7 +428,7 @@ externalReservationRoutes.post('/lottery', async (c) => {
       holdEnd.toISOString(),
       { kind: 'LOTTERY', id }
     )) {
-      await c.env.DB.prepare('DELETE FROM external_lottery_applications WHERE id = ?').bind(id).run();
+      await externalRepository.deleteLotteryApplication(id);
       return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
     }
     return c.json({ success: true, data: { id } });
@@ -548,15 +443,13 @@ externalReservationRoutes.post('/lottery/:id/cancel', async (c) => {
   try {
     const user = c.get('user'); const id = parseUuid(c.req.param('id'));
     if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
-    const application = await c.env.DB.prepare(`SELECT user_id, group_id, state FROM external_lottery_applications WHERE id = ?`)
-      .bind(id).first<{ user_id: string; group_id: string | null; state: string }>();
+    const externalRepository = createD1ExternalReservationRepository(c.env.DB);
+    const application = await externalRepository.findLotteryApplication(id);
     if (!application) return c.json({ success: false, error: 'LOTTERY_APPLICATION_NOT_FOUND' }, 404);
-    const permitted = application.user_id === user.id || (application.group_id !== null && await isUserInGroup(c.env, user.id, application.group_id));
+    const permitted = application.user_id === user.id || (application.group_id !== null && await createD1GroupMembershipReader(c.env.DB).isUserInGroup(user.id, application.group_id));
     if (!permitted) return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     if (application.state !== 'PENDING') return c.json({ success: false, error: 'LOTTERY_APPLICATION_CANNOT_BE_CANCELLED' }, 400);
-    const cancelResult = await c.env.DB.prepare("UPDATE external_lottery_applications SET state = 'CANCELLED', updated_at = ? WHERE id = ? AND state = 'PENDING'")
-      .bind(new Date().toISOString(), id).run();
-    if (Number(cancelResult.meta.changes ?? 0) === 0) {
+    if (!await externalRepository.cancelPendingLotteryApplication(id, new Date().toISOString())) {
       return c.json({ success: false, error: 'LOTTERY_APPLICATION_CANNOT_BE_CANCELLED' }, 400);
     }
     return c.json({ success: true });
@@ -571,11 +464,10 @@ externalReservationRoutes.put('/:id', async (c) => {
     const user = c.get('user'); const id = parseUuid(c.req.param('id'));
     if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     const data = UpdateExternalReservationRequestSchema.parse(await c.req.json()); const admin = data.admin === true;
-    const reservation = await c.env.DB.prepare(`
-      SELECT external_studio_id, room_number, user_id, group_id, start_time, end_time, state, updated_at FROM external_reservations WHERE id = ?
-    `).bind(id).first<{ external_studio_id: string; room_number: number; user_id: string; group_id: string | null; start_time: string; end_time: string; state: string; updated_at: string }>();
+    const externalRepository = createD1ExternalReservationRepository(c.env.DB);
+    const reservation = await externalRepository.findReservation(id);
     if (!reservation) return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
-    const permitted = admin || reservation.user_id === user.id || (reservation.group_id !== null && await isUserInGroup(c.env, user.id, reservation.group_id));
+    const permitted = admin || reservation.user_id === user.id || (reservation.group_id !== null && await createD1GroupMembershipReader(c.env.DB).isUserInGroup(user.id, reservation.group_id));
     if (!permitted) return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_EDITED' }, 403);
     if (reservation.state !== 'CONFIRMED' || new Date() >= new Date(reservation.end_time)) return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_EDITED' }, 400);
     const validation = await validateReservationBase(c.env, user.id, user.role, reservation.external_studio_id, reservation.room_number, reservation.group_id, data.start_time, data.end_time, admin, id);
@@ -583,31 +475,14 @@ externalReservationRoutes.put('/:id', async (c) => {
     const conflicts = await getMemberConflicts(c.env, reservation.user_id, reservation.group_id, data.start_time, data.end_time, id);
     if (conflicts.length && !data.acknowledged_member_conflicts) return c.json({ success: false, error: 'MEMBER_RESERVATION_CONFLICT_WARNING', data: conflicts });
     const updateTime = new Date().toISOString();
-    const updateResult = await c.env.DB.prepare(`
-      UPDATE external_reservations
-      SET start_time = ?, end_time = ?, updated_at = ?
-      WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
-        AND NOT EXISTS (
-          SELECT 1 FROM external_reservations other
-          WHERE other.id != ? AND other.external_studio_id = ? AND other.room_number = ?
-            AND other.state = 'CONFIRMED' AND other.start_time < ? AND other.end_time > ?
-        )
-    `).bind(
-      data.start_time,
-      data.end_time,
-      updateTime,
+    const updated = await externalRepository.updateReservationOptimistically({
       id,
-      reservation.start_time,
-      reservation.end_time,
-      reservation.state,
-      reservation.updated_at,
-      id,
-      reservation.external_studio_id,
-      reservation.room_number,
-      data.end_time,
-      data.start_time
-    ).run();
-    if (Number(updateResult.meta.changes ?? 0) === 0) {
+      previous: reservation,
+      startTime: data.start_time,
+      endTime: data.end_time,
+      updatedAt: updateTime,
+    });
+    if (!updated) {
       return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
     }
     if (!admin && await hasReservationLimitConflict(
@@ -618,20 +493,14 @@ externalReservationRoutes.put('/:id', async (c) => {
       data.end_time,
       { kind: 'EXTERNAL', id }
     )) {
-      await c.env.DB.prepare(`
-        UPDATE external_reservations
-        SET start_time = ?, end_time = ?, updated_at = ?
-        WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
-      `).bind(
-        reservation.start_time,
-        reservation.end_time,
-        new Date().toISOString(),
+      await externalRepository.restoreReservation({
         id,
-        data.start_time,
-        data.end_time,
-        reservation.state,
-        updateTime
-      ).run();
+        previous: reservation,
+        currentStartTime: data.start_time,
+        currentEndTime: data.end_time,
+        currentUpdatedAt: updateTime,
+        restoredAt: new Date().toISOString(),
+      });
       return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
     }
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
@@ -652,44 +521,25 @@ externalReservationRoutes.put('/:id/status', async (c) => {
     requireAdmin(c.get('user').role); const id = parseUuid(c.req.param('id'));
     if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     const data = UpdateReservationStatusRequestSchema.parse(await c.req.json());
-    const reservation = await c.env.DB.prepare(`SELECT * FROM external_reservations WHERE id = ?`).bind(id).first<{
-      id: string; external_studio_id: string; room_number: number; user_id: string; group_id: string | null; start_time: string; end_time: string; state: ReservationState; updated_at: string;
-    }>();
+    const externalRepository = createD1ExternalReservationRepository(c.env.DB);
+    const reservation = await externalRepository.findReservation(id);
     if (!reservation) return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     if (reservation.state === data.state) return c.json({ success: true });
     if (data.state === 'CONFIRMED') {
-      const conflict = await c.env.DB.prepare(`
-        SELECT id FROM external_reservations WHERE id != ? AND external_studio_id = ? AND room_number = ?
-          AND state = 'CONFIRMED' AND start_time < ? AND end_time > ? LIMIT 1
-      `).bind(id, reservation.external_studio_id, reservation.room_number, reservation.end_time, reservation.start_time).first();
-      if (conflict) return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+      if (await externalRepository.hasRoomConflict({
+        studioId: reservation.external_studio_id,
+        roomNumber: reservation.room_number,
+        startTime: reservation.start_time,
+        endTime: reservation.end_time,
+        excludeId: id,
+      })) return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
     }
-    const statusResult = await c.env.DB.prepare(`
-      UPDATE external_reservations
-      SET state = ?, updated_at = ?
-      WHERE id = ? AND state = ? AND updated_at = ?
-        AND (
-          ? != 'CONFIRMED'
-          OR NOT EXISTS (
-            SELECT 1 FROM external_reservations other
-            WHERE other.id != ? AND other.external_studio_id = ? AND other.room_number = ?
-              AND other.state = 'CONFIRMED' AND other.start_time < ? AND other.end_time > ?
-          )
-        )
-    `).bind(
-      data.state,
-      new Date().toISOString(),
-      id,
-      reservation.state,
-      reservation.updated_at,
-      data.state,
-      id,
-      reservation.external_studio_id,
-      reservation.room_number,
-      reservation.end_time,
-      reservation.start_time
-    ).run();
-    if (Number(statusResult.meta.changes ?? 0) === 0) {
+    const statusUpdated = await externalRepository.updateStatusOptimistically({
+      reservation,
+      nextState: data.state,
+      updatedAt: new Date().toISOString(),
+    });
+    if (!statusUpdated) {
       return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
     }
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
@@ -710,11 +560,10 @@ externalReservationRoutes.delete('/:id', async (c) => {
     const id = parseUuid(c.req.param('id'));
     if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
 
-    const reservation = await c.env.DB.prepare('SELECT id FROM external_reservations WHERE id = ?')
-      .bind(id).first<{ id: string }>();
-    if (!reservation) return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
+    const externalRepository = createD1ExternalReservationRepository(c.env.DB);
+    if (!await externalRepository.existsReservation(id)) return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
 
-    await c.env.DB.prepare('DELETE FROM external_reservations WHERE id = ?').bind(id).run();
+    await externalRepository.deleteReservation(id);
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     return c.json({ success: true });
   } catch (error) {
@@ -731,13 +580,12 @@ externalReservationRoutes.post('/:id/cancel', async (c) => {
     const user = c.get('user'); const id = parseUuid(c.req.param('id'));
     if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     const admin = c.req.query('admin') === 'true'; if (admin) requireAdmin(user.role);
-    const reservation = await c.env.DB.prepare('SELECT user_id, group_id, state FROM external_reservations WHERE id = ?')
-      .bind(id).first<{ user_id: string; group_id: string | null; state: string }>();
+    const externalRepository = createD1ExternalReservationRepository(c.env.DB);
+    const reservation = await externalRepository.findReservation(id);
     if (!reservation) return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
-    const permitted = admin || reservation.user_id === user.id || (reservation.group_id !== null && await isUserInGroup(c.env, user.id, reservation.group_id));
+    const permitted = admin || reservation.user_id === user.id || (reservation.group_id !== null && await createD1GroupMembershipReader(c.env.DB).isUserInGroup(user.id, reservation.group_id));
     if (!permitted || reservation.state !== 'CONFIRMED') return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_CANCELLED' }, 403);
-    await c.env.DB.prepare("UPDATE external_reservations SET state = ?, updated_at = ? WHERE id = ?")
-      .bind(admin ? 'DECLINED' : 'CANCELLED', new Date().toISOString(), id).run();
+    await externalRepository.updateState(id, admin ? 'DECLINED' : 'CANCELLED', new Date().toISOString());
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, { kind: 'EXTERNAL', reservationId: id, notificationType: admin ? 'RESERVATION_REVOKED' : 'RESERVATION_CANCELLED' }));
     return c.json({ success: true });

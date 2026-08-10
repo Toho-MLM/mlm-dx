@@ -31,6 +31,8 @@ import { deleteOldMainBandDrafts } from './utils/main-band-draft-processor';
 import { requireAuth } from './middleware/auth';
 import { createRegistrationOptions, verifyRegistration, createAuthenticationOptions, verifyAuthentication, nowISO, futureISO, encodeBase64Url } from './utils/passkey';
 import { parseUuid } from './utils/uuid';
+import type { PasskeyChallengeRow, PasskeyRow } from './features/auth/application/repository';
+import { createD1AuthRepository } from './features/auth/infrastructure/d1-repository';
 
 const UuidSchema = z.string().uuid();
 
@@ -60,64 +62,24 @@ export type Variables = {
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-export type UserRow = {
-  id: string;
-  name: string;
-  nickname: string | null;
-  email: string;
-  avatar: string | null;
-  instruments: string;
-  grade: number;
-  role: string;
-  created_at: string;
-  updated_at: string;
-};
-
-type PasskeyRow = {
-  id: string;
-  user_id: string;
-  credential_id: string;
-  public_key: string;
-  counter: number;
-  device_type: string | null;
-  backed_up: number | null;
-  transports: string | null;
-  attestation_format: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-type PasskeyChallengeRow = {
-  id: string;
-  user_id: string | null;
-  email: string | null;
-  challenge: string;
-  type: string;
-  expires_at: string;
-  created_at: string;
-};
-
 const OneTapCredentialSchema = z.object({
   credential: z.string().min(1),
 });
 
 async function fetchPasskeys(env: Bindings, userId: string): Promise<PasskeyRow[]> {
-  const rows = await env.DB.prepare('SELECT * FROM passkeys WHERE user_id = ?').bind(userId).all<PasskeyRow>();
-  return rows.results ?? [];
+  return createD1AuthRepository(env.DB).listPasskeys(userId);
 }
 
 async function fetchPasskeyByCredential(env: Bindings, credentialId: string): Promise<PasskeyRow | null> {
-  const row = await env.DB.prepare('SELECT * FROM passkeys WHERE credential_id = ?').bind(credentialId).first<PasskeyRow>();
-  return row ?? null;
+  return createD1AuthRepository(env.DB).findPasskeyByCredential(credentialId);
 }
 
 async function fetchChallenge(env: Bindings, id: string): Promise<PasskeyChallengeRow | null> {
-  const row = await env.DB.prepare('SELECT * FROM passkey_challenges WHERE id = ?').bind(id).first<PasskeyChallengeRow>();
-  return row ?? null;
+  return createD1AuthRepository(env.DB).findChallenge(id);
 }
 
 async function deleteChallenge(env: Bindings, id: string): Promise<void> {
-  await env.DB.prepare('DELETE FROM passkey_challenges WHERE id = ?').bind(id).run();
+  await createD1AuthRepository(env.DB).deleteChallenge(id);
 }
 
 function safeParseTransports(value: string | null): string[] {
@@ -148,9 +110,8 @@ async function signInGoogleUser(c: Context<{ Bindings: Bindings; Variables: Vari
     return { success: false, error: 'EMAIL_NOT_VERIFIED' };
   }
 
-  const dbUserRaw = await c.env.DB.prepare(
-    'SELECT * FROM users WHERE email = ?'
-  ).bind(googleUser.email).first<UserRow>();
+  const repository = createD1AuthRepository(c.env.DB);
+  const dbUserRaw = await repository.findUserByEmail(googleUser.email);
 
   if (!dbUserRaw) {
     return { success: false, error: 'ACCESS_DENIED' };
@@ -184,32 +145,10 @@ async function signInGoogleUser(c: Context<{ Bindings: Bindings; Variables: Vari
   const shouldUpdateAvatar = googleUser.image && (dbUserRaw?.avatar !== googleUser.image);
 
   if (shouldUpdateName || shouldUpdateAvatar) {
-    if (shouldUpdateName && shouldUpdateAvatar) {
-      await c.env.DB.prepare(
-        'UPDATE users SET name = ?, avatar = ?, updated_at = ? WHERE email = ?'
-      ).bind(
-        formattedName,
-        googleUser.image || null,
-        now,
-        googleUser.email
-      ).run();
-    } else if (shouldUpdateName) {
-      await c.env.DB.prepare(
-        'UPDATE users SET name = ?, updated_at = ? WHERE email = ?'
-      ).bind(
-        formattedName,
-        now,
-        googleUser.email
-      ).run();
-    } else if (shouldUpdateAvatar) {
-      await c.env.DB.prepare(
-        'UPDATE users SET avatar = ?, updated_at = ? WHERE email = ?'
-      ).bind(
-        googleUser.image || null,
-        now,
-        googleUser.email
-      ).run();
-    }
+    await repository.updateGoogleProfile(googleUser.email, {
+      ...(shouldUpdateName ? { name: formattedName } : {}),
+      ...(shouldUpdateAvatar ? { avatar: googleUser.image || null } : {}),
+    }, now);
   }
 
   const jwt = await generateJWT({
@@ -419,9 +358,7 @@ app.get('/auth/session', async (c) => {
       return c.json({ user: null });
     }
 
-    const dbUserRaw = await c.env.DB.prepare(
-      'SELECT * FROM users WHERE id = ?'
-    ).bind(payload.sub).first<UserRow>();
+    const dbUserRaw = await createD1AuthRepository(c.env.DB).findUserById(payload.sub);
 
     if (!dbUserRaw) {
       return c.json({ user: null });
@@ -480,8 +417,9 @@ app.post('/auth/signout', async (c) => {
 app.post('/auth/passkey/register/start', requireAuth, async (c) => {
   try {
     const user = c.get('user');
-    await c.env.DB.prepare('DELETE FROM passkey_challenges WHERE expires_at < ?').bind(nowISO()).run();
-    await c.env.DB.prepare('DELETE FROM passkey_challenges WHERE user_id = ? AND type = ?').bind(user.id, 'register').run();
+    const repository = createD1AuthRepository(c.env.DB);
+    await repository.deleteExpiredChallenges(nowISO());
+    await repository.deleteChallenges(user.id, 'register');
     const passkeys = await fetchPasskeys(c.env, user.id);
     const options = await createRegistrationOptions(c.env, {
       id: user.id,
@@ -491,17 +429,8 @@ app.post('/auth/passkey/register/start', requireAuth, async (c) => {
     const challengeId = crypto.randomUUID();
     const createdAt = nowISO();
     const expiresAt = futureISO(10);
-    await c.env.DB.prepare(
-      'INSERT INTO passkey_challenges (id, user_id, email, challenge, type, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(
-      challengeId,
-      user.id,
-      user.email,
-      options.challenge,
-      'register',
-      expiresAt,
-      createdAt
-    ).run();
+    await repository.createChallenge({ id: challengeId, user_id: user.id, email: user.email,
+      challenge: options.challenge, type: 'register', expires_at: expiresAt, created_at: createdAt });
     return c.json({ challengeId, options });
   } catch (error) {
     console.error('Passkey register start error:', error);
@@ -547,39 +476,12 @@ app.post('/auth/passkey/register/finish', requireAuth, async (c) => {
     const credentialPublicKey = encodeBase64Url(credential.publicKey as unknown as Uint8Array);
     const counter = credential.counter ?? 0;
     const credentialTransports = credential.transports ? JSON.stringify(credential.transports) : null;
-    const existing = await c.env.DB.prepare('SELECT id FROM passkeys WHERE credential_id = ?').bind(credentialId).first<{ id: string }>();
     const timestamp = nowISO();
-    if (existing) {
-      await c.env.DB.prepare(
-        'UPDATE passkeys SET user_id = ?, public_key = ?, counter = ?, device_type = ?, backed_up = ?, transports = ?, attestation_format = ?, updated_at = ? WHERE credential_id = ?'
-      ).bind(
-        user.id,
-        credentialPublicKey,
-        counter,
-        credentialDeviceType ?? null,
-        credentialBackedUp ? 1 : 0,
-        credentialTransports,
-        fmt ?? null,
-        timestamp,
-        credentialId
-      ).run();
-    } else {
-      await c.env.DB.prepare(
-        'INSERT INTO passkeys (id, user_id, credential_id, public_key, counter, device_type, backed_up, transports, attestation_format, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(
-        crypto.randomUUID(),
-        user.id,
-        credentialId,
-        credentialPublicKey,
-        counter,
-        credentialDeviceType ?? null,
-        credentialBackedUp ? 1 : 0,
-        credentialTransports,
-        fmt ?? null,
-        timestamp,
-        timestamp
-      ).run();
-    }
+    await createD1AuthRepository(c.env.DB).upsertPasskey({ user_id: user.id,
+      credential_id: credentialId, public_key: credentialPublicKey, counter,
+      device_type: credentialDeviceType ?? null, backed_up: credentialBackedUp ? 1 : 0,
+      transports: credentialTransports, attestation_format: fmt ?? null,
+    }, timestamp, crypto.randomUUID);
     await deleteChallenge(c.env, challenge.id);
     return c.json({ success: true });
   } catch (error) {
@@ -596,22 +498,14 @@ app.post('/auth/passkey/register/finish', requireAuth, async (c) => {
 
 app.post('/auth/passkey/login/options', async (c) => {
   try {
-    await c.env.DB.prepare('DELETE FROM passkey_challenges WHERE expires_at < ?').bind(nowISO()).run();
+    const repository = createD1AuthRepository(c.env.DB);
+    await repository.deleteExpiredChallenges(nowISO());
     const options = await createAuthenticationOptions(c.env);
     const challengeId = crypto.randomUUID();
     const createdAt = nowISO();
     const expiresAt = futureISO(10);
-    await c.env.DB.prepare(
-      'INSERT INTO passkey_challenges (id, user_id, email, challenge, type, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(
-      challengeId,
-      null,
-      null,
-      options.challenge,
-      'login',
-      expiresAt,
-      createdAt
-    ).run();
+    await repository.createChallenge({ id: challengeId, user_id: null, email: null,
+      challenge: options.challenge, type: 'login', expires_at: expiresAt, created_at: createdAt });
     return c.json({ success: true, challengeId, options });
   } catch (error) {
     console.error('Passkey login options error:', error);
@@ -660,7 +554,7 @@ app.post('/auth/passkey/login/finish', async (c) => {
       await deleteChallenge(c.env, challenge.id);
       return c.json({ success: false, error: 'PASSKEY_NOT_FOUND' });
     }
-    const userRow = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(matched.user_id).first<UserRow>();
+    const userRow = await createD1AuthRepository(c.env.DB).findUserById(matched.user_id);
     if (!userRow) {
       console.error('[Passkey Login] User not found');
       await deleteChallenge(c.env, challenge.id);
@@ -682,13 +576,7 @@ app.post('/auth/passkey/login/finish', async (c) => {
       newCounter: authenticationInfo.newCounter,
       counterUpdated: true
     });
-    await c.env.DB.prepare(
-      'UPDATE passkeys SET counter = ?, updated_at = ? WHERE id = ?'
-    ).bind(
-      authenticationInfo.newCounter,
-      nowISO(),
-      matched.id
-    ).run();
+    await createD1AuthRepository(c.env.DB).updatePasskeyCounter(matched.id, authenticationInfo.newCounter, nowISO());
     const avatarUrl = userRow.avatar || undefined;
     const jwt = await generateJWT({
       id: userRow.id,
@@ -735,11 +623,9 @@ app.get('/auth/passkey/status', requireAuth, async (c) => {
 app.get('/auth/passkey/credentials', requireAuth, async (c) => {
   try {
     const user = c.get('user');
-    await c.env.DB.prepare('DELETE FROM passkey_challenges WHERE expires_at < ?').bind(nowISO()).run();
-    const rows = await c.env.DB.prepare(
-      'SELECT id, credential_id, device_type, backed_up, transports, attestation_format FROM passkeys WHERE user_id = ? ORDER BY created_at DESC'
-    ).bind(user.id).all<PasskeyRow>();
-    const passkeys = (rows.results ?? []).map((row) => ({
+    const repository = createD1AuthRepository(c.env.DB);
+    await repository.deleteExpiredChallenges(nowISO());
+    const passkeys = (await repository.listPasskeys(user.id)).map((row) => ({
       id: row.id,
       credential_id: row.credential_id,
       device_type: row.device_type,
@@ -761,9 +647,7 @@ app.delete('/auth/passkey/credentials/:id', requireAuth, async (c) => {
     if (!id) {
       return c.json({ success: false });
     }
-    const result = await c.env.DB.prepare('DELETE FROM passkeys WHERE id = ? AND user_id = ?').bind(id, user.id).run();
-    const changes = result.meta?.changes ?? 0;
-    if (changes === 0) {
+    if (!await createD1AuthRepository(c.env.DB).deletePasskey(id, user.id)) {
       return c.json({ success: false });
     }
     return c.json({ success: true });
@@ -775,11 +659,7 @@ app.delete('/auth/passkey/credentials/:id', requireAuth, async (c) => {
 
 app.get('/auth/check-first-user', async (c) => {
   try {
-    const userCount = await c.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM users'
-    ).first<{ count: number }>();
-
-    const count = userCount?.count ?? 0;
+    const count = await createD1AuthRepository(c.env.DB).userCount();
     return c.json({ canCreate: count === 0 });
   } catch (error) {
     console.error('Error checking first user:', error);
@@ -797,33 +677,16 @@ app.post('/auth/create-first-user', async (c) => {
 
     const normalizedEmail = requestData.email.trim().toLowerCase();
 
-    const existing = await c.env.DB.prepare(
-      'SELECT id FROM users WHERE lower(email) = lower(?)'
-    ).bind(normalizedEmail).first();
-    if (existing) {
+    const repository = createD1AuthRepository(c.env.DB);
+    if (await repository.emailExists(normalizedEmail)) {
       return c.json({ success: false, error: 'EMAIL_ALREADY_EXISTS' }, 409);
     }
 
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
     
-    const insertResult = await c.env.DB.prepare(`
-      INSERT INTO users (id, name, nickname, email, grade, instruments, role, created_at, updated_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
-      WHERE NOT EXISTS (SELECT 1 FROM users)
-    `).bind(
-      newId,
-      requestData.name,
-      null,
-      normalizedEmail,
-      requestData.grade,
-      JSON.stringify([]),
-      'ADM',
-      now,
-      now
-    ).run();
-
-    if (Number(insertResult.meta.changes ?? 0) === 0) {
+    if (!await repository.createFirstUser({ id: newId, name: requestData.name,
+      email: normalizedEmail, grade: requestData.grade }, now)) {
       return c.json({ success: false, error: 'USERS_ALREADY_EXIST' }, 403);
     }
     

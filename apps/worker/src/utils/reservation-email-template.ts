@@ -1,8 +1,8 @@
 import type { EmailNotificationType } from '../../../../lib/shared-schemas';
 import reservationEmailHtmlTemplate from '../templates/reservation-email.html';
+import type { ReservationEmailKind, ReservationEmailStatus } from '../features/reservations/domain/email';
 
-export type ReservationEmailKind = 'HALL' | 'EXTERNAL';
-export type ReservationEmailStatus = 'PENDING' | 'WITHDRAWN' | 'DECLINED' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
+export type { ReservationEmailKind, ReservationEmailStatus } from '../features/reservations/domain/email';
 
 export type ReservationEmailTemplateInput = {
   notificationType: EmailNotificationType;

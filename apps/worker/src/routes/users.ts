@@ -11,6 +11,7 @@ import {
 import { requireAdmin } from '../utils/admin';
 import { z } from 'zod';
 import { getEmailNotificationPrime } from '../utils/email-notification-preferences';
+import { createD1UserRepository } from '../features/users/infrastructure/d1-repository';
 
 const userRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -64,33 +65,9 @@ userRoutes.get('/groups/select', async (c) => {
       }
     }
 
-    let query: string;
-    let params: string[];
-
-    if (isAdminMode) {
-      query = `
-        SELECT DISTINCT g.id, g.name, g.is_main
-        FROM groups g
-        WHERE g.is_active = TRUE
-        ORDER BY g.is_main DESC, g.created_at DESC
-      `;
-      params = [];
-    } else {
-      query = `
-        SELECT DISTINCT g.id, g.name, g.is_main
-        FROM groups g
-        JOIN group_member_instruments gmi ON g.id = gmi.group_id
-        WHERE gmi.user_id = ? AND g.is_active = TRUE
-        ORDER BY g.is_main DESC, g.created_at DESC
-      `;
-      params = [userId];
-    }
-
-    const groups = await c.env.DB.prepare(query).bind(...params).all();
-
     return c.json({
       success: true,
-      data: groups.results.map((group) => ({ ...group, is_main: Boolean(group.is_main) })),
+      data: await createD1UserRepository(c.env.DB).listSelectableGroups(userId, isAdminMode),
     });
   } catch (error) {
     console.error('Error fetching my group select:', error);
@@ -101,42 +78,12 @@ userRoutes.get('/groups/select', async (c) => {
 userRoutes.get('/email-notification-preferences', async (c) => {
   try {
     const user = c.get('user');
-    const row = await c.env.DB.prepare(`
-      SELECT
-        email_notification_preference_code % 2 = 0 AS reservation_received,
-        email_notification_preference_code % 3 = 0 AS reservation_confirmed,
-        email_notification_preference_code % 5 = 0 AS reservation_edited,
-        email_notification_preference_code % 7 = 0 AS reservation_adjusted,
-        email_notification_preference_code % 11 = 0 AS reservation_declined,
-        email_notification_preference_code % 13 = 0 AS reservation_cancelled,
-        email_notification_preference_code % 17 = 0 AS reservation_revoked
-      FROM users
-      WHERE id = ?
-    `).bind(user.id).first<{
-      reservation_received: number;
-      reservation_confirmed: number;
-      reservation_edited: number;
-      reservation_adjusted: number;
-      reservation_declined: number;
-      reservation_cancelled: number;
-      reservation_revoked: number;
-    }>();
-
-    if (!row) {
+    const preferences = await createD1UserRepository(c.env.DB).findEmailPreferences(user.id);
+    if (!preferences) {
       return c.json({ success: false, error: 'USER_NOT_FOUND' }, 404);
     }
 
-    const preferences = EmailNotificationPreferencesSchema.parse({
-      RESERVATION_RECEIVED: Boolean(row.reservation_received),
-      RESERVATION_CONFIRMED: Boolean(row.reservation_confirmed),
-      RESERVATION_EDITED: Boolean(row.reservation_edited),
-      RESERVATION_ADJUSTED: Boolean(row.reservation_adjusted),
-      RESERVATION_DECLINED: Boolean(row.reservation_declined),
-      RESERVATION_CANCELLED: Boolean(row.reservation_cancelled),
-      RESERVATION_REVOKED: Boolean(row.reservation_revoked),
-    });
-
-    return c.json({ success: true, data: preferences });
+    return c.json({ success: true, data: EmailNotificationPreferencesSchema.parse(preferences) });
   } catch (error) {
     console.error('Error fetching email notification preferences:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
@@ -151,27 +98,7 @@ userRoutes.put('/email-notification-preferences/:type', async (c) => {
     const prime = getEmailNotificationPrime(type);
     const now = new Date().toISOString();
 
-    if (enabled) {
-      await c.env.DB.prepare(`
-        UPDATE users
-        SET email_notification_preference_code = CASE
-              WHEN email_notification_preference_code % ? = 0 THEN email_notification_preference_code
-              ELSE email_notification_preference_code * ?
-            END,
-            updated_at = ?
-        WHERE id = ?
-      `).bind(prime, prime, now, user.id).run();
-    } else {
-      await c.env.DB.prepare(`
-        UPDATE users
-        SET email_notification_preference_code = CASE
-              WHEN email_notification_preference_code % ? = 0 THEN email_notification_preference_code / ?
-              ELSE email_notification_preference_code
-            END,
-            updated_at = ?
-        WHERE id = ?
-      `).bind(prime, prime, now, user.id).run();
-    }
+    await createD1UserRepository(c.env.DB).updateEmailPreference(user.id, prime, enabled, now);
 
     return c.json({ success: true });
   } catch (error) {
@@ -189,11 +116,9 @@ userRoutes.put('/', async (c) => {
     const requestData = UpdateUserRequestSchema.parse(await c.req.json());
 
     const now = new Date().toISOString();
-    const instrumentsJson = JSON.stringify(requestData.instruments);
-
-    await c.env.DB.prepare(
-      'UPDATE users SET nickname = ?, instruments = ?, updated_at = ? WHERE email = ?'
-    ).bind(requestData.nickname, instrumentsJson, now, user.email).run();
+    await createD1UserRepository(c.env.DB).updateProfile(
+      user.email, requestData.nickname, requestData.instruments, now,
+    );
 
     if (requestData.nickname !== user.nickname) {
       const { generateJWT } = await import('../auth');
@@ -230,9 +155,7 @@ userRoutes.post('/avatar/reset', async (c) => {
     const user = c.get('user');
     const now = new Date().toISOString();
 
-    await c.env.DB.prepare(
-      'UPDATE users SET avatar = NULL, updated_at = ? WHERE id = ?'
-    ).bind(now, user.id).run();
+    await createD1UserRepository(c.env.DB).resetAvatar(user.id, now);
 
     return c.json({ success: true });
   } catch (error) {

@@ -28,6 +28,8 @@
     "lint": "pnpm run lint:web && pnpm run lint:worker",
     "lint:web": "pnpm --filter mlm-dx-web run lint",
     "lint:worker": "pnpm --filter mlm-dx-worker run lint",
+    "test": "pnpm run test:worker",
+    "test:worker": "pnpm --filter mlm-dx-worker run test",
     "type-check": "pnpm --filter mlm-dx-web run type-check && pnpm --filter mlm-dx-worker run type-check",
     "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist apps/*/.next apps/worker/.wrangler"
   },
