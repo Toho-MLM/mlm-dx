@@ -10,6 +10,15 @@ import {
 export const MIN_RESERVATION_MINUTES = 10
 export const TIME_STEP_MINUTES = 5
 
+export function toJSTWallClockDate(value: Date | string): Date {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(value))
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value || 0)
+  return new Date(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'), part('second'))
+}
+
 export type ReservationDraft = {
   date: Date
   group: string | null
@@ -37,6 +46,8 @@ export type CalendarEvent = {
     group_name?: string
     state?: ReservationState
     cancellable?: boolean
+    start_time?: string
+    end_time?: string
   }
 }
 
@@ -49,8 +60,8 @@ export function toReservationCalendarEvents(reservations: Reservation[]): Calend
   return reservations.map((reservation) => ({
     id: reservation.id,
     title: reservation.group_name || reservation.user_name || '予約',
-    start: new Date(reservation.start_time),
-    end: new Date(reservation.end_time),
+    start: toJSTWallClockDate(reservation.start_time),
+    end: toJSTWallClockDate(reservation.end_time),
     allDay: false,
     resource: {
       type: 'reservation',
@@ -61,13 +72,16 @@ export function toReservationCalendarEvents(reservations: Reservation[]): Calend
       group_name: reservation.group_name || undefined,
       state: reservation.state as ReservationState,
       cancellable: reservation.cancellable,
+      start_time: reservation.start_time,
+      end_time: reservation.end_time,
     },
   }))
 }
 
 export function toEventCalendarEvents(events: Event[]): CalendarEvent[] {
   return events.map((event) => {
-    const start = startOfDay(new Date(event.event_date))
+    const [year, month, day] = event.event_date.split('-').map(Number)
+    const start = new Date(year, month - 1, day)
     const end = new Date(start)
     end.setHours(23, 59, 59, 999)
 
@@ -89,8 +103,8 @@ export function toUnavailableCalendarEvents(periods: UnavailablePeriod[]): Calen
   return periods.map((period) => ({
     id: `unavailable-${period.id}`,
     title: `予約不可${period.reason ? `: ${period.reason}` : ''}`,
-    start: new Date(period.start_datetime),
-    end: new Date(period.end_datetime),
+    start: toJSTWallClockDate(period.start_datetime),
+    end: toJSTWallClockDate(period.end_datetime),
     allDay: false,
     resource: {
       type: 'unavailable',
@@ -196,7 +210,7 @@ export function adjustReservationDraftForDate(
   date: Date,
   unavailablePeriods: CalendarEvent[],
   isAdminMode: boolean,
-  now = new Date()
+  now = toJSTWallClockDate(new Date())
 ): ReservationDraft {
   const nextDraft = { ...draft, date }
 

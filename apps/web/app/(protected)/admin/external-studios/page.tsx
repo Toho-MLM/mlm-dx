@@ -37,8 +37,8 @@ const addJSTDays = (dateString: string, days: number) => {
 const getDefaultPeriod = () => {
   const today = getJSTDateString(new Date())
   return {
-    startDate: addJSTDays(today, 1),
-    endDate: addJSTDays(today, 2),
+    startDateTime: `${addJSTDays(today, 1)}T00:00`,
+    endDateTime: `${addJSTDays(today, 2)}T00:00`,
   }
 }
 
@@ -61,10 +61,8 @@ function ExternalStudiosContent() {
   const [isCreating, setIsCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [names, setNames] = useState<string[]>([''])
-  const [startDate, setStartDate] = useState(() => getDefaultPeriod().startDate)
-  const [startTime, setStartTime] = useState('00:00')
-  const [endDate, setEndDate] = useState(() => getDefaultPeriod().endDate)
-  const [endTime, setEndTime] = useState('00:00')
+  const [startDateTime, setStartDateTime] = useState(() => getDefaultPeriod().startDateTime)
+  const [endDateTime, setEndDateTime] = useState(() => getDefaultPeriod().endDateTime)
 
   const fetchExternals = useCallback(async (showLoading = false) => {
     try {
@@ -111,8 +109,8 @@ function ExternalStudiosContent() {
       return
     }
 
-    const start = new Date(`${startDate}T${startTime}:00+09:00`)
-    const end = new Date(`${endDate}T${endTime}:00+09:00`)
+    const start = new Date(`${startDateTime}:00+09:00`)
+    const end = new Date(`${endDateTime}:00+09:00`)
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
       toast.error('終了日時は開始日時より後にしてください')
       return
@@ -254,20 +252,12 @@ function ExternalStudiosContent() {
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="external-start-date">開始日</Label>
-                <Input id="external-start-date" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required />
+                <Label htmlFor="external-start-datetime">開始日時</Label>
+                <Input id="external-start-datetime" type="datetime-local" step={300} value={startDateTime} onChange={(event) => setStartDateTime(event.target.value)} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="external-start-time">開始時刻</Label>
-                <Input id="external-start-time" type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="external-end-date">終了日</Label>
-                <Input id="external-end-date" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="external-end-time">終了時刻</Label>
-                <Input id="external-end-time" type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} required />
+                <Label htmlFor="external-end-datetime">終了日時</Label>
+                <Input id="external-end-datetime" type="datetime-local" step={300} min={startDateTime} value={endDateTime} onChange={(event) => setEndDateTime(event.target.value)} required />
               </div>
             </div>
             <div className="flex justify-end">

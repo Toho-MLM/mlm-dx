@@ -116,3 +116,7 @@ body {
 .external-reservation-calendar .rbc-time-view-resources .rbc-time-header-gutter {
   z-index: 1;
 }
+
+.reservation-calendar .rbc-day-slot .rbc-time-slot {
+  cursor: crosshair;
+}

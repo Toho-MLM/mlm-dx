@@ -213,7 +213,11 @@ bandMainDraftRoutes.post('/:token/finalize', async (c) => {
     }
     const state = parseDraftState(draft.state_json);
     const now = new Date().toISOString();
-    let createdCount = 0;
+    const groupsToCreate: Array<{
+      id: string;
+      name: string;
+      assignments: Array<{ instrument: string; memberId: string }>;
+    }> = [];
 
     for (const column of state.columns) {
       const columnCells = state.cells[column.id] ?? {};
@@ -229,35 +233,53 @@ bandMainDraftRoutes.post('/:token/finalize', async (c) => {
         continue;
       }
 
-      const groupId = crypto.randomUUID();
-      await c.env.DB.prepare(`
-        INSERT INTO groups (id, name, is_main, is_active, created_at, updated_at)
-        VALUES (?, ?, TRUE, TRUE, ?, ?)
-      `).bind(groupId, `本バンド${createdCount + 1}`, now, now).run();
-
-      for (const assignment of assignments) {
-        await c.env.DB.prepare(`
-          INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).bind(
-          crypto.randomUUID(),
-          groupId,
-          assignment.memberId,
-          assignment.instrument,
-          now,
-          now
-        ).run();
-      }
-
-      createdCount += 1;
+      groupsToCreate.push({
+        id: crypto.randomUUID(),
+        name: `本バンド${groupsToCreate.length + 1}`,
+        assignments,
+      });
     }
 
-    await c.env.DB.prepare(`
-      DELETE FROM main_band_drafts
-      WHERE id = ?
-    `).bind(draft.id).run();
+    const memberIds = [...new Set(groupsToCreate.flatMap((group) => (
+      group.assignments.map((assignment) => assignment.memberId)
+    )))];
+    if (memberIds.length > 0) {
+      const placeholders = memberIds.map(() => '?').join(',');
+      const existingMembers = await c.env.DB.prepare(`SELECT id FROM users WHERE id IN (${placeholders})`)
+        .bind(...memberIds).all<{ id: string }>();
+      if (existingMembers.results.length !== memberIds.length) {
+        return c.json({ success: false, error: 'DRAFT_MEMBER_NOT_FOUND' }, 409);
+      }
+    }
 
-    return c.json({ success: true, data: { createdCount } });
+    const statements = groupsToCreate.flatMap((group) => [
+      c.env.DB.prepare(`
+        INSERT INTO groups (id, name, is_main, is_active, created_at, updated_at)
+        SELECT ?, ?, TRUE, TRUE, ?, ?
+        WHERE EXISTS (SELECT 1 FROM main_band_drafts WHERE id = ? AND state_json = ?)
+      `).bind(group.id, group.name, now, now, draft.id, draft.state_json),
+      ...group.assignments.map((assignment) => c.env.DB.prepare(`
+        INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at)
+        SELECT ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM groups WHERE id = ?)
+      `).bind(
+        crypto.randomUUID(),
+        group.id,
+        assignment.memberId,
+        assignment.instrument,
+        now,
+        now,
+        group.id
+      )),
+    ]);
+    statements.push(c.env.DB.prepare('DELETE FROM main_band_drafts WHERE id = ? AND state_json = ?').bind(draft.id, draft.state_json));
+    const results = await c.env.DB.batch(statements);
+    const deleteResult = results.at(-1);
+    if (Number(deleteResult?.meta.changes ?? 0) === 0) {
+      return c.json({ success: false, error: 'DRAFT_NOT_FOUND' }, 409);
+    }
+
+    return c.json({ success: true, data: { createdCount: groupsToCreate.length } });
   } catch (error) {
     console.error('Error finalizing band main draft:', error);
     if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {

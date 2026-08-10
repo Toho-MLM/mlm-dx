@@ -1,17 +1,18 @@
 'use client'
 
 import React, { Suspense, useState, useRef, useMemo, useEffect, useCallback } from 'react'
-import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer } from 'react-big-calendar'
+import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer, type SlotInfo } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
-import { format, parse, startOfWeek, getDay, addDays, addMinutes, addHours, isBefore, startOfDay, subDays } from 'date-fns'
+import { format, parse, startOfWeek, getDay, addDays, addMinutes, startOfDay, subDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { Card, CardContent, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, CalendarRangeIcon, Trash2 } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, CalendarRangeIcon, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { translateError } from '@/lib/error-label'
 import {
@@ -31,6 +32,7 @@ import {
   toEventCalendarEvents,
   toReservationCalendarEvents,
   toUnavailableCalendarEvents,
+  toJSTWallClockDate,
   type CalendarEvent,
   type ReservationDraft,
 } from './reservation-calendar'
@@ -38,6 +40,11 @@ type GroupOption = {
   id: string;
   name: string;
   is_main: boolean;
+}
+
+const toJSTISOString = (date: Date, hour: number, minute: number) => {
+  const dateKey = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-')
+  return new Date(`${dateKey}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+09:00`).toISOString()
 }
 
 import { apiClient } from '@/lib/api'
@@ -145,7 +152,7 @@ export default function Page() {
 function ReservationContent() {
   const [isMobile, setIsMobile] = useState(false)
   const [reservationDraft, setReservationDraft] = useState<ReservationDraft>({
-    date: startOfDay(new Date()),
+    date: startOfDay(toJSTWallClockDate(new Date())),
     group: null as string | null,
     startHour: null as number | null,
     startMinute: null as number | null,
@@ -154,10 +161,8 @@ function ReservationContent() {
   })
   const [isReservationFormOpen, setIsReservationFormOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<CalendarEvent | null>(null)
-  const [openPicker, setOpenPicker] = useState<string | null>(null)
-  const [currentDate, setCurrentDate] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(toJSTWallClockDate(new Date()))
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
-  const [isFormDatePickerOpen, setIsFormDatePickerOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false)
@@ -168,12 +173,16 @@ function ReservationContent() {
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
   const [reservationData, setReservationData] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [reservationError, setReservationError] = useState<string | null>(null)
   const [myGroups, setMyGroups] = useState<GroupOption[]>([])
   const [isGroupsLoading, setIsGroupsLoading] = useState(false)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [unavailablePeriods, setUnavailablePeriods] = useState<CalendarEvent[]>([])
   const [reservationLimits, setReservationLimits] = useState<ReservationLimit[]>([])
   const [reservationLimitRemaining, setReservationLimitRemaining] = useState<ReservationLimitRemaining[]>([])
+  const [reservationLimitError, setReservationLimitError] = useState(false)
+  const [reservationLimitLoading, setReservationLimitLoading] = useState(true)
+  const reservationLimitRequestIdRef = useRef(0)
   const { user, loading: authLoading } = useAuth();
   const [isAdminMode] = useAdminMode(user && isAdmin(user.role));
   const router = useRouter()
@@ -185,23 +194,35 @@ function ReservationContent() {
 
     const scope = reservationDraft.group ? 'GROUP' : 'PERSONAL'
     const targetId = reservationDraft.group || user.id
-    const referenceTime = startOfDay(reservationDraft.date).toISOString()
+    const referenceTime = toJSTISOString(reservationDraft.date, 0, 0)
+    const requestId = ++reservationLimitRequestIdRef.current
 
     try {
+      setReservationLimitLoading(true)
+      setReservationLimitError(false)
       const response = await apiClient.getReservationLimitRemaining(scope, targetId, referenceTime)
+      if (requestId !== reservationLimitRequestIdRef.current) return
       if (response.success && response.data) {
         setReservationLimitRemaining(response.data)
       } else {
         setReservationLimitRemaining([])
+        setReservationLimitError(true)
       }
     } catch (err) {
+      if (requestId !== reservationLimitRequestIdRef.current) return
       console.error('Failed to fetch reservation limit remaining:', err)
       setReservationLimitRemaining([])
+      setReservationLimitError(true)
+    } finally {
+      if (requestId === reservationLimitRequestIdRef.current) {
+        setReservationLimitLoading(false)
+      }
     }
   }, [user, reservationDraft.group, reservationDraft.date])
 
   const fetchReservations = useCallback(async () => {
     try {
+      setReservationError(null)
       const [reservationsResponse, eventsResponse, unavailablePeriodsResponse, reservationLimitsResponse] = await Promise.all([
         apiClient.getReservations(isAdminMode),
         apiClient.getEvents(),
@@ -209,20 +230,17 @@ function ReservationContent() {
         apiClient.getReservationLimits(),
       ])
 
-      if (reservationsResponse.success && reservationsResponse.data) {
-        setReservationData(toReservationCalendarEvents(reservationsResponse.data))
+      if (!reservationsResponse.success || !eventsResponse.success || !unavailablePeriodsResponse.success || !reservationLimitsResponse.success) {
+        throw new Error('RESERVATION_FETCH_FAILED')
       }
-      if (eventsResponse.success && eventsResponse.data) {
-        setEvents(toEventCalendarEvents(eventsResponse.data))
-      }
-      if (unavailablePeriodsResponse.success && unavailablePeriodsResponse.data) {
-        setUnavailablePeriods(toUnavailableCalendarEvents(unavailablePeriodsResponse.data))
-      }
-      if (reservationLimitsResponse.success && reservationLimitsResponse.data) {
-        setReservationLimits(reservationLimitsResponse.data)
-      }
+
+      setReservationData(toReservationCalendarEvents(reservationsResponse.data || []))
+      setEvents(toEventCalendarEvents(eventsResponse.data || []))
+      setUnavailablePeriods(toUnavailableCalendarEvents(unavailablePeriodsResponse.data || []))
+      setReservationLimits(reservationLimitsResponse.data || [])
     } catch (error) {
       console.error('Failed to fetch reservation data:', error)
+      setReservationError('予約情報を読み込めませんでした。')
     }
   }, [isAdminMode])
 
@@ -247,10 +265,15 @@ function ReservationContent() {
   }, [authLoading, user, router, pathname, searchParams, fetchReservations])
 
   useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 767px), (pointer: coarse)')
     const checkMobile = () => {
-      setIsMobile(/Mobi|Android/i.test(navigator.userAgent))
+      setIsMobile(mobileQuery.matches)
     }
+
     checkMobile()
+
+    mobileQuery.addEventListener('change', checkMobile)
+    return () => mobileQuery.removeEventListener('change', checkMobile)
   }, [])
 
   useEffect(() => {
@@ -264,29 +287,6 @@ function ReservationContent() {
   }, [fetchReservationLimitRemaining])
 
   const calendarRef = useRef<HTMLDivElement>(null)
-
-  const handleInputChange = (name: string, value: number | Date | string | null) => {
-    setReservationDraft(prev => {
-      const updated = { ...prev, [name]: value }
-
-      if (name === 'startHour') {
-        updated.startMinute = null
-        updated.endHour = null
-        updated.endMinute = null
-      }
-
-      if (name === 'startMinute') {
-        updated.endHour = null
-        updated.endMinute = null
-      }
-
-      if (name === 'endHour') {
-        updated.endMinute = null
-      }
-
-      return updated
-    })
-  }
 
   const handleReservationDateSelect = (date: Date) => {
     setReservationDraft((prev) => adjustReservationDraftForDate(
@@ -309,12 +309,10 @@ function ReservationContent() {
       return
     }
 
-    const start = new Date(reservationDraft.date)
-    start.setHours(reservationDraft.startHour, reservationDraft.startMinute)
-    const end = new Date(reservationDraft.date)
-    end.setHours(reservationDraft.endHour, reservationDraft.endMinute)
+    const startISOString = toJSTISOString(reservationDraft.date, reservationDraft.startHour, reservationDraft.startMinute)
+    const endISOString = toJSTISOString(reservationDraft.date, reservationDraft.endHour, reservationDraft.endMinute)
 
-    const validation = validateReservationTime(start.toISOString(), end.toISOString());
+    const validation = validateReservationTime(startISOString, endISOString);
     if (!validation.isValid) {
       toast.error('予約時間が無効です', {
         description: validation.error || '予約時間が無効です。'
@@ -329,8 +327,8 @@ function ReservationContent() {
       
       const response = await apiClient.createReservation({
         group_id: !isPersonalReservation && reservationDraft.group ? reservationDraft.group : undefined,
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
+        start_time: startISOString,
+        end_time: endISOString,
         admin: isAdminMode || undefined,
       });
 
@@ -338,7 +336,7 @@ function ReservationContent() {
         showSuccessToast({ message: '予約を送信しました' })
         
         setReservationDraft({
-          date: new Date(),
+          date: startOfDay(toJSTWallClockDate(new Date())),
           group: null,
           startHour: null,
           startMinute: null,
@@ -476,56 +474,60 @@ function ReservationContent() {
     }
   }
 
-  const generateStartHourOptions = () => {
-    return Array.from({ length: 17 }, (_, i) => i + 6)
+  const getDraftTimeValue = (hour: number | null, minute: number | null) => (
+    hour === null || minute === null
+      ? ''
+      : `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+  )
+
+  const handleDraftTimeChange = (target: 'start' | 'end', value: string) => {
+    const [hour, minute] = value.split(':').map(Number)
+    setReservationDraft((previous) => ({
+      ...previous,
+      ...(target === 'start'
+        ? {
+            startHour: Number.isFinite(hour) ? hour : null,
+            startMinute: Number.isFinite(minute) ? minute : null,
+            endHour: null,
+            endMinute: null,
+          }
+        : {
+            endHour: Number.isFinite(hour) ? hour : null,
+            endMinute: Number.isFinite(minute) ? minute : null,
+          }),
+    }))
   }
 
-  const generateEndHourOptions = () => {
-    return Array.from({ length: 18 }, (_, i) => i + 6)
+  const getEndTimeBound = (minutesToAdd: number) => {
+    if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return undefined
+    const start = new Date(reservationDraft.date)
+    start.setHours(reservationDraft.startHour, reservationDraft.startMinute, 0, 0)
+    const bound = addMinutes(start, minutesToAdd)
+    const latest = new Date(reservationDraft.date)
+    latest.setHours(23, 0, 0, 0)
+    return format(bound > latest ? latest : bound, 'HH:mm')
   }
 
-  const generateMinuteOptions = () => {
-    return Array.from({ length: 12 }, (_, i) => i * 5)
-  }
+  const getStartTimeMin = () => {
+    const earliest = new Date(reservationDraft.date)
+    earliest.setHours(6, 0, 0, 0)
+    const today = startOfDay(toJSTWallClockDate(new Date()))
+    if (startOfDay(reservationDraft.date).getTime() !== today.getTime()) return '06:00'
 
-
-  const isStartTimeDisabled = (hour: number, minute: number) => {
-    return !isReservationTimeValid(reservationDraft.date, hour, minute);
-  }
-
-  const isStartTimeSelectable = (hour: number, minute: number) => {
-    if (isStartTimeDisabled(hour, minute)) return false
-    const startDate = new Date(reservationDraft.date)
-    startDate.setHours(hour, minute, 0, 0)
-    const latestEndTime = new Date(reservationDraft.date)
-    latestEndTime.setHours(23, 0, 0, 0)
-    return addMinutes(startDate, MIN_RESERVATION_MINUTES).getTime() <= latestEndTime.getTime()
-  }
-
-  const isStartHourSelectable = (hour: number) => {
-    return generateMinuteOptions().some((minute) => isStartTimeSelectable(hour, minute))
-  }
-
-  const isEndHourSelectable = (hour: number) => {
-    if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return false
-    return generateMinuteOptions().some((minute) => !isEndTimeDisabled(hour, minute))
-  }
-
-  const isEndTimeDisabled = (hour: number, minute: number) => {
-    if (reservationDraft.startHour === null || reservationDraft.startMinute === null) return true
-    const startDate = new Date(reservationDraft.date)
-    startDate.setHours(reservationDraft.startHour, reservationDraft.startMinute, 0, 0)
-    const endDate = new Date(reservationDraft.date)
-    endDate.setHours(hour, minute, 0, 0)
-    const minEndTime = addMinutes(startDate, MIN_RESERVATION_MINUTES)
-    const maxEndTime = addHours(startDate, 4)
-    if (isBefore(endDate, minEndTime)) return true
-    if (endDate.getTime() > maxEndTime.getTime()) return true
-    return false
+    const now = toJSTWallClockDate(new Date())
+    const hadPartialMinute = now.getSeconds() > 0 || now.getMilliseconds() > 0
+    now.setSeconds(0, 0)
+    const remainder = now.getMinutes() % 5
+    if (remainder > 0 || hadPartialMinute) {
+      now.setMinutes(now.getMinutes() + (remainder > 0 ? 5 - remainder : 5))
+    }
+    return format(now > earliest ? now : earliest, 'HH:mm')
   }
 
   const isReservationButtonDisabled = () => {
     return isSending ||
+      reservationLimitLoading ||
+      reservationLimitError ||
       reservationDraft.startHour === null ||
       reservationDraft.startMinute === null ||
       reservationDraft.endHour === null ||
@@ -669,6 +671,58 @@ function ReservationContent() {
     setIsReservationFormOpen(true)
   }
 
+  const handleSelectSlot = (slotInfo: SlotInfo) => {
+    if (slotInfo.action !== 'select') return
+
+    const start = new Date(slotInfo.start)
+    const end = new Date(slotInfo.end)
+
+    if (!isReservationDateValid(start)) {
+      toast.error('この日は予約できません', {
+        description: '予約できるのは今日から14日後までです。',
+      })
+      return
+    }
+
+    const validation = validateReservationTime(
+      toJSTISOString(start, start.getHours(), start.getMinutes()),
+      toJSTISOString(end, end.getHours(), end.getMinutes())
+    )
+    if (!validation.isValid) {
+      toast.error('この時間は予約できません', {
+        description: validation.error || '予約時間が無効です。',
+      })
+      return
+    }
+
+    if (!isReservationTimeValid(start, start.getHours(), start.getMinutes())) {
+      toast.error('この時間は予約できません', {
+        description: '過去の時間は選択できません。',
+      })
+      return
+    }
+
+    const overlapsUnavailablePeriod = unavailablePeriods.some(
+      (period) => period.start < end && period.end > start
+    )
+    if (overlapsUnavailablePeriod) {
+      toast.error('この時間は予約できません', {
+        description: translateError('BLOCKED_PERIOD_CONFLICT'),
+      })
+      return
+    }
+
+    setReservationDraft((previous) => ({
+      ...previous,
+      date: startOfDay(start),
+      startHour: start.getHours(),
+      startMinute: start.getMinutes(),
+      endHour: end.getHours(),
+      endMinute: end.getMinutes(),
+    }))
+    setIsReservationFormOpen(true)
+  }
+
   const handleRefresh = async () => {
     await fetchReservations()
   }
@@ -687,7 +741,10 @@ function ReservationContent() {
     }
 
     if (limit.start_datetime && limit.end_datetime) {
-      return `${format(new Date(limit.start_datetime), 'M/d H:mm', { locale: jaLocale })} 〜 ${format(new Date(limit.end_datetime), 'M/d H:mm', { locale: jaLocale })}`
+      const formatter = new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      })
+      return `${formatter.format(new Date(limit.start_datetime))} 〜 ${formatter.format(new Date(limit.end_datetime))}`
     }
 
     return '期間限定'
@@ -701,8 +758,8 @@ function ReservationContent() {
       .filter((item) => {
         if (item.limit_type === 'ROLLING') return true
         if (!item.start_datetime || !item.end_datetime) return false
-        const limitStart = new Date(item.start_datetime)
-        const limitEnd = new Date(item.end_datetime)
+        const limitStart = toJSTWallClockDate(item.start_datetime)
+        const limitEnd = toJSTWallClockDate(item.end_datetime)
         return limitStart < selectedDayEnd && limitEnd > selectedDayStart
       })
       .map((item) => ({
@@ -719,8 +776,8 @@ function ReservationContent() {
       .filter((limit) => {
         if (limit.limit_type === 'ROLLING') return true
         if (!limit.start_datetime || !limit.end_datetime) return false
-        const limitStart = new Date(limit.start_datetime)
-        const limitEnd = new Date(limit.end_datetime)
+        const limitStart = toJSTWallClockDate(limit.start_datetime)
+        const limitEnd = toJSTWallClockDate(limit.end_datetime)
         return limitStart < selectedDayEnd && limitEnd > selectedDayStart
       })
   }, [reservationDraft.date, reservationLimits])
@@ -743,7 +800,7 @@ function ReservationContent() {
                 <Skeleton className="h-9 w-40" />
                 <Skeleton className="h-9 w-10" />
               </div>
-            ) : (
+            ) : reservationError ? null : (
               <div className="space-y-2">
                 <div className={"p-2 pb-0 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
                   <Button variant="outline" onClick={() => handleNavigate(subDays(currentDate, getRangeSkip()), currentView)}>
@@ -779,7 +836,7 @@ function ReservationContent() {
                   </DropdownMenu>
                   <Button variant="outline" onClick={() => handleNavigate(addDays(currentDate, getRangeSkip()), currentView)}>
                     <ChevronRightIcon className=" h-4 w-4" />
-                  </Button> 
+                  </Button>
                 </div>
                 {shouldShowReservationLimits && (
                   <div className="px-2 pb-2">
@@ -804,15 +861,28 @@ function ReservationContent() {
               <div className="w-full h-[720px]">
                 <Skeleton className="w-full h-full" />
               </div>
+            ) : reservationError ? (
+              <div className="flex h-[720px] items-center justify-center rounded-md border bg-white p-6 text-sm text-destructive">
+                <div className="text-center">
+                  <p>{reservationError}</p>
+                  <Button variant="link" onClick={() => void handleRefresh()}>再読み込み</Button>
+                </div>
+              </div>
             ) : (
               <BigCalendar
+                className="reservation-calendar"
                 localizer={localizer}
                 events={[...reservationData, ...events, ...unavailablePeriods]}
-                 titleAccessor={(event: CalendarEvent) => event.title}
-                 startAccessor={(event: CalendarEvent) => event.start}
-                 endAccessor={(event: CalendarEvent) => event.end}
-                 allDayAccessor={(event: CalendarEvent) => event.allDay || false}
+                titleAccessor={(event: CalendarEvent) => event.title}
+                startAccessor={(event: CalendarEvent) => event.start}
+                endAccessor={(event: CalendarEvent) => event.end}
+                allDayAccessor={(event: CalendarEvent) => event.allDay || false}
                 onSelectEvent={handleSelectEvent}
+                selectable="ignoreEvents"
+                onSelectSlot={handleSelectSlot}
+                step={10}
+                timeslots={6}
+                longPressThreshold={250}
                 views={customViews}
                 messages={messages}
                 culture='ja'
@@ -924,7 +994,7 @@ function ReservationContent() {
                       <p><strong>ステータス</strong> {eventStateNames[selectedReservation.resource.state]}</p>
                     )}
                   </div>
-                  {selectedReservation.resource.cancellable && selectedReservation.end > new Date() && (
+                  {selectedReservation.resource.cancellable && selectedReservation.resource.end_time && new Date(selectedReservation.resource.end_time) > new Date() && (
                     <Button
                       type="button"
                       variant="outline"
@@ -1031,8 +1101,8 @@ function ReservationContent() {
         <ReservationEditDialog
           open={isEditOpen}
           onOpenChange={setIsEditOpen}
-          start={selectedReservation.start}
-          end={selectedReservation.end}
+          start={new Date(selectedReservation.resource.start_time || selectedReservation.start)}
+          end={new Date(selectedReservation.resource.end_time || selectedReservation.end)}
           isSaving={isSending}
           onSave={handleUpdateReservation}
         />
@@ -1105,133 +1175,61 @@ function ReservationContent() {
                     ))}
                   </div>
                 )}
+                {reservationLimitLoading && (
+                  <p className="mt-2 text-xs text-muted-foreground">予約上限の残り時間を確認しています…</p>
+                )}
+                {reservationLimitError && (
+                  <div className="mt-2 rounded-md border border-destructive/50 p-2 text-xs text-destructive">
+                    予約上限の残り時間を確認できません。再読み込みしてから予約してください。
+                    <Button type="button" variant="link" className="ml-2 h-auto p-0 text-xs" onClick={() => void fetchReservationLimitRemaining()}>再読み込み</Button>
+                  </div>
+                )}
               </div>
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="date" className="text-sm font-medium">予約日</Label>
-                <Popover open={isFormDatePickerOpen} onOpenChange={setIsFormDatePickerOpen} modal={true}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {reservationDraft.date ? format(reservationDraft.date, "PPP", { locale: jaLocale }) : <span>日付を選択</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarPrimitive
-                      mode="single"
-                      selected={reservationDraft.date}
-                      onSelect={(date) => {
-                        if (date) {
-                          handleReservationDateSelect(date)
-                        }
-                        setIsFormDatePickerOpen(false)
-                      }}
-                      disabled={(date) =>
-                        !isReservationDateValid(date)
-                      }
-                      initialFocus
-                      locale={jaLocale}
-                    />
-                  </PopoverContent>
-                </Popover>
+                <Input
+                  id="date"
+                  type="date"
+                  min={format(startOfDay(toJSTWallClockDate(new Date())), 'yyyy-MM-dd')}
+                  max={format(addDays(startOfDay(toJSTWallClockDate(new Date())), 14), 'yyyy-MM-dd')}
+                  value={format(reservationDraft.date, 'yyyy-MM-dd')}
+                  onChange={(event) => {
+                    const date = new Date(`${event.target.value}T00:00:00`)
+                    if (!Number.isNaN(date.getTime()) && isReservationDateValid(date)) {
+                      handleReservationDateSelect(date)
+                    }
+                  }}
+                  required
+                />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="startHour" className="text-sm font-medium">開始時刻（時）</Label>
-                  <Select
-                    open={openPicker === 'startHour'}
-                    onOpenChange={(isOpen) => {
-                      if (isOpen) setOpenPicker('startHour')
-                      else setOpenPicker(null)
-                    }}
-                    onValueChange={(value) => handleInputChange('startHour', parseInt(value))}
-                    value={reservationDraft.startHour !== null ? reservationDraft.startHour.toString() : ''}
-                  >
-                    <SelectTrigger id="startHour">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {generateStartHourOptions().filter(isStartHourSelectable).map((hour) => (
-                        <SelectItem key={hour} value={hour.toString()}>
-                          {hour.toString().padStart(2, '0')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <p className="text-xs text-muted-foreground sm:col-span-2">時刻は日本時間（JST）で入力してください。</p>
+                <div className="space-y-2">
+                  <Label htmlFor="reservation-start-time" className="text-sm font-medium">開始時刻</Label>
+                  <Input
+                    id="reservation-start-time"
+                    type="time"
+                    min={getStartTimeMin()}
+                    max="22:50"
+                    step={300}
+                    value={getDraftTimeValue(reservationDraft.startHour, reservationDraft.startMinute)}
+                    onChange={(event) => handleDraftTimeChange('start', event.target.value)}
+                    required
+                  />
                 </div>
-                <div>
-                  <Label htmlFor="startMinute" className="text-sm font-medium">開始時刻（分）</Label>
-                  <Select
-                    open={openPicker === 'startMinute'}
-                    onOpenChange={(isOpen) => {
-                      if (isOpen) setOpenPicker('startMinute')
-                      else setOpenPicker(null)
-                    }}
-                    onValueChange={(value) => handleInputChange('startMinute', parseInt(value))}
-                    value={reservationDraft.startMinute !== null ? reservationDraft.startMinute.toString() : ''}
-                    disabled={reservationDraft.startHour === null}
-                  >
-                    <SelectTrigger id="startMinute">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {generateMinuteOptions().filter(minute => reservationDraft.startHour !== null && isStartTimeSelectable(reservationDraft.startHour, minute)).map((minute) => (
-                        <SelectItem key={minute} value={minute.toString()}>
-                          {minute.toString().padStart(2, '0')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="endHour" className="text-sm font-medium">終了時刻（時）</Label>
-                  <Select
-                    open={openPicker === 'endHour'}
-                    onOpenChange={(isOpen) => {
-                      if (isOpen) setOpenPicker('endHour')
-                      else setOpenPicker(null)
-                    }}
-                    onValueChange={(value) => handleInputChange('endHour', parseInt(value))}
-                    value={reservationDraft.endHour !== null ? reservationDraft.endHour.toString() : ''}
-                    disabled={reservationDraft.startMinute === null}
-                  >
-                    <SelectTrigger id="endHour">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {generateEndHourOptions().filter(isEndHourSelectable).map((hour) => (
-                        <SelectItem key={hour} value={hour.toString()}>
-                          {hour.toString().padStart(2, '0')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="endMinute" className="text-sm font-medium">終了時刻（分）</Label>
-                  <Select
-                    open={openPicker === 'endMinute'}
-                    onOpenChange={(isOpen) => {
-                      if (isOpen) setOpenPicker('endMinute')
-                      else setOpenPicker(null)
-                    }}
-                    onValueChange={(value) => handleInputChange('endMinute', parseInt(value))}
-                    value={reservationDraft.endMinute !== null ? reservationDraft.endMinute.toString() : ''}
-                    disabled={reservationDraft.endHour === null}
-                  >
-                    <SelectTrigger id="endMinute">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {generateMinuteOptions().filter(minute => reservationDraft.endHour !== null && !isEndTimeDisabled(reservationDraft.endHour, minute)).map((minute) => (
-                        <SelectItem key={minute} value={minute.toString()}>
-                          {minute.toString().padStart(2, '0')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-2">
+                  <Label htmlFor="reservation-end-time" className="text-sm font-medium">終了時刻</Label>
+                  <Input
+                    id="reservation-end-time"
+                    type="time"
+                    min={getEndTimeBound(MIN_RESERVATION_MINUTES)}
+                    max={getEndTimeBound(240)}
+                    step={300}
+                    value={getDraftTimeValue(reservationDraft.endHour, reservationDraft.endMinute)}
+                    disabled={reservationDraft.startHour === null || reservationDraft.startMinute === null}
+                    onChange={(event) => handleDraftTimeChange('end', event.target.value)}
+                    required
+                  />
                 </div>
               </div>
               <LoadingButton

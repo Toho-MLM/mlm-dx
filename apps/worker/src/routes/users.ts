@@ -217,6 +217,9 @@ userRoutes.put('/', async (c) => {
 
     return c.json({ success: true });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     console.error('Error updating user:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }

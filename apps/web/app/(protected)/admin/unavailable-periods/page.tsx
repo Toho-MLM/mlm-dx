@@ -8,12 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Calendar } from '@/components/ui/calendar'
-import { format, addDays } from 'date-fns'
+import { format } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
-import { CalendarIcon, Trash2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Trash2 } from 'lucide-react'
 import { apiClient } from '@/lib/api'
 import { toast } from 'sonner'
 import { showSuccessToast } from '@/lib/utils'
@@ -29,6 +26,27 @@ interface UnavailablePeriod {
   start_datetime: string
   end_datetime: string
   reason: string | null
+}
+
+const getJSTDateString = (value: Date) => new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(value)
+
+const addJSTDays = (dateString: string, days: number) => {
+  const date = new Date(`${dateString}T00:00:00+09:00`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return getJSTDateString(date)
+}
+
+const getDefaultPeriod = () => {
+  const today = getJSTDateString(new Date())
+  return {
+    startDateTime: `${today}T00:00`,
+    endDateTime: `${addJSTDays(today, 1)}T00:00`,
+  }
 }
 
 export default function UnavailablePeriodsPage() {
@@ -48,10 +66,8 @@ function UnavailablePeriodsContent() {
   const [loading, setLoading] = useState(true)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [startDate, setStartDate] = useState<Date | undefined>(new Date())
-  const [startTime, setStartTime] = useState('00:00')
-  const [endDate, setEndDate] = useState<Date | undefined>(addDays(new Date(), 1))
-  const [endTime, setEndTime] = useState('00:00')
+  const [startDateTime, setStartDateTime] = useState(() => getDefaultPeriod().startDateTime)
+  const [endDateTime, setEndDateTime] = useState(() => getDefaultPeriod().endDateTime)
   const [reason, setReason] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -86,18 +102,18 @@ function UnavailablePeriodsContent() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!startDate || !endDate) {
-      toast.error('開始日と終了日を選択してください')
+    if (!startDateTime || !endDateTime) {
+      toast.error('開始日時と終了日時を選択してください')
       return
     }
 
-    const start = new Date(startDate)
-    const [startHour, startMinute] = startTime.split(':').map(Number)
-    start.setHours(startHour, startMinute, 0, 0)
+    const start = new Date(`${startDateTime}:00+09:00`)
+    const end = new Date(`${endDateTime}:00+09:00`)
 
-    const end = new Date(endDate)
-    const [endHour, endMinute] = endTime.split(':').map(Number)
-    end.setHours(endHour, endMinute, 0, 0)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      toast.error('日時を正しく入力してください')
+      return
+    }
 
     if (end <= start) {
       toast.error('終了日時は開始日時より後である必要があります')
@@ -115,10 +131,9 @@ function UnavailablePeriodsContent() {
       if (response.success) {
         showSuccessToast({ message: '予約不可期間を追加しました' })
         setIsFormOpen(false)
-        setStartDate(new Date())
-        setStartTime('00:00')
-        setEndDate(addDays(new Date(), 1))
-        setEndTime('00:00')
+        const defaultPeriod = getDefaultPeriod()
+        setStartDateTime(defaultPeriod.startDateTime)
+        setEndDateTime(defaultPeriod.endDateTime)
         setReason('')
         await fetchPeriods()
       } else {
@@ -235,76 +250,28 @@ function UnavailablePeriodsContent() {
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>開始日</Label>
-                  <Popover modal={true}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !startDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {startDate ? format(startDate, "yyyy年M月d日", { locale: jaLocale }) : <span>日付を選択</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={startDate}
-                        onSelect={setStartDate}
-                        initialFocus
-                        locale={jaLocale}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-2">
-                  <Label>開始時刻</Label>
+                  <Label htmlFor="unavailable-start-datetime">開始日時</Label>
                   <Input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
+                    id="unavailable-start-datetime"
+                    type="datetime-local"
+                    step={300}
+                    value={startDateTime}
+                    onChange={(event) => setStartDateTime(event.target.value)}
+                    required
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>終了日</Label>
-                  <Popover modal={true}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !endDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {endDate ? format(endDate, "yyyy年M月d日", { locale: jaLocale }) : <span>日付を選択</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={endDate}
-                        onSelect={setEndDate}
-                        initialFocus
-                        locale={jaLocale}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-2">
-                  <Label>終了時刻</Label>
+                  <Label htmlFor="unavailable-end-datetime">終了日時</Label>
                   <Input
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
+                    id="unavailable-end-datetime"
+                    type="datetime-local"
+                    step={300}
+                    min={startDateTime}
+                    value={endDateTime}
+                    onChange={(event) => setEndDateTime(event.target.value)}
+                    required
                   />
                 </div>
               </div>

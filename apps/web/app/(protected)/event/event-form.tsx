@@ -1,11 +1,11 @@
-import { useState, useEffect, useTransition } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { addDays, format, subDays } from 'date-fns'
+import { addDays, format } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import { CalendarIcon } from 'lucide-react'
 import { cn, showSuccessToast } from "@/lib/utils"
@@ -22,6 +22,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+import { translateError } from '@/lib/error-label'
 
 interface EventFormProps {
   event?: Event
@@ -30,27 +31,35 @@ interface EventFormProps {
   onSuccess?: (newEvent?: Event) => void
 }
 
+const toJSTCalendarDate = (value: string, exclusiveEnd = false) => {
+  const instant = new Date(new Date(value).getTime() - (exclusiveEnd ? 1 : 0))
+  const dateKey = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(instant)
+  return new Date(`${dateKey}T00:00:00`)
+}
+
 export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps) {
   const [title, setTitle] = useState(event?.title || '')
-  const [date, setDate] = useState<Date | undefined>(event?.event_date ? new Date(event.event_date) : undefined)
-  const [entryDeadline, setEntryDeadline] = useState<Date | undefined>(event?.entry_deadline ? subDays(new Date(event.entry_deadline), 1) : undefined)
-  const [setlistDeadline, setSetlistDeadline] = useState<Date | undefined>(event?.setlist_deadline ? new Date(event.setlist_deadline) : undefined)
+  const [date, setDate] = useState<Date | undefined>(event?.event_date ? toJSTCalendarDate(event.event_date) : undefined)
+  const [entryDeadline, setEntryDeadline] = useState<Date | undefined>(event?.entry_deadline ? toJSTCalendarDate(event.entry_deadline, true) : undefined)
+  const [setlistDeadline, setSetlistDeadline] = useState<Date | undefined>(event?.setlist_deadline ? toJSTCalendarDate(event.setlist_deadline, true) : undefined)
   const [isFreeBand, setIsFreeBand] = useState(event ? event.group_limit !== 0 : true)
   const [freeBandLimit, setFreeBandLimit] = useState(event && event.group_limit > 0 ? event.group_limit.toString() : '2')
   const [songLimit, setSongLimit] = useState<number>(event?.song_limit ?? 2)
   const [entryAccepting, setEntryAccepting] = useState(event?.is_entry_accepting ?? true)
   const [setlistAccepting, setSetlistAccepting] = useState(event?.is_setlist_accepting ?? true)
-  const [isPending, startTransition] = useTransition()
+  const [isPending, setIsPending] = useState(false)
 
-  const today = new Date()
+  const today = toJSTCalendarDate(new Date().toISOString())
   today.setHours(0, 0, 0, 0)
 
   useEffect(() => {
     if (event) {
       setTitle(event.title)
-      setDate(new Date(event.event_date))
-      setEntryDeadline(subDays(new Date(event.entry_deadline), 1))
-      setSetlistDeadline(new Date(event.setlist_deadline))
+      setDate(toJSTCalendarDate(event.event_date))
+      setEntryDeadline(toJSTCalendarDate(event.entry_deadline, true))
+      setSetlistDeadline(toJSTCalendarDate(event.setlist_deadline, true))
       setIsFreeBand(event.group_limit !== 0)
       setFreeBandLimit(event.group_limit > 0 ? event.group_limit.toString() : '2')
       setSongLimit(event.song_limit ?? 2)
@@ -98,7 +107,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
   }
 
   const handleSubmit = async () => {
-    if (!title.trim() || !date || !entryDeadline || !setlistDeadline) return
+    if (isPending || !title.trim() || !date || !entryDeadline || !setlistDeadline) return
 
     const validationError = validateDates();
     if (validationError) {
@@ -112,12 +121,12 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
       String(date.getDate()).padStart(2, '0'),
     ].join('-')
     const formattedEntryDeadline = `${format(addDays(entryDeadline, 1), 'yyyy-MM-dd')}T00:00:00+09:00`
-    const formattedSetlistDeadline = setlistDeadline.toISOString()
+    const formattedSetlistDeadline = `${format(addDays(setlistDeadline, 1), 'yyyy-MM-dd')}T00:00:00+09:00`
     const groupLimitNum = isFreeBand ? parseInt(freeBandLimit) || 2 : 0
     const songLimitNum = Number.isNaN(songLimit) ? 2 : songLimit
 
-    startTransition(async () => {
-      try {
+    try {
+      setIsPending(true)
         if (event) {
           const response = await apiClient.updateEvent(event.id, {
             title,
@@ -146,7 +155,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
             onClose()
             onSuccess?.(updatedEvent)
           } else {
-            toast.error('イベントの更新中にエラーが発生しました')
+            toast.error('イベントの更新中にエラーが発生しました', { description: translateError(response.error || 'UNKNOWN_ERROR') })
           }
         } else {
           const response = await apiClient.createEvent({
@@ -165,13 +174,14 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
             onClose()
             onSuccess?.()
           } else {
-            toast.error('イベントの作成中にエラーが発生しました')
+            toast.error('イベントの作成中にエラーが発生しました', { description: translateError(response.error || 'UNKNOWN_ERROR') })
           }
         }
-      } catch {
-        toast.error('エラーが発生しました')
-      }
-    })
+    } catch {
+      toast.error('エラーが発生しました')
+    } finally {
+      setIsPending(false)
+    }
   }
 
   const isFormValid = title.trim() !== '' && 
@@ -347,9 +357,9 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
                 if (newGroupLimit < oldGroupLimit && oldGroupLimit > 0) {
                   return (
                     <Alert variant="destructive">
-                      <AlertTitle>出演登録の自動削除</AlertTitle>
+                      <AlertTitle>登録状況の確認が必要です</AlertTitle>
                       <AlertDescription>
-                        バンド数上限が{oldGroupLimit}から{newGroupLimit}に減少したため、超過分の新しい出演登録が自動的に削除されます。
+                        現在の出演登録が新しい上限を超える場合、この更新は保存できません。先に出演登録を整理してください。
                       </AlertDescription>
                     </Alert>
                   );
