@@ -10,10 +10,22 @@ description: MLM-DX の Cloudflare Worker バックエンドを実装・修正�
 1. 対象ルート、関連 utility、`lib/shared-schemas.ts`、D1 テーブルを追い、業務制約を整理する。
 2. request、response、エラーコード、認証、管理者権限、日時基準を先に決める。
 3. 共有契約を変更する場合は共有 Zod スキーマを一次情報として更新する。
-4. Hono ルートと D1 処理を実装し、必要なら新しい連番 migration を追加する。
-5. ルートを新設した場合は `apps/worker/src/index.ts` への mount を確認する。
-6. Web から利用する場合は `apps/web/lib/api.ts` または `server-api.ts` まで更新する。
-7. `$verify` に従い、影響するアプリの type-check を実行する。
+4. `apps/worker/src/features/<feature>` の責務境界に従い、domain、application、infrastructure を実装し、`src/routes` の HTTP adapter から呼び出す。
+5. D1 処理を repository に実装し、必要なら新しい連番 migration を追加する。
+6. ルートを新設した場合は `apps/worker/src/index.ts` への mount を確認する。
+7. Web から利用する場合は `apps/web/lib/api.ts` または `server-api.ts` まで更新する。
+8. 純粋計算と fake repository を使うユースケーステストを追加する。
+9. `$verify` に従い、Worker test と影響するアプリの type-check を実行する。
+
+## 責務の分離
+
+- `domain` に純粋な業務計算と値の判定を置く。Hono、`Bindings`、D1、現在時刻、乱数、副作用を参照しない。
+- `application` にユースケースと port を置く。repository、clock、ID、乱数、通知、リアルタイム配信は interface 経由で受け取る。
+- `infrastructure` に D1 repository、外部サービス、row 正規化を置く。SQL の条件付き更新や batch を application へ漏らさない。
+- `http` は Zod 検証、認証ユーザーの取得、application error と HTTP response の対応に限定する。
+- repository は汎用 CRUD ではなくユースケースに必要な操作を表現し、競合時は更新件数などの明示的な結果を返す。
+- route 同士を import しない。共有する所属確認や予約制限は application port と repository を再利用する。
+- 移行済み route・processor へ `prepare()` や `batch()` を戻さず、`pnpm --filter mlm-dx-worker check:boundaries` で確認する。
 
 ## API 境界
 
@@ -46,4 +58,5 @@ description: MLM-DX の Cloudflare Worker バックエンドを実装・修正�
 - D1 row と API response の変換が共有スキーマを通る。
 - Web 側利用箇所と API 契約が一致する。
 - 正常系に加え、未認証、権限不足、不正入力、競合、対象なしを確認する。
+- 日時や抽選は固定 clock・固定乱数、DB を伴うユースケースは fake repository で正常系と競合系を確認する。
 - Worker と必要な関連アプリの type-check 結果を報告する。

@@ -28,6 +28,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Type check Backend
         run: pnpm --filter mlm-dx-worker type-check
+      - name: Test Backend
+        run: pnpm --filter mlm-dx-worker test
       - name: Validate SMTP configuration
         env:
           SMTP_HOST: ${{ vars.SMTP_HOST }}
