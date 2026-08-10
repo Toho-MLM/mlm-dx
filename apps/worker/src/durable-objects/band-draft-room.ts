@@ -66,7 +66,7 @@ export class BandDraftRoom {
     });
 
     server.addEventListener('message', (event: MessageEvent) => {
-      void this.handleMessage(server, token, event.data);
+      void this.state.blockConcurrencyWhile(() => this.handleMessage(server, token, event.data));
     });
     server.addEventListener('close', () => this.sessions.delete(server));
     server.addEventListener('error', () => this.sessions.delete(server));
@@ -96,19 +96,38 @@ export class BandDraftRoom {
       this.send(sender, { type: 'error', error: 'DRAFT_NOT_FOUND' });
       return;
     }
-    const currentState = DraftStateSchema.parse(JSON.parse(draft.state_json));
-    const incomingState = DraftStateSchema.parse(message.state);
+    const currentResult = DraftStateSchema.safeParse(JSON.parse(draft.state_json));
+    const incomingResult = DraftStateSchema.safeParse(message.state);
+    if (!currentResult.success || !incomingResult.success) {
+      this.send(sender, { type: 'error', error: 'INVALID_STATE' });
+      return;
+    }
+    const currentState = currentResult.data;
+    const incomingState = incomingResult.data;
+    if (incomingState.version !== currentState.version) {
+      this.send(sender, { type: 'snapshot', state: currentState });
+      this.send(sender, { type: 'error', error: 'STATE_VERSION_CONFLICT' });
+      return;
+    }
     const nextState = {
       ...incomingState,
       version: currentState.version + 1,
     };
     const now = new Date().toISOString();
 
-    await this.env.DB.prepare(`
+    const updateResult = await this.env.DB.prepare(`
       UPDATE main_band_drafts
       SET state_json = ?, updated_at = ?
-      WHERE id = ?
-    `).bind(JSON.stringify(nextState), now, draft.id).run();
+      WHERE id = ? AND state_json = ?
+    `).bind(JSON.stringify(nextState), now, draft.id, draft.state_json).run();
+    if (Number(updateResult.meta.changes ?? 0) === 0) {
+      const latest = await this.fetchDraft(token);
+      if (latest) {
+        this.send(sender, { type: 'snapshot', state: DraftStateSchema.parse(JSON.parse(latest.state_json)) });
+      }
+      this.send(sender, { type: 'error', error: 'STATE_VERSION_CONFLICT' });
+      return;
+    }
 
     this.broadcast({
       type: 'snapshot',

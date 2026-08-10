@@ -340,11 +340,34 @@ externalReservationRoutes.post('/', async (c) => {
     const conflicts = await getMemberConflicts(c.env, user.id, groupId, data.start_time, data.end_time);
     if (conflicts.length && !data.acknowledged_member_conflicts) return c.json({ success: false, error: 'MEMBER_RESERVATION_CONFLICT_WARNING', data: conflicts });
     const id = crypto.randomUUID(); const now = new Date().toISOString();
-    await c.env.DB.prepare(`
+    const insertResult = await c.env.DB.prepare(`
       INSERT INTO external_reservations
         (id, external_studio_id, room_number, user_id, group_id, start_time, end_time, state, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?)
-    `).bind(id, data.external_studio_id, data.room_number, user.id, groupId, data.start_time, data.end_time, now, now).run();
+      SELECT ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM external_reservations
+        WHERE external_studio_id = ? AND room_number = ? AND state = 'CONFIRMED'
+          AND start_time < ? AND end_time > ?
+      )
+    `).bind(
+      id, data.external_studio_id, data.room_number, user.id, groupId,
+      data.start_time, data.end_time, now, now,
+      data.external_studio_id, data.room_number, data.end_time, data.start_time
+    ).run();
+    if (Number(insertResult.meta.changes ?? 0) === 0) {
+      return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+    }
+    if (!admin && await hasReservationLimitConflict(
+      c.env,
+      user.id,
+      groupId,
+      data.start_time,
+      data.end_time,
+      { kind: 'EXTERNAL', id }
+    )) {
+      await c.env.DB.prepare('DELETE FROM external_reservations WHERE id = ?').bind(id).run();
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
+    }
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, { kind: 'EXTERNAL', reservationId: id, notificationType: 'RESERVATION_CONFIRMED' }));
     return c.json({ success: true });
@@ -470,12 +493,49 @@ externalReservationRoutes.post('/lottery', async (c) => {
     }
 
     const id = crypto.randomUUID(); const now = new Date().toISOString();
-    await c.env.DB.prepare(`
+    const insertResult = await c.env.DB.prepare(`
       INSERT INTO external_lottery_applications
         (id, external_studio_id, user_id, group_id, preferred_start_datetime, preferred_end_datetime,
          requested_duration_minutes, state, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
-    `).bind(id, studio.id, user.id, groupId, data.preferred_start_datetime, data.preferred_end_datetime, data.requested_duration_minutes, now, now).run();
+      SELECT ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM external_lottery_applications ela
+        INNER JOIN external_studios es ON es.id = ela.external_studio_id
+        WHERE ela.state = 'PENDING'
+          AND ((? IS NULL AND ela.group_id IS NULL AND ela.user_id = ?) OR ela.group_id = ?)
+          AND COALESCE(ela.preferred_start_datetime, es.start_datetime) < ?
+          AND COALESCE(ela.preferred_end_datetime, es.end_datetime) > ?
+      )
+    `).bind(
+      id,
+      studio.id,
+      user.id,
+      groupId,
+      data.preferred_start_datetime,
+      data.preferred_end_datetime,
+      data.requested_duration_minutes,
+      now,
+      now,
+      groupId,
+      user.id,
+      groupId,
+      rangeEnd,
+      rangeStart
+    ).run();
+    if (Number(insertResult.meta.changes ?? 0) === 0) {
+      return c.json({ success: false, error: 'LOTTERY_APPLICATION_CONFLICT' }, 409);
+    }
+    if (await hasReservationLimitConflict(
+      c.env,
+      user.id,
+      groupId,
+      holdStart.toISOString(),
+      holdEnd.toISOString(),
+      { kind: 'LOTTERY', id }
+    )) {
+      await c.env.DB.prepare('DELETE FROM external_lottery_applications WHERE id = ?').bind(id).run();
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
+    }
     return c.json({ success: true, data: { id } });
   } catch (error) {
     if (error instanceof ZodError) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
@@ -512,8 +572,8 @@ externalReservationRoutes.put('/:id', async (c) => {
     if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     const data = UpdateExternalReservationRequestSchema.parse(await c.req.json()); const admin = data.admin === true;
     const reservation = await c.env.DB.prepare(`
-      SELECT external_studio_id, room_number, user_id, group_id, start_time, end_time, state FROM external_reservations WHERE id = ?
-    `).bind(id).first<{ external_studio_id: string; room_number: number; user_id: string; group_id: string | null; start_time: string; end_time: string; state: string }>();
+      SELECT external_studio_id, room_number, user_id, group_id, start_time, end_time, state, updated_at FROM external_reservations WHERE id = ?
+    `).bind(id).first<{ external_studio_id: string; room_number: number; user_id: string; group_id: string | null; start_time: string; end_time: string; state: string; updated_at: string }>();
     if (!reservation) return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     const permitted = admin || reservation.user_id === user.id || (reservation.group_id !== null && await isUserInGroup(c.env, user.id, reservation.group_id));
     if (!permitted) return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_EDITED' }, 403);
@@ -522,8 +582,58 @@ externalReservationRoutes.put('/:id', async (c) => {
     if (validation.error) return c.json({ success: false, error: validation.error }, validation.status || 400);
     const conflicts = await getMemberConflicts(c.env, reservation.user_id, reservation.group_id, data.start_time, data.end_time, id);
     if (conflicts.length && !data.acknowledged_member_conflicts) return c.json({ success: false, error: 'MEMBER_RESERVATION_CONFLICT_WARNING', data: conflicts });
-    await c.env.DB.prepare('UPDATE external_reservations SET start_time = ?, end_time = ?, updated_at = ? WHERE id = ?')
-      .bind(data.start_time, data.end_time, new Date().toISOString(), id).run();
+    const updateTime = new Date().toISOString();
+    const updateResult = await c.env.DB.prepare(`
+      UPDATE external_reservations
+      SET start_time = ?, end_time = ?, updated_at = ?
+      WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM external_reservations other
+          WHERE other.id != ? AND other.external_studio_id = ? AND other.room_number = ?
+            AND other.state = 'CONFIRMED' AND other.start_time < ? AND other.end_time > ?
+        )
+    `).bind(
+      data.start_time,
+      data.end_time,
+      updateTime,
+      id,
+      reservation.start_time,
+      reservation.end_time,
+      reservation.state,
+      reservation.updated_at,
+      id,
+      reservation.external_studio_id,
+      reservation.room_number,
+      data.end_time,
+      data.start_time
+    ).run();
+    if (Number(updateResult.meta.changes ?? 0) === 0) {
+      return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+    }
+    if (!admin && await hasReservationLimitConflict(
+      c.env,
+      reservation.user_id,
+      reservation.group_id,
+      data.start_time,
+      data.end_time,
+      { kind: 'EXTERNAL', id }
+    )) {
+      await c.env.DB.prepare(`
+        UPDATE external_reservations
+        SET start_time = ?, end_time = ?, updated_at = ?
+        WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
+      `).bind(
+        reservation.start_time,
+        reservation.end_time,
+        new Date().toISOString(),
+        id,
+        data.start_time,
+        data.end_time,
+        reservation.state,
+        updateTime
+      ).run();
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
+    }
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
       kind: 'EXTERNAL', reservationId: id, notificationType: 'RESERVATION_EDITED',
@@ -543,7 +653,7 @@ externalReservationRoutes.put('/:id/status', async (c) => {
     if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     const data = UpdateReservationStatusRequestSchema.parse(await c.req.json());
     const reservation = await c.env.DB.prepare(`SELECT * FROM external_reservations WHERE id = ?`).bind(id).first<{
-      id: string; external_studio_id: string; room_number: number; user_id: string; group_id: string | null; start_time: string; end_time: string; state: ReservationState;
+      id: string; external_studio_id: string; room_number: number; user_id: string; group_id: string | null; start_time: string; end_time: string; state: ReservationState; updated_at: string;
     }>();
     if (!reservation) return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     if (reservation.state === data.state) return c.json({ success: true });
@@ -554,7 +664,34 @@ externalReservationRoutes.put('/:id/status', async (c) => {
       `).bind(id, reservation.external_studio_id, reservation.room_number, reservation.end_time, reservation.start_time).first();
       if (conflict) return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
     }
-    await c.env.DB.prepare('UPDATE external_reservations SET state = ?, updated_at = ? WHERE id = ?').bind(data.state, new Date().toISOString(), id).run();
+    const statusResult = await c.env.DB.prepare(`
+      UPDATE external_reservations
+      SET state = ?, updated_at = ?
+      WHERE id = ? AND state = ? AND updated_at = ?
+        AND (
+          ? != 'CONFIRMED'
+          OR NOT EXISTS (
+            SELECT 1 FROM external_reservations other
+            WHERE other.id != ? AND other.external_studio_id = ? AND other.room_number = ?
+              AND other.state = 'CONFIRMED' AND other.start_time < ? AND other.end_time > ?
+          )
+        )
+    `).bind(
+      data.state,
+      new Date().toISOString(),
+      id,
+      reservation.state,
+      reservation.updated_at,
+      data.state,
+      id,
+      reservation.external_studio_id,
+      reservation.room_number,
+      reservation.end_time,
+      reservation.start_time
+    ).run();
+    if (Number(statusResult.meta.changes ?? 0) === 0) {
+      return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+    }
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     const notification = notificationForStatus(data.state);
     if (notification) c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, { kind: 'EXTERNAL', reservationId: id, notificationType: notification }));

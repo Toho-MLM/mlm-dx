@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
   type CSSProperties,
   type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
@@ -25,6 +24,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { apiClient, type BandDraftMember, type BandDraftState } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Instrument, instrumentNames } from '@/app/types'
+import { translateError } from '@/lib/error-label'
 
 const instruments = [Instrument.vocal, Instrument.guitar, Instrument.keyboard, Instrument.drums, Instrument.bass]
 const instrumentTone: Record<Instrument, string> = {
@@ -62,7 +62,7 @@ export function BandMainDraftBoard({ token }: { token: string }) {
   const [isResizingTray, setIsResizingTray] = useState(false)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
-  const [isPending, startTransition] = useTransition()
+  const [isPending, setIsPending] = useState(false)
   const tableCardRef = useRef<HTMLDivElement | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -117,7 +117,7 @@ export function BandMainDraftBoard({ token }: { token: string }) {
           return
         }
         if (message.type === 'error') {
-          toast.error('同期に失敗しました', { description: message.error })
+          toast.error('同期に失敗しました', { description: translateError(message.error) })
         }
       }
       socket.onclose = () => {
@@ -315,9 +315,10 @@ export function BandMainDraftBoard({ token }: { token: string }) {
     window.addEventListener('pointercancel', handlePointerUp, { once: true })
   }, [clampedTrayHeight, trayBounds])
 
-  const handleFinalize = useCallback(() => {
-    startTransition(async () => {
-      try {
+  const handleFinalize = useCallback(async () => {
+    if (isPending) return
+    try {
+      setIsPending(true)
         const response = await apiClient.finalizeBandMainDraft(token)
         if (response.success) {
           setIsConfirmOpen(false)
@@ -328,17 +329,19 @@ export function BandMainDraftBoard({ token }: { token: string }) {
         } else {
           toast.error('確定できませんでした')
         }
-      } catch (error) {
-        toast.error('確定できませんでした', {
-          description: error instanceof Error ? error.message : undefined,
-        })
-      }
-    })
-  }, [router, token])
+    } catch (error) {
+      toast.error('確定できませんでした', {
+        description: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      setIsPending(false)
+    }
+  }, [isPending, router, token])
 
-  const handleDeleteDraft = useCallback(() => {
-    startTransition(async () => {
-      try {
+  const handleDeleteDraft = useCallback(async () => {
+    if (isPending) return
+    try {
+      setIsPending(true)
         const response = await apiClient.deleteBandMainDraft(token)
         if (response.success) {
           setIsDeleteConfirmOpen(false)
@@ -347,13 +350,14 @@ export function BandMainDraftBoard({ token }: { token: string }) {
         } else {
           toast.error('削除できませんでした')
         }
-      } catch (error) {
-        toast.error('削除できませんでした', {
-          description: error instanceof Error ? error.message : undefined,
-        })
-      }
-    })
-  }, [router, token])
+    } catch (error) {
+      toast.error('削除できませんでした', {
+        description: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      setIsPending(false)
+    }
+  }, [isPending, router, token])
 
   const copyShareUrl = useCallback(async () => {
     await navigator.clipboard.writeText(window.location.href)

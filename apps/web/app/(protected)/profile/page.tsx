@@ -52,6 +52,8 @@ function ProfileContent() {
   const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [userData, setUserData] = useState<UserData | null>(null)
+  const [profileError, setProfileError] = useState(false)
+  const [profileRetryKey, setProfileRetryKey] = useState(0)
   const [isPasskeyProcessing, setIsPasskeyProcessing] = useState(false)
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false)
   const [passkeys, setPasskeys] = useState<PasskeyCredential[]>([])
@@ -61,6 +63,7 @@ function ProfileContent() {
   const [isRefreshingAvatar, setIsRefreshingAvatar] = useState(false)
   const [confirmingAvatarRefresh, setConfirmingAvatarRefresh] = useState(false)
   const [emailNotificationPreferences, setEmailNotificationPreferences] = useState<EmailNotificationPreferences | null>(null)
+  const [emailNotificationError, setEmailNotificationError] = useState(false)
   const [isEmailNotificationLoading, setIsEmailNotificationLoading] = useState(false)
   const [updatingEmailNotificationTypes, setUpdatingEmailNotificationTypes] = useState<Set<EmailNotificationType>>(new Set())
   const router = useRouter()
@@ -87,15 +90,18 @@ function ProfileContent() {
 
   const fetchEmailNotificationPreferences = useCallback(async () => {
     setIsEmailNotificationLoading(true)
+    setEmailNotificationError(false)
     try {
       const res = await apiClient.getEmailNotificationPreferences()
       if (res.success && res.data) {
         setEmailNotificationPreferences(res.data)
       } else {
+        setEmailNotificationError(true)
         toast.error('メール通知設定の取得に失敗しました')
       }
     } catch (error) {
       console.error('Failed to fetch email notification preferences:', error)
+      setEmailNotificationError(true)
       toast.error('メール通知設定の取得に失敗しました')
     } finally {
       setIsEmailNotificationLoading(false)
@@ -110,6 +116,7 @@ function ProfileContent() {
         return
       }
       try {
+        setProfileError(false)
         setIsPasskeyLoading(true)
         const res = await apiClient.getCurrentUserData()
         if (res.success && res.data) {
@@ -120,22 +127,28 @@ function ProfileContent() {
             email: res.data.email,
             nickname: res.data.nickname,
             instruments: res.data.instruments as Instrument[],
-            student_number: (res.data as { student_number?: string })?.student_number
+            student_number: res.data.student_number
           }
           setUserData(ud)
           const needsSetup = !ud.nickname || (ud.instruments && ud.instruments.length === 0)
           if (needsSetup) {
             setIsEditing(true)
           }
+        } else {
+          throw new Error(res.error || 'PROFILE_FETCH_FAILED')
         }
         await Promise.all([fetchPasskeys(), fetchEmailNotificationPreferences()])
+      } catch (error) {
+        console.error('Failed to fetch profile:', error)
+        setProfileError(true)
+        toast.error('プロフィールの取得に失敗しました')
       } finally {
         setLoading(false)
         setIsPasskeyLoading(false)
       }
     }
     init()
-  }, [authLoading, user, router, fetchPasskeys, fetchEmailNotificationPreferences, pathname, searchParams])
+  }, [authLoading, user, router, fetchPasskeys, fetchEmailNotificationPreferences, pathname, profileRetryKey, searchParams])
 
   const handleEmailNotificationChange = useCallback(async (type: EmailNotificationType, enabled: boolean) => {
     if (!emailNotificationPreferences || updatingEmailNotificationTypes.has(type)) return
@@ -314,7 +327,19 @@ function ProfileContent() {
   }, [isRefreshingAvatar])
 
   if (!userData && !loading) {
-    return null
+    return (
+      <div className="p-5">
+        <Card className="mx-auto max-w-2xl">
+          <CardContent className="p-5 text-sm text-destructive">
+            {profileError ? 'プロフィールを読み込めませんでした。' : 'プロフィールが見つかりません。'}
+            <Button variant="link" className="ml-2 h-auto p-0" onClick={() => {
+              setLoading(true)
+              setProfileRetryKey((value) => value + 1)
+            }}>再読み込み</Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   if (isEditing && userData) {
@@ -419,13 +444,13 @@ function ProfileContent() {
                 <CardTitle>メール通知</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {isEmailNotificationLoading || !emailNotificationPreferences ? (
+                {isEmailNotificationLoading ? (
                   <div className="space-y-3">
                     {emailNotificationOptions.map((option) => (
                       <Skeleton key={option.type} className="h-16 w-full" />
                     ))}
                   </div>
-                ) : (
+                ) : emailNotificationPreferences ? (
                   <div className="space-y-3">
                     {emailNotificationOptions.map((option) => (
                       <div
@@ -444,6 +469,11 @@ function ProfileContent() {
                         />
                       </div>
                     ))}
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-destructive/50 p-3 text-sm text-destructive">
+                    {emailNotificationError ? 'メール通知設定を読み込めませんでした。' : 'メール通知設定がありません。'}
+                    <Button variant="link" className="ml-2 h-auto p-0" onClick={() => void fetchEmailNotificationPreferences()}>再読み込み</Button>
                   </div>
                 )}
                 <div className="mt-6 border-t border-gray-200 pt-4 text-xs leading-5 text-gray-600">

@@ -90,7 +90,8 @@ function AuthRedirect() {
   const { user, loading } = useAuth()
 
   useEffect(() => {
-    if (!loading && !user) {
+    const isPublicPath = pathname === '/login' || pathname === '/create-first-user' || pathname.startsWith('/auth/callback')
+    if (!isPublicPath && !loading && !user) {
       router.replace(getLoginPath(pathname, searchParams))
     }
   }, [loading, user, router, pathname, searchParams])
@@ -111,5 +112,21 @@ export function MainContent({ children }: { children: React.ReactNode }) {
 }
 
 function Gate({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const router = useRouter()
+  const { user, loading } = useAuth()
+  const isPublicPath = pathname === '/login' || pathname === '/create-first-user' || pathname.startsWith('/auth/callback')
+
+  useEffect(() => {
+    if (!isPublicPath && !loading && !user) {
+      const search = typeof window === 'undefined' ? undefined : new URLSearchParams(window.location.search)
+      router.replace(getLoginPath(pathname, search))
+    }
+  }, [isPublicPath, loading, pathname, router, user])
+
+  if (!isPublicPath && (loading || !user)) {
+    return <div className="min-h-screen flex-1 p-5"><Skeleton className="h-[420px] w-full" /></div>
+  }
+
   return <>{children}</>
 }

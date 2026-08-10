@@ -88,6 +88,20 @@ async function validateGroupLimit(env: Bindings, eventId: string, groupIds: stri
   return { isValid: true };
 }
 
+async function hasExistingGroupLimitViolation(env: Bindings, eventId: string): Promise<boolean> {
+  const violation = await env.DB.prepare(`
+    SELECT gmi.user_id
+    FROM entries entry
+    INNER JOIN events event ON event.id = entry.event_id
+    INNER JOIN group_member_instruments gmi ON gmi.group_id = entry.group_id
+    WHERE entry.event_id = ? AND event.group_limit > 0
+    GROUP BY gmi.user_id, event.group_limit
+    HAVING COUNT(DISTINCT entry.group_id) > event.group_limit
+    LIMIT 1
+  `).bind(eventId).first();
+  return Boolean(violation);
+}
+
 entriesRoutes.post('/', async (c) => {
   try {
     const user = c.get('user');
@@ -106,7 +120,18 @@ entriesRoutes.post('/', async (c) => {
     let validGroupIds: string[];
 
     if (isAdminMode) {
-      validGroupIds = requestData.group_ids;
+      const uniqueRequestedIds = [...new Set(requestData.group_ids)];
+      if (uniqueRequestedIds.length === 0) {
+        return c.json({ success: false, error: 'NO_VALID_GROUPS' }, 400);
+      }
+      const placeholders = uniqueRequestedIds.map(() => '?').join(',');
+      const groups = await c.env.DB.prepare(`
+        SELECT id FROM groups WHERE id IN (${placeholders}) AND is_active = TRUE
+      `).bind(...uniqueRequestedIds).all<{ id: string }>();
+      if (groups.results.length !== uniqueRequestedIds.length) {
+        return c.json({ success: false, error: 'GROUP_NOT_FOUND' }, 404);
+      }
+      validGroupIds = uniqueRequestedIds;
     } else {
       const userGroupIds = await getUserGroupIds(c.env, user.id);
       validGroupIds = requestData.group_ids.filter(groupId => 
@@ -145,30 +170,36 @@ entriesRoutes.post('/', async (c) => {
       return c.json({ success: false, error: validation.error }, 400);
     }
 
+    const existingEntries = await c.env.DB.prepare(`
+      SELECT group_id FROM entries WHERE event_id = ?
+    `).bind(requestData.event_id).all<{ group_id: string }>();
+    const existingGroupIds = new Set(existingEntries.results.map((entry) => entry.group_id));
+    const newGroupIds = [...new Set(validGroupIds)].filter((groupId) => !existingGroupIds.has(groupId));
+    if (newGroupIds.length === 0) {
+      return c.json({ success: true });
+    }
+
     const now = new Date().toISOString();
-    const createdEntries = [];
+    const createdEntryIds = newGroupIds.map(() => crypto.randomUUID());
+    await c.env.DB.batch(newGroupIds.map((groupId, index) => c.env.DB.prepare(`
+      INSERT OR IGNORE INTO entries (id, event_id, group_id, position, created_at, updated_at)
+      SELECT ?, ?, ?, COALESCE(MAX(position), 0) + 1, ?, ?
+      FROM entries
+      WHERE event_id = ?
+    `).bind(
+      createdEntryIds[index],
+      requestData.event_id,
+      groupId,
+      now,
+      now,
+      requestData.event_id
+    )));
 
-    const maxRow = await c.env.DB.prepare(`
-      SELECT MAX(position) as maxpos FROM entries WHERE event_id = ?
-    `).bind(requestData.event_id).first<{ maxpos: number | null }>();
-    let nextPosition = (maxRow?.maxpos || 0) + 1;
-
-    for (const groupId of validGroupIds) {
-      try {
-        const newId = crypto.randomUUID();
-        await c.env.DB.prepare(`
-          INSERT INTO entries (id, event_id, group_id, position, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).bind(newId, requestData.event_id, groupId, nextPosition, now, now).run();
-        nextPosition += 1;
-        
-        createdEntries.push({ id: newId, group_id: groupId });
-      } catch (error) {
-        if (error instanceof Error && error.message?.includes('UNIQUE constraint')) {
-          continue;
-        }
-        console.error('Error creating entry:', error);
-      }
+    if (await hasExistingGroupLimitViolation(c.env, requestData.event_id)) {
+      const placeholders = createdEntryIds.map(() => '?').join(',');
+      await c.env.DB.prepare(`DELETE FROM entries WHERE id IN (${placeholders})`)
+        .bind(...createdEntryIds).run();
+      return c.json({ success: false, error: 'GROUP_LIMIT_EXCEEDED' }, 409);
     }
 
     return c.json({ success: true });

@@ -144,7 +144,7 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
           <Badge variant={event.is_setlist_accepting ? 'secondary' : 'destructive'}>
             {event.is_setlist_accepting ? '受付中' : '受付終了'}
           </Badge>
-          <span>締切: {new Date(new Date(event.setlist_deadline).setDate(new Date(event.setlist_deadline).getDate() - 1)).toLocaleDateString('ja-JP')}</span>
+          <span>締切: {new Date(new Date(event.setlist_deadline).getTime() - 1).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}</span>
           <span>曲数上限: {event.song_limit}</span>
         </div>
 
@@ -386,6 +386,7 @@ function SetlistContent() {
   }
 
   const handleSave = async (entryId: string) => {
+    if (submitting.get(entryId)) return
     const items = editingItems.get(entryId) || []
     if (items.some(item => !item.title || !item.artist)) {
       toast.error('曲名とアーティスト名は必須です')
@@ -406,7 +407,8 @@ function SetlistContent() {
       const payload = hasSE
         ? [{ title: entranceSETitle.get(entryId) || '', artist: entranceSEArtist.get(entryId) || '' }, ...songsPayload]
         : songsPayload
-      await apiClient.replaceSetlistItems(entryId, payload, hasSE, isAdminMode)
+      const response = await apiClient.replaceSetlistItems(entryId, payload, hasSE, editingEntryNote || null, isAdminMode)
+      if (!response.success) throw new Error(response.error || 'SETLIST_UPDATE_FAILED')
       showSuccessToast({ message: 'セットリストを保存しました' })
       
       const targetEventId = editDialogEntry?.entry.event_id
@@ -557,6 +559,7 @@ function SetlistContent() {
       </div>
       <Dialog open={!!editDialogEntry} onOpenChange={(o) => { 
         if (!o) {
+          if (editDialogEntry && submitting.get(editDialogEntry.entry.id)) return
           if (editDialogEntry) {
             clearDialogState(editDialogEntry.entry.id)
           }
@@ -570,10 +573,11 @@ function SetlistContent() {
             <DialogTitle>{editDialogEntry?.groupName}</DialogTitle>
           </DialogHeader>
           {editDialogEntry && (
-            <div className="space-y-4">
+            <fieldset className="space-y-4" disabled={!!submitting.get(editDialogEntry.entry.id)}>
               <div className="space-y-2">
-                <div className="text-sm text-gray-600">備考</div>
+                <Label htmlFor="setlist-entry-note">備考</Label>
                 <textarea
+                  id="setlist-entry-note"
                   value={editingEntryNote}
                   onChange={(e) => setEditingEntryNote(e.target.value)}
                   className="w-full min-h-24 p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
@@ -636,7 +640,7 @@ function SetlistContent() {
                         placeholder="アーティスト名"
                       />
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(editDialogEntry.entry.id, setlistItem.id)} className="flex-shrink-0 text-red-600 hover:text-red-700 hover:bg-red-50">
+                    <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(editDialogEntry.entry.id, setlistItem.id)} className="flex-shrink-0 text-red-600 hover:text-red-700 hover:bg-red-50" aria-label={`${index + 1}曲目を削除`}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -648,23 +652,14 @@ function SetlistContent() {
                   曲を追加
                 </Button>
                 <LoadingButton
-                  onClick={async () => {
-                    if (editDialogEntry) {
-                      const entryId = editDialogEntry.entry.id
-                      const currentNote = editDialogEntry.entry.note || ''
-                      if (editingEntryNote !== currentNote) {
-                        await apiClient.updateEntry(entryId, { note: editingEntryNote || null })
-                      }
-                      await handleSave(entryId)
-                    }
-                  }}
+                  onClick={() => editDialogEntry && handleSave(editDialogEntry.entry.id)}
                   isLoading={!!submitting.get(editDialogEntry.entry.id)}
                   disabled={!dialogAccepting}
                 >
                   保存
                 </LoadingButton>
               </div>
-            </div>
+            </fieldset>
           )}
         </DialogContent>
       </Dialog>

@@ -133,19 +133,18 @@ export function EventCard({ event }: EventCardProps) {
     return date.toLocaleDateString('ja-JP', {
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'Asia/Tokyo',
     });
   };
 
   const formatDeadlineDate = (dateString: string, showPreviousDay = false) => {
-    const date = new Date(dateString)
-    if (showPreviousDay) {
-      date.setDate(date.getDate() - 1)
-    }
+    const date = new Date(new Date(dateString).getTime() - (showPreviousDay ? 1 : 0))
     return date.toLocaleDateString('ja-JP', {
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'Asia/Tokyo',
     })
   }
 
@@ -169,6 +168,7 @@ export function EventCard({ event }: EventCardProps) {
                   variant="ghost" 
                   size="sm"
                   className="h-8 w-8 p-0 hover:bg-gray-100"
+                  aria-label="イベント操作メニュー"
                 >
                   <MoreVertical className="h-4 w-4" />
                 </Button>
@@ -241,7 +241,7 @@ export function EventCard({ event }: EventCardProps) {
               <>
                 <div className="flex items-baseline justify-between gap-2">
                   <div className="text-sm font-medium text-gray-900">
-                    {formatDeadlineDate(event.setlist_deadline)}
+                    {formatDeadlineDate(event.setlist_deadline, true)}
                   </div>
                   <Countdown targetDate={event.setlist_deadline} isAccepting={event.is_setlist_accepting} />
                 </div>

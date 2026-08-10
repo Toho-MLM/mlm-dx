@@ -96,11 +96,13 @@ function TimelineContent() {
 
   useEffect(() => {
     if (!selectedEventId && events.length > 0) {
-      const now = new Date().getTime()
-      const upcoming = events.filter(e => new Date(e.event_date).getTime() >= now)
+      const todayInJST = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit'
+      }).format(new Date())
+      const upcoming = events.filter(e => e.event_date >= todayInJST)
       if (upcoming.length > 0) {
         const nearest = upcoming.reduce((best, cur) => (
-          new Date(cur.event_date).getTime() < new Date(best.event_date).getTime() ? cur : best
+          cur.event_date < best.event_date ? cur : best
         ), upcoming[0])
         setSelectedEventId(nearest.id)
       }

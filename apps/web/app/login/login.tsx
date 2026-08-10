@@ -40,6 +40,7 @@ function LoginContent() {
   const { user, loading, refreshAuth } = useAuth()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false)
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const [showInAppGuide, setShowInAppGuide] = useState(false)
   const oneTapInitializedRef = useRef(false)
   const passkeyAutoPromptedRef = useRef(false)
@@ -204,18 +205,24 @@ function LoginContent() {
   }
 
   const handleGoogleSignIn = async () => {
+    if (isGoogleLoading) return
     if (typeof window !== 'undefined' && detectInAppBrowser(window.navigator.userAgent)) {
       setShowInAppGuide(true)
       return
     }
+    setIsGoogleLoading(true)
     try {
       storeRedirectPath(searchParams.get('redirect'))
       const data = await httpClient.post('/auth/signin/google') as { authUrl?: string }
       if (data.authUrl) {
         window.location.href = data.authUrl
+        return
       }
+      throw new Error('AUTH_URL_MISSING')
     } catch (error) {
       console.error('Sign in error:', error)
+      toast.error('Googleログインの開始に失敗しました')
+      setIsGoogleLoading(false)
     }
   }
 
@@ -250,6 +257,7 @@ function LoginContent() {
             <div className="space-y-4">
               <Button
                 onClick={handleGoogleSignIn}
+                disabled={isGoogleLoading}
                 size="lg"
                 className="w-full bg-white hover:bg-gray-50 text-gray-900 border border-gray-300"
               >
@@ -263,7 +271,7 @@ function LoginContent() {
                       <path fill="none" d="M0 0h48v48H0z"></path>
                     </svg>
                   </div>
-                  <span>Googleでログイン</span>
+                  <span>{isGoogleLoading ? '接続中…' : 'Googleでログイン'}</span>
                 </div>
               </Button>
               <LoadingButton

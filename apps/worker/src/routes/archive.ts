@@ -5,6 +5,8 @@ import { requireAuth } from '../middleware/auth';
 import { requireAdmin } from '../utils/admin';
 import type { ApiResponse, Archive } from '../types';
 import { parseUuid } from '../utils/uuid';
+import { CreateArchiveRequestSchema, UpdateArchiveRequestSchema } from '../schemas';
+import { z } from 'zod';
 
 const archiveRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -35,14 +37,7 @@ archiveRoutes.post('/', async (c: Context<{ Bindings: Bindings; Variables: Varia
   try {
     requireAdmin(c.get('user').role);
     
-    const { title, youtube_url, year } = await c.req.json<Partial<Archive>>();
-
-    if (!title) {
-      return c.json<ApiResponse>({
-        success: false,
-        error: 'TITLE_REQUIRED'
-      }, 400);
-    }
+    const { title, youtube_url, year } = CreateArchiveRequestSchema.parse(await c.req.json());
 
     const archiveId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -52,8 +47,8 @@ archiveRoutes.post('/', async (c: Context<{ Bindings: Bindings; Variables: Varia
     ).bind(
       archiveId,
       title,
-      youtube_url || '',
-      year as number,
+      youtube_url,
+      year,
       now,
       now
     ).run();
@@ -67,6 +62,9 @@ archiveRoutes.post('/', async (c: Context<{ Bindings: Bindings; Variables: Varia
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS'
       }, 403);
+    }
+    if (error instanceof z.ZodError) {
+      return c.json<ApiResponse>({ success: false, error: 'INVALID_INPUT' }, 400);
     }
     return c.json<ApiResponse>({
       success: false,
@@ -83,7 +81,7 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings; Variables: Var
     if (!archiveId) {
       return c.json<ApiResponse>({ success: false, error: 'INVALID_INPUT' }, 400);
     }
-    const { title, youtube_url, year } = await c.req.json<Partial<Archive>>();
+    const { title, youtube_url, year } = UpdateArchiveRequestSchema.parse(await c.req.json());
 
     const archive = await c.env.DB.prepare(
       'SELECT * FROM archives WHERE id = ?'
@@ -101,7 +99,7 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings; Variables: Var
     ).bind(
       title,
       youtube_url,
-      year as number,
+      year,
       new Date().toISOString(),
       archiveId
     ).run();
@@ -115,6 +113,9 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings; Variables: Var
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS'
       }, 403);
+    }
+    if (error instanceof z.ZodError) {
+      return c.json<ApiResponse>({ success: false, error: 'INVALID_INPUT' }, 400);
     }
     return c.json<ApiResponse>({
       success: false,

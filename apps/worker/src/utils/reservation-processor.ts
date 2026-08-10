@@ -194,26 +194,62 @@ export async function processTodayReservations(env: Bindings): Promise<number> {
         const updateTime = new Date().toISOString();
         
         if (processResult.adjustedStartTime && processResult.adjustedEndTime) {
-          await env.DB.prepare(`
+          const updateResult = await env.DB.prepare(`
             UPDATE reservations 
             SET state = ?, start_time = ?, end_time = ?, updated_at = ?
             WHERE id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM reservations other
+                WHERE other.id != ? AND other.state = 'CONFIRMED'
+                  AND other.start_time < ? AND other.end_time > ?
+              )
           `).bind(
             processResult.state, 
             processResult.adjustedStartTime, 
             processResult.adjustedEndTime, 
             updateTime, 
-            reservation.id
+            reservation.id,
+            reservation.id,
+            processResult.adjustedEndTime,
+            processResult.adjustedStartTime
           ).run();
+          if (Number(updateResult.meta.changes ?? 0) === 0) {
+            await env.DB.prepare("UPDATE reservations SET state = 'DECLINED', updated_at = ? WHERE id = ?")
+              .bind(updateTime, reservation.id).run();
+            processResult.state = 'DECLINED';
+            delete processResult.adjustedStartTime;
+            delete processResult.adjustedEndTime;
+          }
           changedCount += 1;
           
           console.log(`Updated reservation ${reservation.id} to ${processResult.state} with adjusted time`);
         } else {
-          await env.DB.prepare(`
+          const updateResult = await env.DB.prepare(`
             UPDATE reservations 
             SET state = ?, updated_at = ?
             WHERE id = ?
-          `).bind(processResult.state, updateTime, reservation.id).run();
+              AND (
+                ? != 'CONFIRMED'
+                OR NOT EXISTS (
+                  SELECT 1 FROM reservations other
+                  WHERE other.id != ? AND other.state = 'CONFIRMED'
+                    AND other.start_time < ? AND other.end_time > ?
+                )
+              )
+          `).bind(
+            processResult.state,
+            updateTime,
+            reservation.id,
+            processResult.state,
+            reservation.id,
+            reservation.end_time,
+            reservation.start_time
+          ).run();
+          if (Number(updateResult.meta.changes ?? 0) === 0) {
+            await env.DB.prepare("UPDATE reservations SET state = 'DECLINED', updated_at = ? WHERE id = ?")
+              .bind(updateTime, reservation.id).run();
+            processResult.state = 'DECLINED';
+          }
           changedCount += 1;
           
           console.log(`Updated reservation ${reservation.id} to ${processResult.state}`);

@@ -42,10 +42,10 @@ setlistRoutes.post('/', async (c) => {
     }
 
     const acceptRow = await c.env.DB.prepare(`
-      SELECT ev.is_setlist_accepting
+      SELECT ev.is_setlist_accepting, ev.song_limit
       FROM entries e JOIN events ev ON ev.id = e.event_id
       WHERE e.id = ?
-    `).bind(requestData.entry_id).first<{ is_setlist_accepting: number | boolean }>();
+    `).bind(requestData.entry_id).first<{ is_setlist_accepting: number | boolean; song_limit: number }>();
 
     if (!acceptRow) {
       return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
@@ -57,13 +57,33 @@ setlistRoutes.post('/', async (c) => {
         return c.json({ success: false, error: 'SETLIST_NOT_ACCEPTING' }, 400);
       }
     }
+    if (requestData.position > 0 && requestData.position > acceptRow.song_limit) {
+      return c.json({ success: false, error: 'SONG_LIMIT_EXCEEDED' }, 400);
+    }
 
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
 
-    await c.env.DB.prepare(`
+    const insertResult = await c.env.DB.prepare(`
       INSERT INTO setlist_items (id, entry_id, position, title, artist, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      SELECT ?, ?, ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM setlist_items WHERE entry_id = ? AND position = ?
+      )
+        AND EXISTS (
+          SELECT 1
+          FROM entries current_entry
+          INNER JOIN events current_event ON current_event.id = current_entry.event_id
+          WHERE current_entry.id = ?
+            AND (? = 1 OR current_event.is_setlist_accepting = TRUE)
+            AND (
+              ? = 0
+              OR (
+                ? <= current_event.song_limit
+                AND (SELECT COUNT(*) FROM setlist_items WHERE entry_id = ? AND position > 0) < current_event.song_limit
+              )
+          )
+        )
     `).bind(
       newId,
       requestData.entry_id,
@@ -71,8 +91,26 @@ setlistRoutes.post('/', async (c) => {
       requestData.title,
       requestData.artist,
       now,
-      now
+      now,
+      requestData.entry_id,
+      requestData.position,
+      requestData.entry_id,
+      isAdminMode ? 1 : 0,
+      requestData.position,
+      requestData.position,
+      requestData.entry_id
     ).run();
+    if (Number(insertResult.meta.changes ?? 0) === 0) {
+      const latestEvent = await c.env.DB.prepare(`
+        SELECT ev.is_setlist_accepting
+        FROM entries e INNER JOIN events ev ON ev.id = e.event_id
+        WHERE e.id = ?
+      `).bind(requestData.entry_id).first<{ is_setlist_accepting: number | boolean }>();
+      if (!isAdminMode && latestEvent && !latestEvent.is_setlist_accepting) {
+        return c.json({ success: false, error: 'SETLIST_NOT_ACCEPTING' }, 400);
+      }
+      return c.json({ success: false, error: 'SONG_LIMIT_EXCEEDED' }, 409);
+    }
 
     return c.json({ success: true });
   } catch (error) {
@@ -266,82 +304,18 @@ setlistRoutes.put('/', async (c) => {
       return c.json({ success: false, error: 'SONG_LIMIT_EXCEEDED' }, 400);
     }
 
-    if (reqData.hasSE) {
-      const se = reqData.items[0];
-      if (!se) {
-        return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
-      }
-      const existingEntrance = await c.env.DB.prepare(`
-        SELECT id FROM setlist_items WHERE entry_id = ? AND position = 0
-      `).bind(entryId).first<{ id: string }>();
-      if (existingEntrance) {
-        await c.env.DB.prepare(`
-          UPDATE setlist_items SET title = ?, artist = ?, updated_at = ? WHERE id = ?
-        `).bind(se.title, se.artist || '', now, existingEntrance.id).run();
-      } else {
-        await c.env.DB.prepare(`
-          INSERT INTO setlist_items (id, entry_id, position, title, artist, created_at, updated_at)
-          VALUES (?, ?, 0, ?, ?, ?, ?)
-        `).bind(crypto.randomUUID(), entryId, se.title, se.artist || '', now, now).run();
-      }
-    } else {
-      await c.env.DB.prepare(`DELETE FROM setlist_items WHERE entry_id = ? AND position = 0`).bind(entryId).run();
-    }
-
-    const itemsSorted = songsOnly.map((it, idx) => ({
-      title: it.title,
-      artist: it.artist || '',
-      position: idx + 1,
-    }));
-
-    const existing = await c.env.DB.prepare(`
-      SELECT id, position FROM setlist_items WHERE entry_id = ? AND position > 0 ORDER BY position ASC
-    `).bind(entryId).all<{ id: string; position: number }>();
-
-    const existingItems = existing.results.map(r => ({ id: r.id, position: r.position }));
-
-    const updatesCount = Math.min(existingItems.length, itemsSorted.length);
-
-    const statements: ReturnType<typeof c.env.DB.prepare>[] = [];
-
-    for (let i = 0; i < updatesCount; i++) {
-      const target = existingItems[i];
-      const src = itemsSorted[i];
-      statements.push(
-        c.env.DB.prepare(`
-          UPDATE setlist_items
-          SET title = ?, artist = ?, updated_at = ?
-          WHERE id = ?
-        `).bind(src.title, src.artist, now, target.id)
-      );
-    }
-
-    if (existingItems.length > itemsSorted.length) {
-      for (let i = itemsSorted.length; i < existingItems.length; i++) {
-        const target = existingItems[i];
-        statements.push(
-          c.env.DB.prepare(`
-            DELETE FROM setlist_items WHERE id = ?
-          `).bind(target.id)
-        );
-      }
-    }
-
-    if (itemsSorted.length > existingItems.length) {
-      for (let i = existingItems.length; i < itemsSorted.length; i++) {
-        const src = itemsSorted[i];
-        statements.push(
-          c.env.DB.prepare(`
-            INSERT INTO setlist_items (id, entry_id, position, title, artist, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-          `).bind(crypto.randomUUID(), entryId, src.position, src.title, src.artist, now, now)
-        );
-      }
-    }
-
-    if (statements.length > 0) {
-      await c.env.DB.batch(statements);
-    }
+    const statements: ReturnType<typeof c.env.DB.prepare>[] = [
+      c.env.DB.prepare('DELETE FROM setlist_items WHERE entry_id = ?').bind(entryId),
+      c.env.DB.prepare('UPDATE entries SET note = ?, updated_at = ? WHERE id = ?').bind(reqData.note, now, entryId),
+    ];
+    reqData.items.forEach((item, index) => {
+      const position = reqData.hasSE ? index : index + 1;
+      statements.push(c.env.DB.prepare(`
+        INSERT INTO setlist_items (id, entry_id, position, title, artist, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).bind(crypto.randomUUID(), entryId, position, item.title, item.artist || '', now, now));
+    });
+    await c.env.DB.batch(statements);
 
     return c.json({ success: true });
   } catch (error) {

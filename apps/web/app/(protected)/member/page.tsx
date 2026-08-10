@@ -732,6 +732,7 @@ export default function Page() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleEdit(user)}
+                                aria-label={`${user.name}を編集`}
                               >
                                 <EditIcon className="h-4 w-4" />
                               </Button>
@@ -739,6 +740,7 @@ export default function Page() {
                                 variant="destructive"
                                 size="sm"
                                 onClick={() => handleDeleteClick(user)}
+                                aria-label={`${user.name}を削除`}
                               >
                                 <TrashIcon className="h-4 w-4" />
                               </Button>

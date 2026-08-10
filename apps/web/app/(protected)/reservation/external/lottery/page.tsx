@@ -21,6 +21,7 @@ import { apiClient } from '@/lib/api'
 import { getLoginPath } from '@/lib/auth-redirect'
 import { translateError } from '@/lib/error-label'
 import { showSuccessToast } from '@/lib/utils'
+import { toJSTWallClockDate } from '../../reservation-calendar'
 import {
   EXTERNAL_LOTTERY_DURATION_STEP_MINUTES,
   EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
@@ -45,6 +46,9 @@ const getJSTDateString = (value: Date | string) => {
 }
 const toJSTLocalInputValue = (value: Date) => (
   new Date(value.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16)
+)
+const formatJST = (value: Date | string, pattern: string) => (
+  format(toJSTWallClockDate(value), pattern, { locale: ja })
 )
 const addJSTDays = (dateString: string, days: number) => {
   const date = new Date(`${dateString}T00:00:00+09:00`)
@@ -282,7 +286,9 @@ function ExternalLotteryContent() {
   const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [studios, setStudios] = useState<External[]>([])
   const [applications, setApplications] = useState<ExternalLotteryApplication[]>([])
@@ -295,16 +301,25 @@ function ExternalLotteryContent() {
   const [duration, setDuration] = useState('')
 
   const fetchData = useCallback(async () => {
-    const [studioResponse, applicationResponse, groupResponse, reservationResponse] = await Promise.all([
-      apiClient.getExternals(),
-      apiClient.getExternalLotteryApplications(),
-      apiClient.getGroupOptions(false),
-      apiClient.getExternalReservations(),
-    ])
-    if (studioResponse.success && studioResponse.data) setStudios(studioResponse.data)
-    if (applicationResponse.success && applicationResponse.data) setApplications(applicationResponse.data)
-    if (groupResponse.success && groupResponse.data) setGroups(groupResponse.data)
-    if (reservationResponse.success && reservationResponse.data) setReservations(reservationResponse.data)
+    setLoadError(null)
+    try {
+      const [studioResponse, applicationResponse, groupResponse, reservationResponse] = await Promise.all([
+        apiClient.getExternals(),
+        apiClient.getExternalLotteryApplications(),
+        apiClient.getGroupOptions(false),
+        apiClient.getExternalReservations(),
+      ])
+      const failedResponse = [studioResponse, applicationResponse, groupResponse, reservationResponse]
+        .find((response) => !response.success || !response.data)
+      if (failedResponse) throw new Error(failedResponse.error || 'EXTERNAL_LOTTERY_FETCH_FAILED')
+      setStudios(studioResponse.data || [])
+      setApplications(applicationResponse.data || [])
+      setGroups(groupResponse.data || [])
+      setReservations(reservationResponse.data || [])
+    } catch (error) {
+      console.error('Failed to fetch external lottery data:', error)
+      setLoadError(translateError((error as Error).message))
+    }
   }, [])
 
   useEffect(() => {
@@ -402,7 +417,9 @@ function ExternalLotteryContent() {
   }
 
   const handleCancel = async (id: string) => {
+    if (cancellingId) return
     try {
+      setCancellingId(id)
       const response = await apiClient.cancelExternalLotteryApplication(id)
       if (!response.success) {
         toast.error('抽選申込を取り消せませんでした', { description: translateError(response.error || 'UNKNOWN_ERROR') })
@@ -412,6 +429,8 @@ function ExternalLotteryContent() {
       await fetchData()
     } catch (error) {
       toast.error('抽選申込を取り消せませんでした', { description: translateError((error as Error).message) })
+    } finally {
+      setCancellingId(null)
     }
   }
 
@@ -420,12 +439,18 @@ function ExternalLotteryContent() {
   return (
     <>
       <PageHeader rightActions={(
-        <Button size="sm" onClick={() => setOpen(true)} disabled={eligibleSlots.length === 0}>
+        <Button size="sm" onClick={() => setOpen(true)} disabled={Boolean(loadError) || eligibleSlots.length === 0}>
           <CalendarPlus className="h-4 w-4" />申込
         </Button>
       )} />
       <main className="w-full p-5">
-        {targetStudios.length === 0 ? (
+        {loadError ? (
+          <div className="flex flex-col items-center gap-3 rounded-md border p-8 text-center text-sm text-muted-foreground">
+            <p>外部スタジオ抽選を読み込めませんでした</p>
+            <p className="text-xs">{loadError}</p>
+            <Button type="button" variant="outline" onClick={() => void fetchData()}>再試行</Button>
+          </div>
+        ) : targetStudios.length === 0 ? (
           <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">抽選対象の外部スタジオはありません</div>
         ) : (
             <div className="overflow-x-auto [transform:rotateX(180deg)]">
@@ -440,8 +465,8 @@ function ExternalLotteryContent() {
                       <CardContent className="space-y-1.5 p-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="text-sm font-semibold">
-                            {format(new Date(studio.start_datetime), 'M月d日 H:mm', { locale: ja })}〜
-                            {format(new Date(studio.end_datetime), 'M月d日 H:mm', { locale: ja })}
+                            {formatJST(studio.start_datetime, 'M月d日 H:mm')}〜
+                            {formatJST(studio.end_datetime, 'M月d日 H:mm')}
                           </div>
                           <Badge variant={isAccepting ? 'default' : 'outline'} className="shrink-0 px-1.5 text-[10px]">
                             {isAccepting ? '受付中' : '受付終了'}
@@ -450,7 +475,7 @@ function ExternalLotteryContent() {
                         <div className="truncate text-xs text-muted-foreground">{studio.room_names.join(' / ')}</div>
                         <div className="text-[11px] text-muted-foreground">
                           {upcomingDrawTimes.length > 0
-                            ? `抽選 ${upcomingDrawTimes.map((drawAt) => format(drawAt, 'M月d日 H:mm', { locale: ja })).join(', ')}`
+                            ? `抽選 ${upcomingDrawTimes.map((drawAt) => formatJST(drawAt, 'M月d日 H:mm')).join(', ')}`
                             : '抽選終了'}
                         </div>
                       </CardContent>
@@ -497,7 +522,7 @@ function ExternalLotteryContent() {
                               <div className="flex items-end gap-2">
                                 <div className="grid min-w-0 flex-1 gap-0.5 text-muted-foreground">
                                   <div>許容時間 {application.preferred_start_datetime
-                                    ? `${format(new Date(application.preferred_start_datetime), 'H:mm')}〜${format(new Date(application.preferred_end_datetime as string), 'H:mm')}`
+                                    ? `${formatJST(application.preferred_start_datetime, 'H:mm')}〜${formatJST(application.preferred_end_datetime as string, 'H:mm')}`
                                     : '指定なし'}</div>
                                   <div>希望利用時間 {application.requested_duration_minutes ? `${application.requested_duration_minutes}分` : '未設定'}</div>
                                   {application.state !== 'PENDING' && application.state !== 'CANCELLED' && (
@@ -509,16 +534,17 @@ function ExternalLotteryContent() {
                                     variant="destructive"
                                     size="sm"
                                     className="h-7 shrink-0 px-2 text-xs"
+                                    disabled={cancellingId !== null}
                                     onClick={() => void handleCancel(application.id)}
                                   >
-                                    取消
+                                    {cancellingId === application.id && <Loader2 className="h-3 w-3 animate-spin" />}取消
                                   </Button>
                                 )}
                               </div>
                               {application.state === 'WON' && (
                                 <div className="rounded bg-muted p-2">
                                   <div>部屋 {application.assigned_room_number}. {application.assigned_room_name}</div>
-                                  <div>{format(new Date(application.assigned_start_datetime as string), 'M月d日 H:mm')}〜{format(new Date(application.assigned_end_datetime as string), 'H:mm')}</div>
+                                  <div>{formatJST(application.assigned_start_datetime as string, 'M月d日 H:mm')}〜{formatJST(application.assigned_end_datetime as string, 'H:mm')}</div>
                                 </div>
                               )}
                             </CardContent>
@@ -542,9 +568,9 @@ function ExternalLotteryContent() {
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
-              <Label>予約名義</Label>
+              <Label htmlFor="external-lottery-identity">予約名義</Label>
               <Select value={identity} onValueChange={setIdentity}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="external-lottery-identity"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__personal__">個人（{user?.nickname || user?.name}）</SelectItem>
                   {groups.map((group) => <SelectItem key={group.id} value={group.id}>{group.name}（{group.is_main ? '本バンド' : '自由バンド'}）</SelectItem>)}
@@ -552,30 +578,30 @@ function ExternalLotteryContent() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>時間枠</Label>
+              <Label htmlFor="external-lottery-slot">時間枠</Label>
               <Select value={studioId} onValueChange={(value) => {
                 setStudioId(value)
                 setPreferredStart('')
                 setPreferredEnd('')
               }}>
-                <SelectTrigger><SelectValue placeholder="時間枠を選択" /></SelectTrigger>
+                <SelectTrigger id="external-lottery-slot"><SelectValue placeholder="時間枠を選択" /></SelectTrigger>
                 <SelectContent className="max-h-[240px]">
                   {eligibleSlots.map((slot) => (
                     <SelectItem key={slot.id} value={slot.id}>
-                      {format(slot.start, 'M月d日 H:mm', { locale: ja })}〜{format(slot.end, 'M月d日 H:mm', { locale: ja })}
+                      {formatJST(slot.start, 'M月d日 H:mm')}〜{formatJST(slot.end, 'M月d日 H:mm')}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2"><Label>許容時間（起点）</Label><Input type="datetime-local" step={300} min={selectedSlot ? toJSTLocalInputValue(selectedSlot.start) : undefined} max={selectedSlot ? toJSTLocalInputValue(selectedSlot.latestStart) : undefined} disabled={!selectedSlot} value={preferredStart} onChange={(event) => setPreferredStart(event.target.value)} /></div>
-              <div className="space-y-2"><Label>許容時間（終点）</Label><Input type="datetime-local" step={300} min={preferredStart || (selectedSlot ? toJSTLocalInputValue(selectedSlot.start) : undefined)} max={selectedSlot ? toJSTLocalInputValue(selectedSlot.end) : undefined} disabled={!selectedSlot} value={preferredEnd} onChange={(event) => setPreferredEnd(event.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="external-lottery-start">許容時間（起点）</Label><Input id="external-lottery-start" type="datetime-local" step={300} min={selectedSlot ? toJSTLocalInputValue(selectedSlot.start) : undefined} max={selectedSlot ? toJSTLocalInputValue(selectedSlot.latestStart) : undefined} disabled={!selectedSlot} value={preferredStart} onChange={(event) => setPreferredStart(event.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="external-lottery-end">許容時間（終点）</Label><Input id="external-lottery-end" type="datetime-local" step={300} min={preferredStart || (selectedSlot ? toJSTLocalInputValue(selectedSlot.start) : undefined)} max={selectedSlot ? toJSTLocalInputValue(selectedSlot.end) : undefined} disabled={!selectedSlot} value={preferredEnd} onChange={(event) => setPreferredEnd(event.target.value)} /></div>
             </div>
             <div className="space-y-2">
-              <Label>希望利用時間</Label>
+              <Label htmlFor="external-lottery-duration">希望利用時間</Label>
               <Select value={duration} onValueChange={setDuration}>
-                <SelectTrigger><SelectValue placeholder="希望利用時間を選択" /></SelectTrigger>
+                <SelectTrigger id="external-lottery-duration"><SelectValue placeholder="希望利用時間を選択" /></SelectTrigger>
                 <SelectContent className="max-h-[220px]">
                   {durationOptions.map((minutes) => <SelectItem key={minutes} value={String(minutes)}>{minutes}分</SelectItem>)}
                 </SelectContent>

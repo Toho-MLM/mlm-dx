@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { isBefore, startOfDay, addDays } from 'date-fns';
 
 const JAPAN_TIME_OFFSET_HOURS = 9;
 const JAPAN_TIME_OFFSET_MS = JAPAN_TIME_OFFSET_HOURS * 60 * 60 * 1000;
@@ -28,14 +27,21 @@ const getJSTDateString = (date: Date): string => {
 };
 
 
+export const InstrumentSchema = z.enum(['VO', 'GT', 'KEY', 'DR', 'BA']);
+export const UserRoleSchema = z.enum(['MGR', 'CHF', 'MAC', 'MBR', 'ADM', 'NHD', 'NAC']);
+
+const ValidDateTimeStringSchema = z.string()
+  .datetime({ offset: true })
+  .transform((value) => new Date(value).toISOString());
+
 export const UserSchema = z.object({
   id: UuidSchema,
   email: z.string().email(),
   name: z.string(),
   nickname: z.string().nullable(),
-  instruments: z.array(z.string()),
+  instruments: z.array(InstrumentSchema),
   grade: z.number(),
-  role: z.string(),
+  role: UserRoleSchema,
 });
 
 export const GroupMemberSchema = z.object({
@@ -129,6 +135,9 @@ export const SessionResponseSchema = z.object({
     name: z.string(),
     nickname: z.string().nullable(),
     picture: z.string().optional(),
+    instruments: z.array(InstrumentSchema),
+    grade: z.number(),
+    role: UserRoleSchema,
   }).nullable(),
 });
 
@@ -260,15 +269,15 @@ export const AssignmentMapSchema = z.record(z.string(), z.array(UuidSchema));
 
 export const CreateGroupRequestSchema = z.object({
   name: z.string().min(1),
-  assignments: z.union([z.string(), AssignmentMapSchema]).optional(),
-  is_main: z.boolean().optional(),
+  assignments: z.union([z.string(), AssignmentMapSchema]),
+  is_main: z.boolean(),
 });
 
 export const UpdateGroupRequestSchema = z.object({
   name: z.string().min(1),
   assignments: z.union([z.string(), AssignmentMapSchema]).optional(),
-  is_main: z.boolean().optional(),
-  is_active: z.boolean().optional(),
+  is_main: z.boolean(),
+  is_active: z.boolean(),
 });
 
 export const DeleteGroupsRequestSchema = z.object({
@@ -276,8 +285,8 @@ export const DeleteGroupsRequestSchema = z.object({
 });
 
 export const UpdateUserRequestSchema = z.object({
-  nickname: z.string(),
-  instruments: z.array(z.string()),
+  nickname: z.string().trim().min(1),
+  instruments: z.array(InstrumentSchema),
 });
 
 export const EmailNotificationTypeSchema = z.enum([
@@ -306,15 +315,15 @@ export const AddMemberToGroupRequestSchema = z.object({
 });
 
 export const CreateReservationRequestSchema = z.object({
-  start_time: z.string(),
-  end_time: z.string(),
+  start_time: ValidDateTimeStringSchema,
+  end_time: ValidDateTimeStringSchema,
   group_id: UuidSchema.optional(),
   admin: z.boolean().optional(),
 });
 
 export const UpdateReservationRequestSchema = z.object({
-  start_time: z.string(),
-  end_time: z.string(),
+  start_time: ValidDateTimeStringSchema,
+  end_time: ValidDateTimeStringSchema,
   admin: z.boolean().optional(),
 });
 
@@ -324,8 +333,8 @@ export const UpdateReservationStatusRequestSchema = z.object({
 
 export const CreateExternalRequestSchema = z.object({
   names: z.array(z.string().trim().min(1)).min(1),
-  start_datetime: z.string(),
-  end_datetime: z.string(),
+  start_datetime: ValidDateTimeStringSchema,
+  end_datetime: ValidDateTimeStringSchema,
 }).refine((data) => {
   const start = new Date(data.start_datetime);
   const end = new Date(data.end_datetime);
@@ -341,15 +350,15 @@ export const CreateExternalReservationRequestSchema = z.object({
   external_studio_id: UuidSchema,
   room_number: z.number().int().positive(),
   group_id: UuidSchema.nullable().optional(),
-  start_time: z.string(),
-  end_time: z.string(),
+  start_time: ValidDateTimeStringSchema,
+  end_time: ValidDateTimeStringSchema,
   admin: z.boolean().optional(),
   acknowledged_member_conflicts: z.boolean().optional(),
 });
 
 export const UpdateExternalReservationRequestSchema = z.object({
-  start_time: z.string(),
-  end_time: z.string(),
+  start_time: ValidDateTimeStringSchema,
+  end_time: ValidDateTimeStringSchema,
   admin: z.boolean().optional(),
   acknowledged_member_conflicts: z.boolean().optional(),
 });
@@ -358,8 +367,8 @@ export const CheckExternalReservationRequestSchema = z.object({
   external_studio_id: UuidSchema,
   room_number: z.number().int().positive(),
   group_id: UuidSchema.nullable().optional(),
-  start_time: z.string(),
-  end_time: z.string(),
+  start_time: ValidDateTimeStringSchema,
+  end_time: ValidDateTimeStringSchema,
   admin: z.boolean().optional(),
 });
 
@@ -455,8 +464,8 @@ export const getExternalLotteryWeightedOrderKey = (weight: number, randomUnit: n
 };
 
 const ExternalLotteryTimeRequestSchema = z.object({
-  preferred_start_datetime: z.string().nullable(),
-  preferred_end_datetime: z.string().nullable(),
+  preferred_start_datetime: ValidDateTimeStringSchema.nullable(),
+  preferred_end_datetime: ValidDateTimeStringSchema.nullable(),
   requested_duration_minutes: z.number().int()
     .min(EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
     .max(EXTERNAL_LOTTERY_MAX_DURATION_MINUTES)
@@ -509,7 +518,11 @@ export function requireAdmin(role: string | undefined): void {
   }
 }
 
-export const validateReservationTime = (startTime: string, endTime: string): { isValid: boolean; error?: string } => {
+export const validateReservationTime = (
+  startTime: string,
+  endTime: string,
+  nowValue: Date | string = new Date()
+): { isValid: boolean; error?: string } => {
   try {
     const start = new Date(startTime);
     const end = new Date(endTime);
@@ -526,6 +539,9 @@ export const validateReservationTime = (startTime: string, endTime: string): { i
     
     if (start >= end) {
       return { isValid: false, error: "終了時刻は開始時刻より後である必要があります。" };
+    }
+    if (end <= new Date(nowValue)) {
+      return { isValid: false, error: "終了済みの時間は予約できません。" };
     }
     
     const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
@@ -552,7 +568,11 @@ export const validateReservationTime = (startTime: string, endTime: string): { i
   }
 };
 
-export const validateExternalReservationTime = (startTime: string, endTime: string): { isValid: boolean; error?: string } => {
+export const validateExternalReservationTime = (
+  startTime: string,
+  endTime: string,
+  nowValue: Date | string = new Date()
+): { isValid: boolean; error?: string } => {
   const start = new Date(startTime);
   const end = new Date(endTime);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
@@ -560,6 +580,9 @@ export const validateExternalReservationTime = (startTime: string, endTime: stri
   }
   if (start >= end) {
     return { isValid: false, error: "終了日時は開始日時より後である必要があります。" };
+  }
+  if (end <= new Date(nowValue)) {
+    return { isValid: false, error: "終了済みの時間は予約できません。" };
   }
   const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
   if (durationMinutes < 10) {
@@ -572,29 +595,32 @@ export const validateExternalReservationTime = (startTime: string, endTime: stri
 };
 
 export const isReservationDateValid = (date: Date): boolean => {
-  const now = new Date();
-  const maxDate = addDays(now, 14);
-  return !isBefore(date, startOfDay(now)) && date <= maxDate;
+  const selectedKey = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+  const formatter = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+  });
+  const todayKey = formatter.format(new Date());
+  const maxDate = new Date(`${todayKey}T00:00:00+09:00`);
+  maxDate.setUTCDate(maxDate.getUTCDate() + 14);
+  return selectedKey >= todayKey && selectedKey <= formatter.format(maxDate);
 };
 
 export const isReservationTimeValid = (date: Date, hour: number, minute: number): boolean => {
-  const now = new Date();
-  const selectedDate = new Date(date);
-  selectedDate.setHours(hour, minute);
-  
-  return !isBefore(selectedDate, now) && hour >= 6 && !(hour === 23 && minute > 0);
+  const dateKey = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+  const selectedDate = new Date(`${dateKey}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+09:00`);
+  return selectedDate >= new Date() && hour >= 6 && !(hour === 23 && minute > 0);
 };
 
 export const CreateArchiveRequestSchema = z.object({
-  title: z.string().min(1),
-  youtube_url: z.string().url().optional(),
-  year: z.number().min(1900).max(new Date().getFullYear() + 10),
+  title: z.string().trim().min(1),
+  youtube_url: z.string().url(),
+  year: z.number().int().min(1900).max(new Date().getFullYear() + 10),
 });
 
 export const UpdateArchiveRequestSchema = z.object({
-  title: z.string().min(1),
-  youtube_url: z.string().url().optional(),
-  year: z.number().min(1900).max(new Date().getFullYear() + 10),
+  title: z.string().trim().min(1),
+  youtube_url: z.string().url(),
+  year: z.number().int().min(1900).max(new Date().getFullYear() + 10),
 });
 
 export const CreateEventRequestSchema = z.object({
@@ -620,8 +646,8 @@ export const UpdateEventRequestSchema = z.object({
 });
 
 export const CreateUnavailablePeriodRequestSchema = z.object({
-  start_datetime: z.string(),
-  end_datetime: z.string(),
+  start_datetime: ValidDateTimeStringSchema,
+  end_datetime: ValidDateTimeStringSchema,
   reason: z.string().optional(),
 }).refine((data) => {
   const start = new Date(data.start_datetime);
@@ -634,8 +660,8 @@ export const CreateUnavailablePeriodRequestSchema = z.object({
 const ReservationLimitRequestSchemaBase = z.object({
   scope: ReservationLimitScopeSchema,
   limit_type: ReservationLimitTypeSchema,
-  start_datetime: z.string().optional(),
-  end_datetime: z.string().optional(),
+  start_datetime: ValidDateTimeStringSchema.optional(),
+  end_datetime: ValidDateTimeStringSchema.optional(),
   window_days: z.number().int().min(1).optional(),
   max_minutes: z.number().int().min(1),
 }).superRefine((data, ctx) => {
@@ -720,7 +746,7 @@ export const SetlistItemSchema = z.object({
 
 export const CreateSetlistItemRequestSchema = z.object({
   entry_id: UuidSchema,
-  position: z.number(),
+  position: z.number().int().min(0).max(100),
   title: z.string().min(1),
   artist: z.string().min(1),
   admin: z.boolean().optional(),
@@ -739,7 +765,12 @@ export const ReplaceSetlistItemsRequestSchema = z.object({
     artist: z.string().optional().default(''),
   })).max(100),
   hasSE: z.boolean(),
+  note: z.string().nullable(),
   admin: z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  if (data.hasSE && data.items.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items'], message: '入場SEの情報が必要です。' });
+  }
 });
 
 export const EventSetlistBundleItemSchema = z.object({

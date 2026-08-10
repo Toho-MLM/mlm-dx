@@ -104,14 +104,45 @@ eventRoutes.put('/:id', async (c) => {
       SELECT group_limit, song_limit FROM events WHERE id = ?
     `).bind(eventId).first<{ group_limit: number; song_limit: number }>();
 
-    const oldGroupLimit = oldEvent?.group_limit ?? null;
-    const oldSongLimit = oldEvent?.song_limit ?? null;
+    if (!oldEvent) {
+      return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
+    }
+
+    const oldGroupLimit = oldEvent.group_limit;
+    const oldSongLimit = oldEvent.song_limit;
     const songLimit = requestData.song_limit !== undefined ? requestData.song_limit : oldSongLimit;
 
-    await c.env.DB.prepare(`
+    if (requestData.group_limit < oldGroupLimit) {
+      const violatingMember = await c.env.DB.prepare(`
+        SELECT gmi.user_id
+        FROM entries entry
+        INNER JOIN group_member_instruments gmi ON gmi.group_id = entry.group_id
+        WHERE entry.event_id = ?
+        GROUP BY gmi.user_id
+        HAVING COUNT(DISTINCT entry.group_id) > ?
+        LIMIT 1
+      `).bind(eventId, requestData.group_limit).first<{ user_id: string }>();
+      if (violatingMember) {
+        return c.json({ success: false, error: 'GROUP_LIMIT_CONFLICT' }, 409);
+      }
+    }
+
+    const enforceLoweredLimit = requestData.group_limit < oldGroupLimit ? 1 : 0;
+    const updateStatement = c.env.DB.prepare(`
       UPDATE events 
       SET title = ?, event_date = ?, entry_deadline = ?, is_entry_accepting = ?, setlist_deadline = ?, is_setlist_accepting = ?, group_limit = ?, song_limit = ?, updated_at = ?
       WHERE id = ?
+        AND (
+          ? = 0
+          OR NOT EXISTS (
+            SELECT 1
+            FROM entries entry
+            INNER JOIN group_member_instruments gmi ON gmi.group_id = entry.group_id
+            WHERE entry.event_id = events.id
+            GROUP BY gmi.user_id
+            HAVING COUNT(DISTINCT entry.group_id) > ?
+          )
+        )
     `).bind(
       requestData.title,
       requestData.event_date,
@@ -122,87 +153,38 @@ eventRoutes.put('/:id', async (c) => {
       requestData.group_limit,
       songLimit,
       now,
-      eventId
-    ).run();
-
-    if (oldGroupLimit !== null && requestData.group_limit !== oldGroupLimit) {
-      if (requestData.group_limit === 0) {
-        await c.env.DB.prepare(`
-          DELETE FROM entries WHERE event_id = ?
-        `).bind(eventId).run();
-      } else if (requestData.group_limit < oldGroupLimit) {
-        const entries = await c.env.DB.prepare(`
-          SELECT id, group_id, created_at
-          FROM entries
-          WHERE event_id = ?
-          ORDER BY created_at DESC
-        `).bind(eventId).all<{ id: string; group_id: string; created_at: string }>();
-
-        const groupCountMap = new Map<string, number>();
-        const groupEntriesMap = new Map<string, Array<{ id: string; group_id: string; created_at: string }>>();
-        
-        for (const entry of entries.results) {
-          groupCountMap.set(entry.group_id, (groupCountMap.get(entry.group_id) || 0) + 1);
-          if (!groupEntriesMap.has(entry.group_id)) {
-            groupEntriesMap.set(entry.group_id, []);
-          }
-          groupEntriesMap.get(entry.group_id)!.push(entry);
-        }
-
-        const entriesToDelete: string[] = [];
-        for (const [groupId, count] of groupCountMap) {
-          if (count > requestData.group_limit) {
-            const toDelete = count - requestData.group_limit;
-            const groupEntries = groupEntriesMap.get(groupId) || [];
-            for (let i = 0; i < toDelete; i++) {
-              entriesToDelete.push(groupEntries[i].id);
-            }
-          }
-        }
-
-        for (const entryId of entriesToDelete) {
-          await c.env.DB.prepare(`
-            DELETE FROM entries WHERE id = ?
-          `).bind(entryId).run();
-        }
-      }
+      eventId,
+      enforceLoweredLimit,
+      requestData.group_limit
+    );
+    const statements = [updateStatement];
+    if (songLimit < oldSongLimit) {
+      statements.push(c.env.DB.prepare(`
+        DELETE FROM setlist_items
+        WHERE position > ?
+          AND entry_id IN (SELECT id FROM entries WHERE event_id = ?)
+          AND EXISTS (
+            SELECT 1 FROM events ev
+            WHERE ev.id = ?
+              AND (
+                ? = 0
+                OR NOT EXISTS (
+                  SELECT 1
+                  FROM entries entry
+                  INNER JOIN group_member_instruments gmi ON gmi.group_id = entry.group_id
+                  WHERE entry.event_id = ev.id
+                  GROUP BY gmi.user_id
+                  HAVING COUNT(DISTINCT entry.group_id) > ?
+                )
+              )
+          )
+      `).bind(songLimit, eventId, eventId, enforceLoweredLimit, requestData.group_limit));
     }
-
-    if (oldSongLimit !== null && songLimit !== null && songLimit !== oldSongLimit) {
-      if (songLimit === 0) {
-        const entries = await c.env.DB.prepare(`
-          SELECT id FROM entries WHERE event_id = ?
-        `).bind(eventId).all<{ id: string }>();
-
-        for (const entry of entries.results) {
-          await c.env.DB.prepare(`
-            DELETE FROM setlist_items WHERE entry_id = ?
-          `).bind(entry.id).run();
-        }
-      } else if (songLimit < oldSongLimit) {
-        const entries = await c.env.DB.prepare(`
-          SELECT id FROM entries WHERE event_id = ?
-        `).bind(eventId).all<{ id: string }>();
-
-        for (const entry of entries.results) {
-          const setlistItems = await c.env.DB.prepare(`
-            SELECT id, position
-            FROM setlist_items
-            WHERE entry_id = ?
-            ORDER BY position DESC
-          `).bind(entry.id).all<{ id: string; position: number }>();
-
-          const itemCount = setlistItems.results.length;
-          if (itemCount > songLimit) {
-            const toDelete = itemCount - songLimit;
-            for (let i = 0; i < toDelete; i++) {
-              await c.env.DB.prepare(`
-                DELETE FROM setlist_items WHERE id = ?
-              `).bind(setlistItems.results[i].id).run();
-            }
-          }
-        }
-      }
+    const [updateResult] = await c.env.DB.batch(statements);
+    if (Number(updateResult.meta.changes ?? 0) === 0) {
+      return enforceLoweredLimit
+        ? c.json({ success: false, error: 'GROUP_LIMIT_CONFLICT' }, 409)
+        : c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
 
     return c.json({ success: true });

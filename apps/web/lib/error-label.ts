@@ -49,6 +49,8 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'ENTRY_NOT_ACCEPTING': '参加登録の受け付けは終了しています。',
   'SETLIST_ITEM_NOT_FOUND': 'セットリストアイテムが見つかりません。',
   'GROUP_LIMIT_EXCEEDED': 'メンバーのバンド登録数が上限を超えています。',
+  'GROUP_LIMIT_CONFLICT': '現在の出演登録が新しいバンド数上限を超えるため、上限を変更できません。',
+  'STATE_VERSION_CONFLICT': 'ほかのユーザーによる更新がありました。最新の状態を確認してください。',
   'EVENT_NOT_FOUND': 'イベントが見つかりません。',
   
   // 権限関連エラー

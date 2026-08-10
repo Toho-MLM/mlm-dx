@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useTransition } from 'react';
+import React, { useState } from 'react';
 import { apiClient } from '@/lib/api'
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 
 interface ArchiveAddDialogProps {
   onArchiveAdded: () => void;
@@ -17,30 +18,35 @@ export function ArchiveAddDialog({ onArchiveAdded }: ArchiveAddDialogProps) {
   const [title, setTitle] = useState('');
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [year, setYear] = useState<number>(new Date().getFullYear());
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !youtubeUrl.trim()) return;
-    
-    startTransition(async () => {
-      try {
-        const res = await apiClient.createArchive({ 
-          title: title.trim(), 
-          youtube_url: youtubeUrl.trim(), 
-          year 
-        });
-        if (res.success) {
-          onArchiveAdded();
-          setTitle('');
-          setYoutubeUrl('');
-          setYear(new Date().getFullYear());
-          setOpen(false);
-        }
-      } catch (error) {
-        console.error('Failed to create archive:', error);
+    if (isPending || !title.trim() || !youtubeUrl.trim()) return;
+
+    try {
+      setIsPending(true);
+      const res = await apiClient.createArchive({
+        title: title.trim(),
+        youtube_url: youtubeUrl.trim(),
+        year
+      });
+      if (!res.success) {
+        toast.error('アーカイブを作成できませんでした');
+        return;
       }
-    });
+      onArchiveAdded();
+      setTitle('');
+      setYoutubeUrl('');
+      setYear(new Date().getFullYear());
+      setOpen(false);
+    } catch (error) {
+      toast.error('アーカイブを作成できませんでした', {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   return (

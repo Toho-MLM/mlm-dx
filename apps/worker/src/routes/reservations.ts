@@ -60,6 +60,9 @@ function getRemainingIntervalAfterUnavailablePeriod(
 
   const longestInterval = selectLongestInterval(remainingIntervals);
   if (!longestInterval) return null;
+  if (longestInterval.end.getTime() - longestInterval.start.getTime() < 10 * 60 * 1000) {
+    return null;
+  }
 
   return {
     startTime: longestInterval.start.toISOString(),
@@ -593,6 +596,18 @@ reservationRoutes.post('/', async (c) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(reservationId, userId, groupId, start_time, end_time, 'PENDING', now, now).run();
 
+    if (!isAdminMode && await hasReservationLimitConflict(
+      c.env,
+      userId,
+      groupId,
+      start_time,
+      end_time,
+      { kind: 'HALL', id: reservationId }
+    )) {
+      await c.env.DB.prepare('DELETE FROM reservations WHERE id = ?').bind(reservationId).run();
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
+    }
+
     const isSameDay = isTodayInJST(new Date(start_time));
     let notificationType: EmailNotificationType | null = isSameDay ? null : 'RESERVATION_RECEIVED';
     let requestedStartTime: string | undefined;
@@ -608,26 +623,60 @@ reservationRoutes.post('/', async (c) => {
           notificationType = 'RESERVATION_ADJUSTED';
           requestedStartTime = start_time;
           requestedEndTime = end_time;
-          await c.env.DB.prepare(`
+          const updateResult = await c.env.DB.prepare(`
             UPDATE reservations 
             SET state = ?, start_time = ?, end_time = ?, updated_at = ?
             WHERE id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM reservations other
+                WHERE other.id != ? AND other.state = 'CONFIRMED'
+                  AND other.start_time < ? AND other.end_time > ?
+              )
           `).bind(
             processResult.state, 
             processResult.adjustedStartTime, 
             processResult.adjustedEndTime, 
             updateTime, 
-            reservationId
+            reservationId,
+            reservationId,
+            processResult.adjustedEndTime,
+            processResult.adjustedStartTime
           ).run();
+          if (Number(updateResult.meta.changes ?? 0) === 0) {
+            await c.env.DB.prepare("UPDATE reservations SET state = 'DECLINED', updated_at = ? WHERE id = ?")
+              .bind(updateTime, reservationId).run();
+            notificationType = 'RESERVATION_DECLINED';
+          }
         } else {
           notificationType = processResult.state === 'CONFIRMED'
             ? 'RESERVATION_CONFIRMED'
             : 'RESERVATION_DECLINED';
-          await c.env.DB.prepare(`
+          const updateResult = await c.env.DB.prepare(`
             UPDATE reservations 
             SET state = ?, updated_at = ?
             WHERE id = ?
-          `).bind(processResult.state, updateTime, reservationId).run();
+              AND (
+                ? != 'CONFIRMED'
+                OR NOT EXISTS (
+                  SELECT 1 FROM reservations other
+                  WHERE other.id != ? AND other.state = 'CONFIRMED'
+                    AND other.start_time < ? AND other.end_time > ?
+                )
+              )
+          `).bind(
+            processResult.state,
+            updateTime,
+            reservationId,
+            processResult.state,
+            reservationId,
+            end_time,
+            start_time
+          ).run();
+          if (Number(updateResult.meta.changes ?? 0) === 0) {
+            await c.env.DB.prepare("UPDATE reservations SET state = 'DECLINED', updated_at = ? WHERE id = ?")
+              .bind(updateTime, reservationId).run();
+            notificationType = 'RESERVATION_DECLINED';
+          }
         }
       }
     }
@@ -684,7 +733,7 @@ reservationRoutes.put('/:id', async (c) => {
     }
 
     const reservation = await c.env.DB.prepare(`
-      SELECT user_id, group_id, start_time, end_time, state
+      SELECT user_id, group_id, start_time, end_time, state, updated_at
       FROM reservations
       WHERE id = ?
     `).bind(reservationId).first<{
@@ -693,6 +742,7 @@ reservationRoutes.put('/:id', async (c) => {
       start_time: string;
       end_time: string;
       state: string;
+      updated_at: string;
     }>();
     if (!reservation) {
       return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
@@ -781,17 +831,62 @@ reservationRoutes.put('/:id', async (c) => {
 
     const finalStartTime = processResult.adjustedStartTime ?? normalizedStartTime;
     const finalEndTime = processResult.adjustedEndTime ?? normalizedEndTime;
-    await c.env.DB.prepare(`
+    const updateTime = new Date().toISOString();
+    const updateResult = await c.env.DB.prepare(`
       UPDATE reservations
       SET start_time = ?, end_time = ?, state = ?, updated_at = ?
-      WHERE id = ?
+      WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
+        AND (
+          ? != 'CONFIRMED'
+          OR NOT EXISTS (
+            SELECT 1 FROM reservations other
+            WHERE other.id != ? AND other.state = 'CONFIRMED'
+              AND other.start_time < ? AND other.end_time > ?
+          )
+        )
     `).bind(
       finalStartTime,
       finalEndTime,
       processResult.state,
-      new Date().toISOString(),
-      reservationId
+      updateTime,
+      reservationId,
+      reservation.start_time,
+      reservation.end_time,
+      reservation.state,
+      reservation.updated_at,
+      processResult.state,
+      reservationId,
+      finalEndTime,
+      finalStartTime
     ).run();
+    if (Number(updateResult.meta.changes ?? 0) === 0) {
+      return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+    }
+    if (!isAdminMode && await hasReservationLimitConflict(
+      c.env,
+      reservation.user_id,
+      reservation.group_id,
+      finalStartTime,
+      finalEndTime,
+      { kind: 'HALL', id: reservationId }
+    )) {
+      await c.env.DB.prepare(`
+        UPDATE reservations
+        SET start_time = ?, end_time = ?, state = ?, updated_at = ?
+        WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
+      `).bind(
+        reservation.start_time,
+        reservation.end_time,
+        reservation.state,
+        new Date().toISOString(),
+        reservationId,
+        finalStartTime,
+        finalEndTime,
+        processResult.state,
+        updateTime
+      ).run();
+      return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
+    }
 
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, {
@@ -823,10 +918,10 @@ reservationRoutes.put('/:id/status', async (c) => {
     }
     const data = UpdateReservationStatusRequestSchema.parse(await c.req.json());
     const reservation = await c.env.DB.prepare(`
-      SELECT state, start_time, end_time
+      SELECT state, start_time, end_time, updated_at
       FROM reservations
       WHERE id = ?
-    `).bind(reservationId).first<{ state: ReservationState; start_time: string; end_time: string }>();
+    `).bind(reservationId).first<{ state: ReservationState; start_time: string; end_time: string; updated_at: string }>();
     if (!reservation) {
       return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     }
@@ -849,9 +944,30 @@ reservationRoutes.put('/:id/status', async (c) => {
       }
     }
 
-    await c.env.DB.prepare(`
-      UPDATE reservations SET state = ?, updated_at = ? WHERE id = ?
-    `).bind(data.state, new Date().toISOString(), reservationId).run();
+    const updateResult = await c.env.DB.prepare(`
+      UPDATE reservations SET state = ?, updated_at = ? WHERE id = ? AND state = ? AND updated_at = ?
+        AND (
+          ? != 'CONFIRMED'
+          OR NOT EXISTS (
+            SELECT 1 FROM reservations other
+            WHERE other.id != ? AND other.state = 'CONFIRMED'
+              AND other.start_time < ? AND other.end_time > ?
+          )
+        )
+    `).bind(
+      data.state,
+      new Date().toISOString(),
+      reservationId,
+      reservation.state,
+      reservation.updated_at,
+      data.state,
+      reservationId,
+      reservation.end_time,
+      reservation.start_time
+    ).run();
+    if (Number(updateResult.meta.changes ?? 0) === 0) {
+      return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+    }
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     const notificationType = notificationForStatus(data.state);
     if (notificationType) {
@@ -972,6 +1088,9 @@ reservationRoutes.post('/limits', async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.error('Error creating reservation limit:', error);
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     
     if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
       return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -1038,6 +1157,9 @@ reservationRoutes.put('/limits/:id', async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.error('Error updating reservation limit:', error);
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     
     if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
       return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -1173,8 +1295,6 @@ reservationRoutes.post('/unavailable', async (c) => {
 
     await c.env.DB.batch(statements);
 
-    await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
-
     c.executionCtx.waitUntil((async () => {
       for (const job of notificationJobs) {
         await prepareAndSendReservationEmail(c.env, {
@@ -1187,6 +1307,9 @@ reservationRoutes.post('/unavailable', async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.error('Error creating unavailable period:', error);
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    }
     
     if (error instanceof Error) {
       if (error.message === 'INSUFFICIENT_PERMISSIONS') {

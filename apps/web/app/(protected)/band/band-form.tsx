@@ -1,4 +1,4 @@
-import { useState, useEffect, useTransition, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -51,7 +51,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
   const [name, setName] = useState(band?.name || '')
   const [bandMembers, setBandMembers] = useState<GroupMember[]>(band?.assignments || [])
   const [isMain, setIsMain] = useState(band?.isMain ? 'main' : 'free')
-  const [isPending, startTransition] = useTransition()
+  const [isPending, setIsPending] = useState(false)
   const { user } = useAuth()
 
   useEffect(() => {
@@ -71,10 +71,10 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
   }
 
   const handleSubmit = async () => {
-    if (!isFormValid) return;
+    if (isPending || !isFormValid) return;
 
-    startTransition(async () => {
-      try {
+    try {
+      setIsPending(true)
         const assignments = bandMembers.reduce((acc, bm) => {
           bm.instruments.forEach(instrument => {
             if (!acc[instrument]) {
@@ -92,7 +92,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
             name,
             assignments: JSON.stringify(assignments),
             is_main: isAdminMode ? isMainBand : band.isMain,
-            is_active: true
+            is_active: band.isActive
           });
         } else {
           response = await apiClient.createGroup({
@@ -112,12 +112,13 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
             description: translateError(response.error || 'UNKNOWN_ERROR')
           });
         }
-      } catch (error) {
-        toast.error('バンドの保存中にエラーが発生しました', {
-          description: translateError((error as Error).message)
-        })
-      }
-    })
+    } catch (error) {
+      toast.error('バンドの保存中にエラーが発生しました', {
+        description: translateError((error as Error).message)
+      })
+    } finally {
+      setIsPending(false)
+    }
   }
 
   const addMember = async (memberId: string) => {
@@ -242,6 +243,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
                           size="icon"
                           className="h-4 w-4 mr-1 p-0 hover:bg-transparent"
                           onClick={() => removeInstrument(bandMember.id, instrument as Instrument)}
+                          aria-label={`${memberOption?.name || 'メンバー'}の${instrumentNames[instrument as Instrument]}を削除`}
                         >
                           <X className="h-2 w-2 p-0" />
                         </Button>
@@ -251,7 +253,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-8 w-8" disabled={availableInstruments(bandMember)?.length === 0}>
+                      <Button variant="outline" size="icon" className="h-8 w-8" disabled={availableInstruments(bandMember)?.length === 0} aria-label={`${memberOption?.name || 'メンバー'}の楽器を追加`}>
                         <Plus className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -266,7 +268,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <Button variant="outline" size="icon" onClick={() => removeMember(bandMember.id)}>
+                  <Button variant="outline" size="icon" onClick={() => removeMember(bandMember.id)} aria-label={`${memberOption?.name || 'メンバー'}を削除`}>
                     <UserRoundMinus className="h-4 w-4" />
                   </Button>
                 </div>
