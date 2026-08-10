@@ -1,7 +1,7 @@
 'use client'
 
 import React, { Suspense, useState, useRef, useMemo, useEffect, useCallback } from 'react'
-import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer } from 'react-big-calendar'
+import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer, type SlotInfo } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
 import { format, parse, startOfWeek, getDay, addDays, addMinutes, startOfDay, subDays } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
@@ -246,10 +246,15 @@ function ReservationContent() {
   }, [authLoading, user, router, pathname, searchParams, fetchReservations])
 
   useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 767px), (pointer: coarse)')
     const checkMobile = () => {
-      setIsMobile(/Mobi|Android/i.test(navigator.userAgent))
+      setIsMobile(mobileQuery.matches)
     }
+
     checkMobile()
+
+    mobileQuery.addEventListener('change', checkMobile)
+    return () => mobileQuery.removeEventListener('change', checkMobile)
   }, [])
 
   useEffect(() => {
@@ -647,6 +652,55 @@ function ReservationContent() {
     setIsReservationFormOpen(true)
   }
 
+  const handleSelectSlot = (slotInfo: SlotInfo) => {
+    if (slotInfo.action !== 'select') return
+
+    const start = new Date(slotInfo.start)
+    const end = new Date(slotInfo.end)
+
+    if (!isReservationDateValid(start)) {
+      toast.error('この日は予約できません', {
+        description: '予約できるのは今日から14日後までです。',
+      })
+      return
+    }
+
+    const validation = validateReservationTime(start.toISOString(), end.toISOString())
+    if (!validation.isValid) {
+      toast.error('この時間は予約できません', {
+        description: validation.error || '予約時間が無効です。',
+      })
+      return
+    }
+
+    if (!isReservationTimeValid(start, start.getHours(), start.getMinutes())) {
+      toast.error('この時間は予約できません', {
+        description: '過去の時間は選択できません。',
+      })
+      return
+    }
+
+    const overlapsUnavailablePeriod = unavailablePeriods.some(
+      (period) => period.start < end && period.end > start
+    )
+    if (overlapsUnavailablePeriod) {
+      toast.error('この時間は予約できません', {
+        description: translateError('BLOCKED_PERIOD_CONFLICT'),
+      })
+      return
+    }
+
+    setReservationDraft((previous) => ({
+      ...previous,
+      date: startOfDay(start),
+      startHour: start.getHours(),
+      startMinute: start.getMinutes(),
+      endHour: end.getHours(),
+      endMinute: end.getMinutes(),
+    }))
+    setIsReservationFormOpen(true)
+  }
+
   const handleRefresh = async () => {
     await fetchReservations()
   }
@@ -757,7 +811,7 @@ function ReservationContent() {
                   </DropdownMenu>
                   <Button variant="outline" onClick={() => handleNavigate(addDays(currentDate, getRangeSkip()), currentView)}>
                     <ChevronRightIcon className=" h-4 w-4" />
-                  </Button> 
+                  </Button>
                 </div>
                 {shouldShowReservationLimits && (
                   <div className="px-2 pb-2">
@@ -784,13 +838,19 @@ function ReservationContent() {
               </div>
             ) : (
               <BigCalendar
+                className="reservation-calendar"
                 localizer={localizer}
                 events={[...reservationData, ...events, ...unavailablePeriods]}
-                 titleAccessor={(event: CalendarEvent) => event.title}
-                 startAccessor={(event: CalendarEvent) => event.start}
-                 endAccessor={(event: CalendarEvent) => event.end}
-                 allDayAccessor={(event: CalendarEvent) => event.allDay || false}
+                titleAccessor={(event: CalendarEvent) => event.title}
+                startAccessor={(event: CalendarEvent) => event.start}
+                endAccessor={(event: CalendarEvent) => event.end}
+                allDayAccessor={(event: CalendarEvent) => event.allDay || false}
                 onSelectEvent={handleSelectEvent}
+                selectable="ignoreEvents"
+                onSelectSlot={handleSelectSlot}
+                step={10}
+                timeslots={6}
+                longPressThreshold={250}
                 views={customViews}
                 messages={messages}
                 culture='ja'
