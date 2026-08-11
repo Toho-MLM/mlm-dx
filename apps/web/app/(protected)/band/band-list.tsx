@@ -26,16 +26,19 @@ import {
 const stripStudentNumberPrefix = (name: string) => name.replace(/^[A-Z0-9]{6}\s+/, '')
 type MemberOption = { id: string; name: string; display_name?: string; real_name?: string; instruments: string[] }
 
-export function BandList() {
+export function BandList({ initialGroups, initialMembers, initialAdminMode = false }: { initialGroups?: unknown[] | null; initialMembers?: MemberOption[] | null; initialAdminMode?: boolean }) {
   const router = useRouter()
   const { user } = useAuth()
   const isUserAdmin = user && isAdmin(user.role)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBand, setEditingBand] = useState<Group | undefined>()
-  const [isAdminMode] = useAdminMode(isUserAdmin)
-  const [bands, setBands] = useState<Group[]>([])
-  const [loading, setLoading] = useState(true)
-  const [memberOptions, setMemberOptions] = useState<MemberOption[]>([])
+  const [isAdminMode] = useAdminMode(isUserAdmin, initialAdminMode)
+  const [bands, setBands] = useState<Group[]>(initialGroups ? formatGroups(initialGroups) : [])
+  const [loading, setLoading] = useState(initialGroups === undefined || initialGroups === null || initialMembers === undefined || initialMembers === null)
+  const [memberOptions, setMemberOptions] = useState<MemberOption[]>((initialMembers ?? []).map((member) => ({
+    ...member,
+    name: stripStudentNumberPrefix(member.display_name || member.name),
+  })))
   const [deletingBand, setDeletingBand] = useState<Group | null>(null)
   const [deletingBands, setDeletingBands] = useState<Group[]>([])
   const [selectedBandIds, setSelectedBandIds] = useState<Set<string>>(new Set())
@@ -63,9 +66,13 @@ export function BandList() {
   }, [])
 
   useEffect(() => {
+    if (initialGroups !== undefined && initialGroups !== null && initialMembers !== undefined && initialMembers !== null && isAdminMode === initialAdminMode) {
+      if (!isAdminMode) setSelectedBandIds(new Set())
+      return
+    }
     fetchBandsAndMembers(isAdminMode)
     if (!isAdminMode) setSelectedBandIds(new Set())
-  }, [fetchBandsAndMembers, isAdminMode])
+  }, [fetchBandsAndMembers, initialAdminMode, initialGroups, initialMembers, isAdminMode])
 
   const handleEdit = (id: string) => {
     const band = bands.find(b => b.id === id)

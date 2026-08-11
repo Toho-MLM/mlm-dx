@@ -1,0 +1,230 @@
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import { EventCard } from "./event-card"
+import { EventForm } from "./event-form"
+import { Event } from "@/app/types"
+import { EventPageHeader } from '@/components/event-page-header'
+import { useAuth } from '@/app/context/AuthContext'
+import { isAdmin } from '@shared-schemas'
+import { toast } from 'sonner'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { apiClient } from '@/lib/api'
+import { EventProvider } from './event-context'
+import { showSuccessToast } from '@/lib/utils'
+
+type GroupOption = { id: string; name: string; is_main: boolean }
+type EntryOption = { id: string; event_id: string; group_id: string; note?: string | null }
+
+export function EventClient({ initialEvents, initialGroups, initialEntries }: { initialEvents?: Event[] | null; initialGroups?: GroupOption[] | null; initialEntries?: EntryOption[] | null }) {
+  const [events, setEvents] = useState<Event[]>(initialEvents ?? [])
+  const [loadingEvents, setLoadingEvents] = useState(initialEvents === undefined || initialEvents === null)
+  const [eventsError, setEventsError] = useState<string | null>(initialEvents === null ? 'イベントを読み込めませんでした。' : null)
+  const [groupOptions, setGroupOptions] = useState<GroupOption[]>(initialGroups ?? [])
+  const [entries, setEntries] = useState<EntryOption[]>(initialEntries ?? [])
+  const [loadingEntries, setLoadingEntries] = useState(initialGroups === undefined || initialGroups === null || initialEntries === undefined || initialEntries === null)
+  const [aggregatesError, setAggregatesError] = useState(initialGroups === null || initialEntries === null)
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [editingEvent, setEditingEvent] = useState<Event | undefined>()
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [deletingEventId, setDeletingEventId] = useState<string | null>(null)
+  const { user } = useAuth()
+  const isUserAdmin = user && isAdmin(user.role)
+
+  const fetchAggregates = useCallback(async () => {
+    try {
+      setLoadingEntries(true)
+      setAggregatesError(false)
+      const [groupsRes, entriesRes] = await Promise.all([
+        apiClient.getGroupOptions(!!isUserAdmin),
+        apiClient.getEntries(),
+      ])
+      if (groupsRes.success && groupsRes.data) setGroupOptions(groupsRes.data)
+      if (entriesRes.success && entriesRes.data) setEntries(entriesRes.data)
+      if (!groupsRes.success || !entriesRes.success) throw new Error('AGGREGATES_FETCH_FAILED')
+    } catch {
+      setAggregatesError(true)
+    } finally {
+      setLoadingEntries(false)
+    }
+  }, [isUserAdmin])
+
+  const fetchEvents = async () => {
+    try {
+      setLoadingEvents(true)
+      setEventsError(null)
+      const res = await apiClient.getEvents()
+      if (!res.success) throw new Error(res.error || 'EVENT_FETCH_FAILED')
+      setEvents(res.data || [])
+    } catch {
+      setEventsError('イベントを読み込めませんでした。')
+    } finally {
+      setLoadingEvents(false)
+    }
+  }
+
+  useEffect(() => {
+    if (initialEvents === undefined || initialEvents === null) void fetchEvents()
+    if (initialGroups === undefined || initialGroups === null || initialEntries === undefined || initialEntries === null) {
+      void fetchAggregates()
+    }
+  }, [fetchAggregates, initialEntries, initialEvents, initialGroups])
+
+  const handleEdit = (id: string) => {
+    const event = events.find(e => e.id === id)
+    if (event) {
+      setEditingEvent(event)
+      setIsFormOpen(true)
+    }
+  }
+
+  const handleDeleteClick = (id: string) => {
+    setDeletingEventId(id)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingEventId) return
+
+    try {
+      const response = await apiClient.deleteEvent(deletingEventId)
+      if (response.success) {
+        setEvents(prev => prev.filter(e => e.id !== deletingEventId))
+        showSuccessToast({ message: 'イベントを削除しました' })
+      } else {
+        toast.error('イベントの削除中にエラーが発生しました')
+      }
+    } catch {
+      toast.error('エラーが発生しました')
+    } finally {
+      setIsDeleteDialogOpen(false)
+      setDeletingEventId(null)
+    }
+  }
+
+  const handleAdd = () => {
+    setEditingEvent(undefined)
+    setIsFormOpen(true)
+  }
+
+  const handleSuccess = (newEvent?: Event) => {
+    setIsFormOpen(false)
+    if (newEvent) {
+      if (editingEvent) {
+        setEvents(prev => prev.map(e => e.id === newEvent.id ? newEvent : e))
+      } else {
+        setEvents(prev => [newEvent, ...prev])
+      }
+    } else {
+      fetchEvents()
+    }
+  }
+
+  const handleEntriesChanged = () => {
+    fetchAggregates()
+  }
+
+  if (loadingEvents) {
+    const placeholder: Event = {
+      id: 'placeholder',
+      title: '',
+      event_date: new Date().toISOString(),
+      entry_deadline: new Date().toISOString(),
+      is_entry_accepting: true,
+      setlist_deadline: new Date().toISOString(),
+      is_setlist_accepting: true,
+      group_limit: 1,
+      song_limit: 2,
+    }
+    return (
+      <>
+        <EventPageHeader
+          onAddEvent={isUserAdmin ? handleAdd : undefined}
+        />
+        <div className="p-4 pt-0 mx-auto">
+          <EventProvider value={{ groupOptions: [], userEntries: [], loadingEntries: true, onEntriesChanged: handleEntriesChanged }}>
+            <div className="space-y-5">
+              <EventCard
+                event={placeholder}
+              />
+            </div>
+          </EventProvider>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <EventPageHeader
+        onAddEvent={isUserAdmin ? handleAdd : undefined}
+      />
+      <div className="p-4 pt-0 mx-auto">
+      {eventsError ? (
+        <div className="rounded-md border border-destructive/50 bg-white p-4 text-sm text-destructive">
+          {eventsError}
+          <button className="ml-3 underline" onClick={() => void fetchEvents()}>再読み込み</button>
+        </div>
+      ) : aggregatesError ? (
+        <div className="mb-4 rounded-md border border-destructive/50 bg-white p-4 text-sm text-destructive">
+          参加状況を読み込めませんでした。
+          <button className="ml-3 underline" onClick={() => void fetchAggregates()}>再読み込み</button>
+        </div>
+      ) : null}
+      <EventProvider value={{ groupOptions, userEntries: entries, loadingEntries, onEntriesChanged: handleEntriesChanged, onEdit: isUserAdmin ? handleEdit : undefined, onDelete: isUserAdmin ? handleDeleteClick : undefined }}>
+        <div className="space-y-5">
+          {!eventsError && events.length === 0 ? (
+            <div className="rounded-md border bg-white p-6 text-center text-sm text-muted-foreground">イベントはありません。</div>
+          ) : events.map((event) => (
+            <EventCard
+              key={event.id}
+              event={event}
+            />
+          ))}
+        </div>
+      </EventProvider>
+      {isUserAdmin && (
+        <EventForm
+          event={editingEvent}
+          isOpen={isFormOpen}
+          onClose={() => setIsFormOpen(false)}
+          onSuccess={handleSuccess}
+        />
+      )}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>イベントの削除</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              このイベントを削除しますか？この操作は取り消せません。
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+            >
+              キャンセル
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+            >
+              削除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      </div>
+    </>
+  )
+}
