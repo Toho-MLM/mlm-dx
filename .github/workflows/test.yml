@@ -24,7 +24,7 @@ jobs:
         run: corepack enable
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Type check Worker
-        run: pnpm --filter mlm-dx-worker type-check
+      - name: Type check Web and Worker
+        run: pnpm type-check
       - name: Test Worker
         run: pnpm --filter mlm-dx-worker test

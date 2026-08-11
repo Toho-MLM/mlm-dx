@@ -1,10 +1,8 @@
 'use server'
 
-import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { type Archive } from '../../../lib/shared-schemas'
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL as string
+import { serverRequest } from './server-api'
 
 export interface ApiResponse<T = unknown> {
   success: boolean
@@ -13,39 +11,13 @@ export interface ApiResponse<T = unknown> {
   message?: string
 }
 
-async function serverActionRequest<T = unknown>(
-  endpoint: string, 
-  options: Parameters<typeof fetch>[1] = {}
-): Promise<T> {
-  const cookieStore = await cookies()
-  const cookieHeader = cookieStore.toString()
-  
-  const url = `${API_BASE_URL}${endpoint}`
-  
-  const response = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Cookie': cookieHeader,
-      ...options.headers,
-    },
-    ...options,
-  })
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
-    throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
-  }
-
-  return await response.json()
-}
-
 export async function createArchiveAction(data: {
   title: string
   youtube_url?: string
   year: number
 }): Promise<ApiResponse<Archive>> {
   try {
-    const result = await serverActionRequest('/archive', {
+    const result = await serverRequest('/archive', {
       method: 'POST',
       body: JSON.stringify(data),
     })
@@ -66,7 +38,7 @@ export async function createGroupAction(data: {
   is_main?: boolean
 }): Promise<ApiResponse<void>> {
   try {
-    const result = await serverActionRequest('/groups', {
+    const result = await serverRequest('/groups', {
       method: 'POST',
       body: JSON.stringify(data),
     })
@@ -88,7 +60,7 @@ export async function updateGroupAction(id: string, data: {
   is_active?: boolean
 }): Promise<ApiResponse<void>> {
   try {
-    const result = await serverActionRequest(`/groups/${id}`, {
+    const result = await serverRequest(`/groups/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     })
@@ -105,7 +77,7 @@ export async function updateGroupAction(id: string, data: {
 
 export async function deleteArchiveAction(id: string): Promise<ApiResponse<void>> {
   try {
-    const result = await serverActionRequest(`/archive/${id}`, {
+    const result = await serverRequest(`/archive/${id}`, {
       method: 'DELETE',
     })
     
@@ -130,7 +102,7 @@ export async function createEventAction(data: {
   song_limit: number
 }): Promise<ApiResponse<void>> {
   try {
-    const result = await serverActionRequest('/events', {
+    const result = await serverRequest('/events', {
       method: 'POST',
       body: JSON.stringify(data),
     })
@@ -156,7 +128,7 @@ export async function updateEventAction(id: string, data: {
   song_limit: number
 }): Promise<ApiResponse<void>> {
   try {
-    const result = await serverActionRequest(`/events/${id}`, {
+    const result = await serverRequest(`/events/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     })
@@ -173,7 +145,7 @@ export async function updateEventAction(id: string, data: {
 
 export async function deleteEventAction(id: string): Promise<ApiResponse<void>> {
   try {
-    const result = await serverActionRequest(`/events/${id}`, {
+    const result = await serverRequest(`/events/${id}`, {
       method: 'DELETE',
     })
     

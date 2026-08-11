@@ -33,6 +33,7 @@ import { createRegistrationOptions, verifyRegistration, createAuthenticationOpti
 import { parseUuid } from './utils/uuid';
 import type { PasskeyChallengeRow, PasskeyRow } from './features/auth/application/repository';
 import { createD1AuthRepository } from './features/auth/infrastructure/d1-repository';
+import { createUnifiedWorker } from './api-dispatch';
 
 const UuidSchema = z.string().uuid();
 
@@ -203,7 +204,7 @@ app.use('*', cors({
 app.post('/auth/signin/google', async (c) => {
   try {
     const state = generateState();
-    const redirectUri = `${c.env.AUTH_URL}/auth/callback/google`;
+    const redirectUri = `${c.env.AUTH_URL}/api/auth/callback/google`;
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = await generateCodeChallenge(codeVerifier);
     const nonce = generateNonce();
@@ -272,7 +273,7 @@ app.get('/auth/callback/google', async (c) => {
     deleteCookie(c, `pkce_verifier_${state}`, oauthCookieOptions);
     deleteCookie(c, `oauth_nonce_${state}`, oauthCookieOptions);
 
-    const redirectUri = `${c.env.AUTH_URL}/auth/callback/google`;
+    const redirectUri = `${c.env.AUTH_URL}/api/auth/callback/google`;
     const tokenData = await exchangeCodeForToken(
       code,
       c.env.GOOGLE_CLIENT_ID,
@@ -722,7 +723,7 @@ app.route('/timeline', timelineRoutes);
 app.route('/band/main/draft', bandMainDraftRoutes);
 app.route('/dashboard', dashboardRoutes);
 
-export default {
+export const apiWorker = {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
     return app.fetch(request, env, ctx);
   },
@@ -746,3 +747,8 @@ export default {
     }
   }
 };
+
+export default createUnifiedWorker<Bindings>(
+  { fetch: async () => new Response('Not Found', { status: 404 }) },
+  apiWorker,
+);
