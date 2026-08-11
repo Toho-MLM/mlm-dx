@@ -1,10 +1,78 @@
 name = "dx"
-main = ".open-next/worker.js"
+main = "worker.ts"
 compatibility_date = "2024-12-20"
 compatibility_flags = ["nodejs_compat"]
 
 [assets]
+binding = "ASSETS"
 directory = ".open-next/assets"
+
+[triggers]
+crons = ["0 12 * * *", "0 15 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mlm-dx-db"
+database_id = "local"
+migrations_dir = "../worker/migrations"
+
+[[durable_objects.bindings]]
+name = "BAND_DRAFT_ROOM"
+class_name = "BandDraftRoom"
+
+[[durable_objects.bindings]]
+name = "RESERVATION_ROOM"
+class_name = "ReservationRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BandDraftRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ReservationRoom"]
+
+[[services]]
+binding = "WORKER_SELF_REFERENCE"
+service = "dx"
+
+[vars]
+NODE_ENV = "development"
+AUTH_URL = "http://localhost:8787"
+CORS_ORIGIN = "http://localhost:8787"
+FRONTEND_URL = "http://localhost:8787"
+
+[env.production]
+name = "dx"
+
+[env.production.vars]
+NODE_ENV = "production"
+AUTH_URL = ""
+CORS_ORIGIN = ""
+FRONTEND_URL = ""
+SMTP_HOST = ""
+SMTP_PORT = ""
+SMTP_SECURITY = ""
+SMTP_FROM_EMAIL = ""
+SMTP_FROM_NAME = ""
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "mlm-dx-db"
+database_id = ""
+migrations_dir = "../worker/migrations"
+
+[[env.production.durable_objects.bindings]]
+name = "BAND_DRAFT_ROOM"
+class_name = "BandDraftRoom"
+
+[[env.production.durable_objects.bindings]]
+name = "RESERVATION_ROOM"
+class_name = "ReservationRoom"
+
+[[env.production.services]]
+binding = "WORKER_SELF_REFERENCE"
+service = "dx"
 
 [observability]
 enabled = true

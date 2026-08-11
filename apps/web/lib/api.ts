@@ -74,7 +74,12 @@ type PasskeyLoginStartResponse = { success: true; challengeId: string; options: 
 
 class ApiClient {
   private getBaseUrl(): string {
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+    const configuredOrigin = process.env.NODE_ENV === 'development'
+      ? process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '')
+      : undefined
+    if (configuredOrigin) return `${configuredOrigin}/api`
+    if (typeof window !== 'undefined') return `${window.location.origin}/api`
+    return 'http://localhost:8787/api'
   }
 
   async checkFirstUser(): Promise<{ canCreate: boolean }> {
@@ -203,7 +208,7 @@ class ApiClient {
   getBandMainDraftWebSocketUrl(token: string): string {
     const apiUrl = new URL(this.getBaseUrl())
     apiUrl.protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
-    apiUrl.pathname = `/band/main/draft/${token}/ws`
+    apiUrl.pathname = `/api/band/main/draft/${token}/ws`
     apiUrl.search = ''
     return apiUrl.toString()
   }
@@ -211,7 +216,7 @@ class ApiClient {
   getReservationsWebSocketUrl(): string {
     const apiUrl = new URL(this.getBaseUrl())
     apiUrl.protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
-    apiUrl.pathname = '/reservations/ws'
+    apiUrl.pathname = '/api/reservations/ws'
     apiUrl.search = ''
     return apiUrl.toString()
   }

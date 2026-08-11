@@ -23,7 +23,11 @@ export class HttpClient {
   private baseUrl: string
 
   constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+    const configuredOrigin = process.env.NODE_ENV === 'development'
+      ? process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '')
+      : undefined
+    const origin = configuredOrigin || (process.env.NODE_ENV === 'development' ? 'http://localhost:8787' : '')
+    this.baseUrl = `${origin}/api`
   }
 
   async request<T>(

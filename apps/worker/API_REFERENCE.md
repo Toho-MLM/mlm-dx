@@ -4,7 +4,9 @@
 
 ## 概要
 
-このドキュメントは `apps/worker` 以下で実装されている Cloudflare Worker (Hono ベース) の HTTP API を対象としたリファレンスです。すべてのエンドポイントは同一のベース URL (`https://<your-worker-domain>`) を共有し、Cookie ベースのセッション認証を使用します。
+このドキュメントは `apps/worker` 以下で実装されている Hono API を対象としたリファレンスです。統合Worker `dx` の同一originでCookieベースのセッション認証を使用します。
+
+以下の表に記載するHono内部パスは、公開時にはすべて先頭へ `/api` を付けます。たとえばセッションは `GET /api/auth/session`、Google OAuth callbackは `GET /api/auth/callback/google` です。`/api` のない旧公開パスは提供しません。
 
 ### バインディング / 環境変数
 

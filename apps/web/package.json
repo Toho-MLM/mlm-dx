@@ -6,7 +6,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "build:worker": "opennextjs-cloudflare build",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "dry-run": "pnpm run build:worker && WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler deploy --dry-run --env=",
+    "deploy": "pnpm run build:worker && wrangler deploy --env production",
+    "db:create": "wrangler d1 create mlm-dx-db",
+    "db:migrate:prod": "wrangler d1 migrations apply mlm-dx-db --env production --remote",
+    "db:reset:prod": "wrangler d1 execute mlm-dx-db --env production --remote --file=../worker/schema.sql",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
   },

@@ -30,6 +30,7 @@ yarn-error.log*
 
 # env files
 apps/web/.env
+apps/web/.dev.vars
 apps/worker/.dev.vars
 
 # vercel
@@ -42,5 +43,7 @@ next-env.d.ts
 # wrangler
 /apps/worker/.wrangler
 /apps/web/.open-next
+/apps/web/.wrangler
 /apps/worker/.worker-bundle
+/apps/web/.worker-bundle
 /.pnpm-store
