@@ -14,16 +14,17 @@ import { useTitle } from '@/app/context/TitleContext';
 interface PageHeaderProps {
   rightActions?: React.ReactNode;
   className?: string;
+  showSidebarTrigger?: boolean;
 }
 
-export function PageHeader({ rightActions, className = "" }: PageHeaderProps) {
+export function PageHeader({ rightActions, className = "", showSidebarTrigger = true }: PageHeaderProps) {
   const { title, breadcrumbs } = useTitle();
   const items = breadcrumbs.length > 0 ? breadcrumbs : [{ title }];
 
   return (
     <div className={`w-full sticky top-0 bg-gray-100 h-14 px-3 py-0 z-10 flex items-center justify-between gap-3 ${className}`}>
       <div className="flex min-w-0 items-center gap-2">
-        <SidebarTrigger />
+        {showSidebarTrigger && <SidebarTrigger />}
         <Breadcrumb className="min-w-0">
           <BreadcrumbList className="flex-nowrap overflow-hidden text-base sm:text-lg">
             {items.map((item, index) => {

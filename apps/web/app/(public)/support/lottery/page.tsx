@@ -10,7 +10,7 @@ const tdClass = 'border-t px-3 py-2 align-top';
 export default function LotterySupportPage() {
   return (
     <>
-      <PageHeader />
+      <PageHeader showSidebarTrigger={false} />
       <main className="mx-auto w-full max-w-4xl space-y-4 p-4 pt-0">
         <Alert>
           <Clock3Icon className="h-4 w-4" />

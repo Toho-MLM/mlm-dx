@@ -1,6 +1,3 @@
-'use client'
-
-import React, { useEffect, useState } from 'react';
 import { Card, CardContent} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircleIcon, CalendarPlusIcon, CalendarX2 } from 'lucide-react';
@@ -8,20 +5,10 @@ import { ReservationState, reservationStateColors } from '@/app/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { PageHeader } from '@/components/page-header';
 
-const AboutPage = () => {
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  if (!isClient) {
-    return null;
-  }
-
+export default function ReservationSupportPage() {
   return (
     <>
-      <PageHeader />
+      <PageHeader showSidebarTrigger={false} />
       <div className="p-4 pt-0 mx-auto">
       <Card className="pt-4">
         <CardContent>
@@ -98,6 +85,4 @@ const AboutPage = () => {
       </div>
     </>
   );
-};
-
-export default AboutPage; 
+}
