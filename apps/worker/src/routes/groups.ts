@@ -60,7 +60,7 @@ groupRoutes.post('/', async (c) => {
     const newId = crypto.randomUUID();
 
     await createD1GroupRepository(c.env.DB).create(
-      newId, requestData.name, requestData.is_main, assignments, now, crypto.randomUUID,
+      newId, requestData.name, requestData.is_main, assignments, now, () => crypto.randomUUID(),
     );
     
     return c.json({ success: true });
@@ -144,7 +144,7 @@ groupRoutes.put('/:id', async (c) => {
     const now = new Date().toISOString();
 
     await repository.update(
-      groupId, requestData.name, requestData.is_main, requestData.is_active, assignments ?? undefined, now, crypto.randomUUID,
+      groupId, requestData.name, requestData.is_main, requestData.is_active, assignments ?? undefined, now, () => crypto.randomUUID(),
     );
 
     return c.json({ success: true });
