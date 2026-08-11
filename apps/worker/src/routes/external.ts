@@ -30,6 +30,7 @@ import { getExternalLotteryFairnessScore } from '../utils/external-lottery';
 import { createReservationLimitService } from '../features/reservations/application/limits';
 import { createD1ReservationLimitRepository } from '../features/reservations/infrastructure/d1-limit-repository';
 import { createD1GroupMembershipReader } from '../features/reservations/infrastructure/d1-membership-reader';
+import { checkActiveGroupAccess } from '../features/reservations/application/membership';
 import { parseRoomNames } from '../features/reservations/domain/external-lottery';
 import { createD1ExternalReservationRepository } from '../features/reservations/infrastructure/d1-external-repository';
 import type { ExternalStudioRecord as StudioRow } from '../features/reservations/application/external-repository';
@@ -88,10 +89,13 @@ async function validateReservationBase(
   if (!validation.isValid) return { error: validation.error || 'INVALID_RESERVATION_TIME', status: 400 };
 
   if (groupId) {
-    if (!await createD1GroupMembershipReader(env.DB).isActiveGroup(groupId)) {
+    const access = await checkActiveGroupAccess(
+      createD1GroupMembershipReader(env.DB), userId, groupId, !isAdminMode,
+    );
+    if (access === 'GROUP_INACTIVE_OR_MISSING') {
       return { error: 'GROUP_NOT_FOUND', status: 400 };
     }
-    if (!isAdminMode && !await createD1GroupMembershipReader(env.DB).isUserInGroup(userId, groupId)) return { error: 'NOT_GROUP_MEMBER', status: 403 };
+    if (access === 'NOT_MEMBER') return { error: 'NOT_GROUP_MEMBER', status: 403 };
   }
 
   const studio = await getStudio(env, externalStudioId);
@@ -344,7 +348,17 @@ externalReservationRoutes.post('/lottery', async (c) => {
     const user = c.get('user');
     const data = CreateExternalLotteryApplicationRequestSchema.parse(await c.req.json());
     const groupId = data.group_id ?? null;
-    if (groupId && !await createD1GroupMembershipReader(c.env.DB).isUserInGroup(user.id, groupId)) return c.json({ success: false, error: 'NOT_GROUP_MEMBER' }, 403);
+    if (groupId) {
+      const access = await checkActiveGroupAccess(
+        createD1GroupMembershipReader(c.env.DB), user.id, groupId, true,
+      );
+      if (access === 'GROUP_INACTIVE_OR_MISSING') {
+        return c.json({ success: false, error: 'GROUP_NOT_FOUND' }, 400);
+      }
+      if (access === 'NOT_MEMBER') {
+        return c.json({ success: false, error: 'NOT_GROUP_MEMBER' }, 403);
+      }
+    }
     const studio = await getStudio(c.env, data.external_studio_id);
     if (!studio) return c.json({ success: false, error: 'EXTERNAL_NOT_FOUND' }, 404);
     const preferredStart = data.preferred_start_datetime ? new Date(data.preferred_start_datetime) : null;
