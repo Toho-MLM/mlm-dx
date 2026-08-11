@@ -482,7 +482,7 @@ app.post('/auth/passkey/register/finish', requireAuth, async (c) => {
       credential_id: credentialId, public_key: credentialPublicKey, counter,
       device_type: credentialDeviceType ?? null, backed_up: credentialBackedUp ? 1 : 0,
       transports: credentialTransports, attestation_format: fmt ?? null,
-    }, timestamp, crypto.randomUUID);
+    }, timestamp, () => crypto.randomUUID());
     await deleteChallenge(c.env, challenge.id);
     return c.json({ success: true });
   } catch (error) {

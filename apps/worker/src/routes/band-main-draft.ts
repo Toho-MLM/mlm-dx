@@ -51,7 +51,7 @@ bandMainDraftRoutes.post('/', async (c) => {
     const members = await getMemberOptions(c.env);
     const id = crypto.randomUUID();
     const shareToken = createShareToken();
-    const state = createInitialDraftState(members.map((member) => member.id), crypto.randomUUID);
+    const state = createInitialDraftState(members.map((member) => member.id), () => crypto.randomUUID());
     await createD1BandDraftRepository(c.env.DB).create({
       id, share_token: shareToken, state_json: JSON.stringify(state), created_by: user.id,
     }, now);
@@ -129,7 +129,7 @@ bandMainDraftRoutes.post('/:token/finalize', async (c) => {
     }
     const state = parseDraftState(draft.state_json);
     const now = new Date().toISOString();
-    const groupsToCreate = groupsFromDraft(state, crypto.randomUUID);
+    const groupsToCreate = groupsFromDraft(state, () => crypto.randomUUID());
 
     const memberIds = [...new Set(groupsToCreate.flatMap((group) => (
       group.assignments.map((assignment) => assignment.memberId)
@@ -140,7 +140,7 @@ bandMainDraftRoutes.post('/:token/finalize', async (c) => {
       }
     }
 
-    if (!await createD1BandDraftRepository(c.env.DB).finalize(draft, groupsToCreate, now, crypto.randomUUID)) {
+    if (!await createD1BandDraftRepository(c.env.DB).finalize(draft, groupsToCreate, now, () => crypto.randomUUID())) {
       return c.json({ success: false, error: 'DRAFT_NOT_FOUND' }, 409);
     }
 

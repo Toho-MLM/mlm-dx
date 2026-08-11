@@ -99,7 +99,7 @@ setlistRoutes.get('/event/:eventId', async (c) => {
     }
 
     const repository = createD1SetlistRepository(c.env.DB);
-    await repository.ensureMainBandEntries(eventId, new Date().toISOString(), crypto.randomUUID);
+    await repository.ensureMainBandEntries(eventId, new Date().toISOString(), () => crypto.randomUUID());
     const groupIds = isAdminMode ? undefined : await repository.userGroupIds(user.id);
     const data = await repository.listEvent(eventId, groupIds);
 
@@ -161,7 +161,7 @@ setlistRoutes.put('/', async (c) => {
       return c.json({ success: false, error: 'SONG_LIMIT_EXCEEDED' }, 400);
     }
 
-    await repository.replace(entryId, reqData.note, reqData.hasSE, reqData.items, now, crypto.randomUUID);
+    await repository.replace(entryId, reqData.note, reqData.hasSE, reqData.items, now, () => crypto.randomUUID());
 
     return c.json({ success: true });
   } catch (error) {
