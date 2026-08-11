@@ -34,7 +34,7 @@ timelineRoutes.get('/event/:eventId', async (c) => {
       return c.json({ success: false, error: 'EVENT_NOT_FOUND' }, 404);
     }
 
-    await repository.ensureMainBandEntries(eventId, new Date().toISOString(), crypto.randomUUID);
+    await repository.ensureMainBandEntries(eventId, new Date().toISOString(), () => crypto.randomUUID());
     return c.json({ success: true, data: await repository.list(eventId) });
   } catch (error) {
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
