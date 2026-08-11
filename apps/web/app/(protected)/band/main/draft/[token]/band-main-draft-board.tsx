@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { apiClient, type BandDraftMember, type BandDraftState } from '@/lib/api'
+import { apiClient, type BandDraftMember, type BandDraftState, type BandMainDraft } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Instrument, instrumentNames } from '@/app/types'
 import { translateError } from '@/lib/error-label'
@@ -48,13 +48,13 @@ type ServerMessage =
   | { type: 'snapshot'; state: BandDraftState }
   | { type: 'error'; error: string }
 
-export function BandMainDraftBoard({ token }: { token: string }) {
+export function BandMainDraftBoard({ token, initialDraft }: { token: string; initialDraft?: BandMainDraft | null }) {
   const router = useRouter()
-  const [state, setState] = useState<BandDraftState | null>(null)
-  const [members, setMembers] = useState<BandDraftMember[]>([])
-  const [canFinalize, setCanFinalize] = useState(false)
-  const [canDelete, setCanDelete] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [state, setState] = useState<BandDraftState | null>(initialDraft?.state ?? null)
+  const [members, setMembers] = useState<BandDraftMember[]>(initialDraft?.members ?? [])
+  const [canFinalize, setCanFinalize] = useState(initialDraft?.canFinalize ?? false)
+  const [canDelete, setCanDelete] = useState(initialDraft?.canDelete ?? false)
+  const [loading, setLoading] = useState(initialDraft === undefined || initialDraft === null)
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('connecting')
   const [touchDrag, setTouchDrag] = useState<{ memberId: string; x: number; y: number } | null>(null)
   const [trayHeight, setTrayHeight] = useState(getDefaultTrayHeight)
@@ -96,8 +96,9 @@ export function BandMainDraftBoard({ token }: { token: string }) {
   }, [token])
 
   useEffect(() => {
+    if (initialDraft !== undefined && initialDraft !== null) return
     void loadDraft()
-  }, [loadDraft])
+  }, [initialDraft, loadDraft])
 
   useEffect(() => {
     let cancelled = false

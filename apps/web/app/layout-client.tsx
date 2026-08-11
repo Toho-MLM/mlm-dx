@@ -99,9 +99,9 @@ function AuthRedirect() {
   return null
 }
 
-export function MainContent({ children }: { children: React.ReactNode }) {
+export function MainContent({ children, initialUser }: { children: React.ReactNode; initialUser: NonNullable<ReturnType<typeof useAuth>['user']> }) {
   return (
-    <AuthProvider>
+    <AuthProvider initialUser={initialUser}>
       <Gate>
         <SidebarProvider>
           <Content>{children}</Content>
