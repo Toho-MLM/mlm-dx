@@ -1,4 +1,4 @@
-name: Deploy Frontend and Backend to Cloudflare Workers
+name: Deploy unified Cloudflare Worker
 
 on:
   push:
@@ -10,11 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  deploy_backend:
-    name: Deploy Backend
+  deploy:
+    name: Test, migrate, build, and deploy dx
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,10 +24,10 @@ jobs:
         run: corepack enable
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Type check Backend
-        run: pnpm --filter mlm-dx-worker type-check
-      - name: Test Backend
-        run: pnpm --filter mlm-dx-worker test
+      - name: Type check Web and Worker
+        run: pnpm type-check
+      - name: Test Worker
+        run: pnpm test:worker
       - name: Validate SMTP configuration
         env:
           SMTP_HOST: ${{ vars.SMTP_HOST }}
@@ -58,96 +56,49 @@ jobs:
             echo "SMTP_PORT must be 465 or 587"
             exit 1
           fi
-      - name: Update wrangler.toml with environment variables
-        working-directory: apps/worker
+      - name: Configure unified Worker bindings
+        working-directory: apps/web
         run: |
-          sed -i "s|NODE_ENV = \"\"|NODE_ENV = \"${{ vars.NODE_ENV }}\"|" wrangler.toml
-          sed -i "s|AUTH_URL = \"\"|AUTH_URL = \"${{ vars.AUTH_URL }}\"|" wrangler.toml
-          sed -i "s|AUTH_SECRET = \"\"|AUTH_SECRET = \"${{ secrets.AUTH_SECRET }}\"|" wrangler.toml
-          sed -i "s|GOOGLE_CLIENT_ID = \"\"|GOOGLE_CLIENT_ID = \"${{ secrets.GOOGLE_CLIENT_ID }}\"|" wrangler.toml
-          sed -i "s|GOOGLE_CLIENT_SECRET = \"\"|GOOGLE_CLIENT_SECRET = \"${{ secrets.GOOGLE_CLIENT_SECRET }}\"|" wrangler.toml
-          sed -i "s|CORS_ORIGIN = \"\"|CORS_ORIGIN = \"${{ vars.CORS_ORIGIN }}\"|" wrangler.toml
-          sed -i "s|FRONTEND_URL = \"\"|FRONTEND_URL = \"${{ vars.FRONTEND_URL }}\"|" wrangler.toml
-          sed -i "s|SMTP_HOST = \"\"|SMTP_HOST = \"${{ vars.SMTP_HOST }}\"|" wrangler.toml
-          sed -i "s|SMTP_PORT = \"\"|SMTP_PORT = \"${{ vars.SMTP_PORT }}\"|" wrangler.toml
-          sed -i "s|SMTP_SECURITY = \"\"|SMTP_SECURITY = \"${{ vars.SMTP_SECURITY }}\"|" wrangler.toml
-          sed -i "s|SMTP_FROM_EMAIL = \"\"|SMTP_FROM_EMAIL = \"${{ vars.SMTP_FROM_EMAIL }}\"|" wrangler.toml
-          sed -i "s|SMTP_FROM_NAME = \"\"|SMTP_FROM_NAME = \"${{ vars.SMTP_FROM_NAME }}\"|" wrangler.toml
-          sed -i "/^\[\[env\.production\.d1_databases\]\]/,/^\[/{s|database_id = \"\"|database_id = \"${{ vars.D1_DATABASE_ID }}\"|}" wrangler.toml
-      - name: Check for D1 migration files
-        id: d1_migrations
-        working-directory: apps/worker
-        run: |
-          if find migrations -maxdepth 1 -type f -name '*.sql' | grep -q .; then
-            echo "has_migrations=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_migrations=false" >> "$GITHUB_OUTPUT"
-          fi
+          sed -i '/^\[env.production.vars\]/,/^\[/{s|AUTH_URL = ""|AUTH_URL = "${{ vars.AUTH_URL }}"|}' wrangler.toml
+          sed -i '/^\[env.production.vars\]/,/^\[/{s|CORS_ORIGIN = ""|CORS_ORIGIN = "${{ vars.AUTH_URL }}"|}' wrangler.toml
+          sed -i '/^\[env.production.vars\]/,/^\[/{s|FRONTEND_URL = ""|FRONTEND_URL = "${{ vars.AUTH_URL }}"|}' wrangler.toml
+          sed -i '/^\[env.production.vars\]/,/^\[/{s|SMTP_HOST = ""|SMTP_HOST = "${{ vars.SMTP_HOST }}"|}' wrangler.toml
+          sed -i '/^\[env.production.vars\]/,/^\[/{s|SMTP_PORT = ""|SMTP_PORT = "${{ vars.SMTP_PORT }}"|}' wrangler.toml
+          sed -i '/^\[env.production.vars\]/,/^\[/{s|SMTP_SECURITY = ""|SMTP_SECURITY = "${{ vars.SMTP_SECURITY }}"|}' wrangler.toml
+          sed -i '/^\[env.production.vars\]/,/^\[/{s|SMTP_FROM_EMAIL = ""|SMTP_FROM_EMAIL = "${{ vars.SMTP_FROM_EMAIL }}"|}' wrangler.toml
+          sed -i '/^\[env.production.vars\]/,/^\[/{s|SMTP_FROM_NAME = ""|SMTP_FROM_NAME = "${{ vars.SMTP_FROM_NAME }}"|}' wrangler.toml
+          sed -i '/^\[\[env.production.d1_databases\]\]/,/^\[/{s|database_id = ""|database_id = "${{ vars.D1_DATABASE_ID }}"|}' wrangler.toml
       - name: Apply D1 migrations
-        if: steps.d1_migrations.outputs.has_migrations == 'true'
         uses: cloudflare/wrangler-action@v3.14.1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/worker
+          workingDirectory: apps/web
           command: d1 migrations apply mlm-dx-db --env production --remote
           packageManager: pnpm
-      - name: Delete applied D1 migration files
-        if: steps.d1_migrations.outputs.has_migrations == 'true'
-        working-directory: apps/worker
-        run: find migrations -maxdepth 1 -type f -name '*.sql' -delete
-      - name: Commit deleted D1 migration files
-        if: steps.d1_migrations.outputs.has_migrations == 'true'
-        run: |
-          if git diff --quiet -- apps/worker/migrations; then
-            echo "No migration files to delete."
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/worker/migrations
-          git commit -m "chore: remove applied d1 migrations [skip ci]"
-          git push origin HEAD:${{ github.ref_name }}
-      - name: Deploy to Cloudflare Workers with Wrangler
+      - name: Build OpenNext unified Worker
+        run: pnpm build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      - name: Deploy dx Worker
         uses: cloudflare/wrangler-action@v3.14.1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/worker
+          workingDirectory: apps/web
           command: deploy --env production
           packageManager: pnpm
           environment: production
           secrets: |
+            AUTH_SECRET
+            GOOGLE_CLIENT_ID
+            GOOGLE_CLIENT_SECRET
             SMTP_USER
             SMTP_PASSWORD
         env:
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-
-  deploy_frontend:
-    name: Deploy Frontend
-    runs-on: ubuntu-latest
-    needs: deploy_backend
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: Enable Corepack
-        run: corepack enable
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Type check Frontend
-        run: pnpm --filter mlm-dx-web type-check
-      - name: Deploy Frontend with OpenNext for Cloudflare Workers
-        working-directory: apps/web
-        run: pnpm run deploy
-        env:
-          NODE_ENV: production
-          NEXT_PUBLIC_API_URL: "${{ vars.NEXT_PUBLIC_API_URL }}"
-          NEXT_PUBLIC_GOOGLE_CLIENT_ID: "${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}"
-          CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}"
-          CLOUDFLARE_ACCOUNT_ID: "${{ vars.CLOUDFLARE_ACCOUNT_ID }}"

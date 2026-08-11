@@ -1,6 +1,8 @@
 # MLM-DX
 
-MLM-DXは、バンド管理システムです。Next.jsフロントエンド（Cloudflare Pages）とCloudflare Workersバックエンド（D1/SQLite）で構成されています。
+MLM-DXは、バンド管理システムです。Next.js（OpenNext）とHono APIを単一のCloudflare Worker `dx` で配信し、D1とDurable Objectsを同じデプロイに統合しています。モノレポ内の `apps/worker` はAPI実装と分離ローカル開発用として維持します。
+
+公開URLは `/api` または `/api/**` だけをHonoへ送り、それ以外をNext.jsへ送ります。ブラウザは本番で同一オリジンの `/api` を使用し、`NEXT_PUBLIC_API_URL` は分離開発時のAPI origin（例: `http://localhost:8787`）だけを指定します。
 
 ## プロジェクト構造
 
@@ -103,12 +105,12 @@ https://your-frontend-domain.com
 
 **開発環境:**
 ```
-http://localhost:8787/auth/callback/google
+http://localhost:8787/api/auth/callback/google
 ```
 
 **本番環境:**
 ```
-https://mlm-dx-worker.your-account.workers.dev/auth/callback/google
+https://your-app-domain.example/api/auth/callback/google
 ```
 
 7. 「作成」をクリック
@@ -130,7 +132,7 @@ openssl rand -base64 32
 # 環境設定
 NODE_ENV=development
 
-# API設定
+# 分離開発用API origin（`/api`は付けない）
 NEXT_PUBLIC_API_URL=http://localhost:8787
 
 # Google One Tap設定
@@ -142,8 +144,7 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-dev-google-client-id
 # 環境設定
 NODE_ENV=production
 
-# API設定
-NEXT_PUBLIC_API_URL=https://your-worker-domain.workers.dev
+# 本番は同一オリジンのためNEXT_PUBLIC_API_URLを設定しない
 
 # Google One Tap設定
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id
@@ -176,49 +177,54 @@ SMTP_FROM_EMAIL=no-reply@example.com
 SMTP_FROM_NAME=MLM-DX
 ```
 
-#### 4.4 バックエンド（apps/worker/wrangler.toml）
+#### 4.4 統合Worker（apps/web/wrangler.toml）
 
 ```toml
-name = "mlm-dx-worker"
-main = "src/index.ts"
+name = "dx"
+main = "worker.ts"
 compatibility_date = "2024-12-20"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+binding = "ASSETS"
+directory = ".open-next/assets"
 
 [triggers]
-crons = ["0 15 * * *"]
-
-[env.development]
-name = "mlm-dx-worker-dev"
+crons = ["0 12 * * *", "0 15 * * *"]
 
 [env.production]
-name = "mlm-dx-worker"
+name = "dx"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "mlm-dx-db"
 database_id = "your-production-database-id"
+migrations_dir = "../worker/migrations"
 
-# 共通設定
+[[services]]
+binding = "WORKER_SELF_REFERENCE"
+service = "dx"
+
+# 分離ローカル開発設定
 [vars]
-CORS_ORIGIN = "https://your-frontend-domain.com"
-FRONTEND_URL = "https://your-frontend-domain.com"
+CORS_ORIGIN = "http://localhost:8787"
+FRONTEND_URL = "http://localhost:8787"
+AUTH_URL = "http://localhost:8787"
 
 # 本番環境設定（機密情報はwrangler secret putで管理）
 [env.production.vars]
-CORS_ORIGIN = "https://your-frontend-domain.com"
-FRONTEND_URL = "https://your-frontend-domain.com"
+CORS_ORIGIN = "https://your-app-domain.example"
+FRONTEND_URL = "https://your-app-domain.example"
+AUTH_URL = "https://your-app-domain.example"
 SMTP_HOST = "smtp.example.com"
 SMTP_PORT = "465"
 SMTP_SECURITY = "tls"
 SMTP_FROM_EMAIL = "no-reply@example.com"
 SMTP_FROM_NAME = "MLM-DX"
 
-# 開発環境設定（機密情報は.dev.varsファイルで管理）
-[env.development.vars]
-CORS_ORIGIN = "http://localhost:3000"
-FRONTEND_URL = "http://localhost:3000"
 ```
 
-イベント終了後のクリーンアップ処理（`deleteExpiredEvents`）も有効にする場合は、`crons` に `"0 16 * * *"` を追加してください。
+統合previewで必要な `AUTH_SECRET`、Google OAuth、SMTPの秘密値は `apps/web/.dev.vars` に設定します。`pnpm dev` の分離開発では従来どおり `apps/worker/.dev.vars` を使用します。
 
 #### 4.5 環境変数の詳細説明
 
@@ -227,7 +233,7 @@ FRONTEND_URL = "http://localhost:3000"
 | 変数名 | 説明 | 開発環境 | 本番環境 |
 |--------|------|----------|----------|
 | `NODE_ENV` | 環境設定 | `development` | `production` |
-| `NEXT_PUBLIC_API_URL` | バックエンドAPIのURL | `http://localhost:8787` | `https://your-worker-domain.workers.dev` |
+| `NEXT_PUBLIC_API_URL` | 分離開発用API origin（パスを含めない） | `http://localhost:8787` | 未設定（同一オリジン） |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google One Tap 用 OAuth クライアントID | 既存 `GOOGLE_CLIENT_ID` と同じ値 | 既存 `GOOGLE_CLIENT_ID` と同じ値 |
 
 **バックエンド環境変数:**
@@ -235,7 +241,7 @@ FRONTEND_URL = "http://localhost:3000"
 | 変数名 | 説明 | 開発環境 | 本番環境 |
 |--------|------|----------|----------|
 | `NODE_ENV` | 環境設定（クッキーのsecure設定に影響） | `development` | `production` |
-| `AUTH_URL` | 認証コールバック用のURL | `http://localhost:8787` | `https://your-worker-domain.workers.dev` |
+| `AUTH_URL` | 認証コールバック用の正規origin | `http://localhost:8787` | Webと同じ正規origin |
 | `AUTH_SECRET` | JWTトークンの署名用秘密鍵 | `.dev.vars`ファイル | `wrangler secret put` |
 | `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | `.dev.vars`ファイル | `wrangler secret put` |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | `.dev.vars`ファイル | `wrangler secret put` |
@@ -285,13 +291,9 @@ GitHub Actionsから本番デプロイする場合は、リポジトリ設定へ
 
 | 変数名 | 設定内容 |
 |--------|----------|
-| `NODE_ENV` | `production` |
-| `AUTH_URL` | Workerの本番URL |
-| `CORS_ORIGIN` | Webフロントエンドの本番URL |
-| `FRONTEND_URL` | Webフロントエンドの本番URL |
+| `AUTH_URL` | WebとAPIが共有する正規origin |
 | `D1_DATABASE_ID` | 本番D1データベースID |
 | `CLOUDFLARE_ACCOUNT_ID` | CloudflareアカウントID |
-| `NEXT_PUBLIC_API_URL` | ブラウザからアクセスするWorkerの本番URL |
 | `SMTP_HOST` | SMTPサーバーのホスト名 |
 | `SMTP_PORT` | `465`または`587` |
 | `SMTP_SECURITY` | 465の場合は`tls`、587の場合は`starttls` |
@@ -348,19 +350,7 @@ pnpm run dev:worker        # バックエンド（Wrangler ローカル）
 # 本番環境にフルスタックデプロイ
 pnpm run deploy
 ```
-#### 個別デプロイ
-
-**Cloudflare Workers:**
-```bash
-# 本番環境
-pnpm run deploy:worker
-```
-
-**Next.js（Cloudflare Pages）:**
-```bash
-# 本番環境
-pnpm run deploy:web
-```
+WebとAPIの個別本番デプロイは行いません。`pnpm run deploy` が `dx` 1 Workerだけを公開します。
 
 ### ビルド
 
@@ -560,11 +550,11 @@ pnpm run db:reset:local
 1. ユーザーがフロントエンドの「Googleでログイン」ボタンをクリック
 2. フロントエンドがWorkersの`POST /auth/signin/google`を呼び出し
 3. Workersが`state/nonce/code_verifier`を生成してCookie保存し、`code_challenge(S256)`付きのGoogle認可URLを返却
-4. Googleが認可後にWorkersの`GET /auth/callback/google`へ`code/state`で戻す
+4. Googleが認可後に統合Workerの`GET /api/auth/callback/google`へ`code/state`で戻す
 5. Workersが`state`・`code_verifier`・`redirect_uri`でトークン交換し、IDトークンをJWKSで検証（`iss/aud/exp/nonce`）
 6. アクセストークンで`userinfo`を取得し、`email_verified`とD1のホワイトリストを検証
 7. 許可時にWorkersがJWTを生成（`sub`にDBユーザーID）し、HttpOnly+Secure Cookie（1週間）で返却
-8. フロントエンドにリダイレクト後、`GET /auth/session`でセッション取得
+8. フロントエンドにリダイレクト後、`GET /api/auth/session`でセッション取得
 
 ### 認証フロー図
 
@@ -584,7 +574,7 @@ sequenceDiagram
 
     Note over U,D: 2. Googleによる認可 & コールバック
     U->>G: Googleログイン画面で認証/同意
-    G-->>W: GET /auth/callback/google?code&state
+    G-->>W: GET /api/auth/callback/google?code&state
     W->>W: state/nonce 検証
     W->>G: POST /token(code + code_verifier + redirect_uri)
     G-->>W: access_token + id_token
@@ -735,13 +725,13 @@ INSERT INTO users (
 - **クロスオリジンでセッションが送信されない**: `__Host-`プレフィックスが削除されていることを確認
 
 ### 認証フローのテスト
-1. ブラウザで `http://localhost:8787/auth/signin/google` にアクセス
+1. ブラウザで `http://localhost:8787/api/auth/signin/google` にアクセス
 2. Googleアカウントでログイン
 3. 認証が成功すると、フロントエンドにリダイレクトされます
 
 ### セッション情報の確認
 ```bash
-curl http://localhost:8787/auth/session
+curl http://localhost:8787/api/auth/session
 ```
 
 ## pnpmスクリプト一覧
@@ -761,8 +751,10 @@ curl http://localhost:8787/auth/session
 | スクリプト | 説明 |
 |-----------|------|
 | `pnpm run deploy` | 本番環境にフルスタックデプロイ |
-| `pnpm run deploy:worker` | 本番環境にWorkerデプロイ |
-| `pnpm run deploy:web` | 本番環境にWebデプロイ |
+| `pnpm run preview` | OpenNext統合Workerをローカルpreview |
+| `pnpm run build` | OpenNext統合Workerをbuild |
+| `pnpm run dry-run` | 統合WorkerをWranglerでdry-run |
+| `pnpm run deploy` | `dx`統合Workerを本番デプロイ |
 | `pnpm run db:setup:prod` | 本番DB設定 |
 
 ### ユーティリティ

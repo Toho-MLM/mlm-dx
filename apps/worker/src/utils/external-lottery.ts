@@ -10,7 +10,6 @@ import type {
   LotteryApplicationRecord as ApplicationRow,
 } from '../features/reservations/application/external-lottery-repository';
 import {
-  EXTERNAL_LOTTERY_DURATION_STEP_MINUTES,
   EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
   EXTERNAL_LOTTERY_MIN_DURATION_MINUTES,
   calculateExternalLotteryWeights,
@@ -150,8 +149,7 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
         !identity ||
         !range ||
         range.requestedMinutes < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES ||
-        range.requestedMinutes > EXTERNAL_LOTTERY_MAX_DURATION_MINUTES ||
-        range.requestedMinutes % EXTERNAL_LOTTERY_DURATION_STEP_MINUTES !== 0
+        range.requestedMinutes > EXTERNAL_LOTTERY_MAX_DURATION_MINUTES
       ) {
         await markLost(env, application.id, null);
         processed += 1;
@@ -235,8 +233,7 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
       const candidates = rankedRooms.flatMap((room) => {
         const duration = hasFullRoom
           ? fairShareMinutes
-          : Math.floor(room.longestMinutes / EXTERNAL_LOTTERY_DURATION_STEP_MINUTES)
-            * EXTERNAL_LOTTERY_DURATION_STEP_MINUTES;
+          : room.longestMinutes;
         if (duration < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES) return [];
         return room.intervals.flatMap((interval) => enumerateStarts(interval, duration, dayRange.endUTC)).map((start) => {
           const end = new Date(start.getTime() + duration * 60000);

@@ -20,7 +20,6 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'EXTERNAL_PERIOD_CONFLICT': '外部スタジオの利用期間外です。',
   'INVALID_ROOM_NUMBER': '指定された部屋が見つかりません。',
   'INVALID_ROOM_NAMES': '部屋名に空欄または重複があります。',
-  'INVALID_TIME_UNIT': '希望時刻は5分単位で指定してください。',
   'EXTERNAL_LOTTERY_DATE_OUT_OF_RANGE': '抽選対象は翌日から14日先までの時間枠です。',
   'EXTERNAL_LOTTERY_CLOSED': 'この時間枠の抽選受付は終了しました。',
   'EXTERNAL_LOTTERY_PERIOD_PROTECTED': '抽選対象の期間は外部予約できません。抽選申込を利用してください。',

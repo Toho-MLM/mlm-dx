@@ -45,11 +45,11 @@ function addJstDays(date: string, days: number): string {
   return getJstParts(value).date
 }
 
-function roundUpToFiveMinutes(value: Date): Date {
+function roundUpToNextMinute(value: Date): Date {
   const rounded = new Date(value)
+  const hadPartialMinute = rounded.getSeconds() > 0 || rounded.getMilliseconds() > 0
   rounded.setSeconds(0, 0)
-  const remainder = rounded.getMinutes() % 5
-  rounded.setMinutes(rounded.getMinutes() + (remainder === 0 ? 5 : 5 - remainder))
+  if (hadPartialMinute) rounded.setMinutes(rounded.getMinutes() + 1)
   return rounded
 }
 
@@ -101,7 +101,7 @@ export function ReservationEditDialog({
   const rangeEndValue = rangeEndParts ? `${rangeEndParts.date}T${rangeEndParts.time}` : undefined
   const minDate = allowCrossDay && rangeStartParts ? rangeStartParts.date : today
   const maxDate = allowCrossDay && rangeEndParts ? rangeEndParts.date : addJstDays(today, 14)
-  const earliestEndTime = started ? getJstParts(roundUpToFiveMinutes(new Date())).time : '06:10'
+  const earliestEndTime = started ? getJstParts(roundUpToNextMinute(new Date())).time : '06:10'
   const selectedStart = new Date(`${date}T${startTime}:00+09:00`)
   const fourHoursAfterStart = Number.isNaN(selectedStart.getTime())
     ? { date, time: '23:00' }
@@ -127,7 +127,7 @@ export function ReservationEditDialog({
     ? undefined
     : getJstParts(new Date(selectedStart.getTime() + 10 * 60 * 1000))
   const minimumCrossDayEnd = started
-    ? getJstParts(roundUpToFiveMinutes(new Date()))
+    ? getJstParts(roundUpToNextMinute(new Date()))
     : tenMinutesAfterStart
   const minimumCrossDayEndValue = minimumCrossDayEnd
     ? `${minimumCrossDayEnd.date}T${minimumCrossDayEnd.time}`
@@ -184,7 +184,7 @@ export function ReservationEditDialog({
                   type="datetime-local"
                   min={rangeStartValue}
                   max={rangeEndValue}
-                  step={300}
+                  step={60}
                   value={startDateTime}
                   readOnly={started}
                   aria-readonly={started}
@@ -203,7 +203,7 @@ export function ReservationEditDialog({
                   type="datetime-local"
                   min={minimumCrossDayEndValue}
                   max={maximumCrossDayEndValue}
-                  step={300}
+                  step={60}
                   value={endDateTime}
                   onChange={(event) => {
                     const [nextDate, nextTime] = event.target.value.split('T')
@@ -238,7 +238,7 @@ export function ReservationEditDialog({
                     type="time"
                     min={startTimeMin}
                     max={startTimeMax}
-                    step={300}
+                    step={60}
                     value={startTime}
                     readOnly={started}
                     aria-readonly={started}
@@ -253,7 +253,7 @@ export function ReservationEditDialog({
                     type="time"
                     min={endTimeMin}
                     max={endTimeMax}
-                    step={300}
+                    step={60}
                     value={endTime}
                     onChange={(event) => setEndTime(event.target.value)}
                     required

@@ -4,7 +4,9 @@
 
 ## 概要
 
-このドキュメントは `apps/worker` 以下で実装されている Cloudflare Worker (Hono ベース) の HTTP API を対象としたリファレンスです。すべてのエンドポイントは同一のベース URL (`https://<your-worker-domain>`) を共有し、Cookie ベースのセッション認証を使用します。
+このドキュメントは `apps/worker` 以下で実装されている Hono API を対象としたリファレンスです。統合Worker `dx` の同一originでCookieベースのセッション認証を使用します。
+
+以下の表に記載するHono内部パスは、公開時にはすべて先頭へ `/api` を付けます。たとえばセッションは `GET /api/auth/session`、Google OAuth callbackは `GET /api/auth/callback/google` です。`/api` のない旧公開パスは提供しません。
 
 ### バインディング / 環境変数
 
@@ -261,7 +263,7 @@ Worker は以下の `Bindings` を前提としています。
 - 認証必須。抽選状況一覧用に、取り消されたものを除く全申込を返します。
 
 #### POST `/reservations/external/lottery`
-- 認証必須。`requested_duration_minutes`（30〜120分、10分単位）は必須です。
+- 認証必須。`requested_duration_minutes`（30〜120分の整数）は必須です。
 - `preferred_start_datetime` と `preferred_end_datetime` は任意ですが、指定する場合は両方必要です。
 - 希望時間帯を指定しない場合、6:00〜23:00の制限は適用せず、外部スタジオの時間枠全体を抽選対象にします。
 

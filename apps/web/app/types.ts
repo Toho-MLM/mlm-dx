@@ -29,7 +29,7 @@ export interface UserData {
 export interface User {
     id: string;
     name: string;
-    nickname?: string;
+    nickname?: string | null;
     email: string;
     picture?: string;
     instruments: ('VO' | 'GT' | 'KEY' | 'DR' | 'BA')[];
