@@ -12,3 +12,16 @@ export interface GroupMembershipReader {
   getActiveGroupIdentity(groupId: string): Promise<ActiveGroupIdentity | null>;
   listIdentityMembers(userId: string, groupId: string | null): Promise<IdentityMember[]>;
 }
+
+export type ActiveGroupAccessResult = 'ALLOWED' | 'GROUP_INACTIVE_OR_MISSING' | 'NOT_MEMBER';
+
+export async function checkActiveGroupAccess(
+  reader: GroupMembershipReader,
+  userId: string,
+  groupId: string,
+  requireMembership: boolean,
+): Promise<ActiveGroupAccessResult> {
+  if (!await reader.isActiveGroup(groupId)) return 'GROUP_INACTIVE_OR_MISSING';
+  if (requireMembership && !await reader.isUserInGroup(userId, groupId)) return 'NOT_MEMBER';
+  return 'ALLOWED';
+}
