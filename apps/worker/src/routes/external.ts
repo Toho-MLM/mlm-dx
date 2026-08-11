@@ -17,7 +17,6 @@ import {
   ExternalSchema,
   UpdateExternalReservationRequestSchema,
   UpdateReservationStatusRequestSchema,
-  EXTERNAL_LOTTERY_DURATION_STEP_MINUTES,
   EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
   EXTERNAL_LOTTERY_MIN_DURATION_MINUTES,
   isExternalLotteryReservationProtected,
@@ -382,9 +381,6 @@ externalReservationRoutes.post('/lottery', async (c) => {
       ) {
         return c.json({ success: false, error: 'EXTERNAL_PERIOD_CONFLICT' }, 400);
       }
-      const startMinute = preferredStart.getTime() / 60000;
-      const endMinute = preferredEnd.getTime() / 60000;
-      if (!Number.isInteger(startMinute / 5) || !Number.isInteger(endMinute / 5)) return c.json({ success: false, error: 'INVALID_TIME_UNIT' }, 400);
     }
     const rangeStart = preferredStart?.toISOString() ?? studio.start_datetime;
     const rangeEnd = preferredEnd?.toISOString() ?? studio.end_datetime;
@@ -403,7 +399,6 @@ externalReservationRoutes.post('/lottery', async (c) => {
     if (
       requestedMinutes < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES ||
       requestedMinutes > EXTERNAL_LOTTERY_MAX_DURATION_MINUTES ||
-      requestedMinutes % EXTERNAL_LOTTERY_DURATION_STEP_MINUTES !== 0 ||
       holdEnd > availableEnd
     ) {
       return c.json({ success: false, error: 'INVALID_RESERVATION_TIME' }, 400);

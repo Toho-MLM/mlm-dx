@@ -376,7 +376,6 @@ export const ExternalLotteryStateSchema = z.enum(['PENDING', 'WON', 'LOST', 'CAN
 
 export const EXTERNAL_LOTTERY_MIN_DURATION_MINUTES = 30;
 export const EXTERNAL_LOTTERY_MAX_DURATION_MINUTES = 120;
-export const EXTERNAL_LOTTERY_DURATION_STEP_MINUTES = 10;
 
 export const isExternalLotteryReservationProtected = (
   startValue: Date | string,
@@ -468,8 +467,7 @@ const ExternalLotteryTimeRequestSchema = z.object({
   preferred_end_datetime: ValidDateTimeStringSchema.nullable(),
   requested_duration_minutes: z.number().int()
     .min(EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
-    .max(EXTERNAL_LOTTERY_MAX_DURATION_MINUTES)
-    .multipleOf(EXTERNAL_LOTTERY_DURATION_STEP_MINUTES),
+    .max(EXTERNAL_LOTTERY_MAX_DURATION_MINUTES),
 }).superRefine((data, ctx) => {
   const hasStart = data.preferred_start_datetime !== null;
   const hasEnd = data.preferred_end_datetime !== null;

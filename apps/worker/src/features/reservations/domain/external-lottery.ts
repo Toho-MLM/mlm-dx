@@ -1,5 +1,4 @@
 import {
-  EXTERNAL_LOTTERY_DURATION_STEP_MINUTES,
   EXTERNAL_LOTTERY_MIN_DURATION_MINUTES,
 } from '@shared-schemas';
 import type { TimeInterval } from './time';
@@ -117,7 +116,7 @@ function countTemporalStarts(
   blockedEnd?: Date
 ): number {
   const durationMs = EXTERNAL_LOTTERY_MIN_DURATION_MINUTES * 60000;
-  const stepMs = 5 * 60000;
+  const stepMs = 60000;
   const firstStart = Math.ceil(application.rangeStart.getTime() / stepMs) * stepMs;
   const lastStart = application.rangeEnd.getTime() - durationMs;
   let count = 0;
@@ -153,7 +152,7 @@ export function enumerateStarts(
   durationMinutes: number,
   latestStartExclusive: Date
 ): Date[] {
-  const step = 5 * 60000;
+  const step = 60000;
   const first = Math.ceil(interval.start.getTime() / step) * step;
   const latest = Math.min(
     interval.end.getTime() - durationMinutes * 60000,
@@ -181,8 +180,6 @@ export function getFairShareMinutes(
     Math.floor(availableMinutes / EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
   );
   if (possibleWinners === 0) return 0;
-  const fairShare = Math.floor(
-    availableMinutes / possibleWinners / EXTERNAL_LOTTERY_DURATION_STEP_MINUTES
-  ) * EXTERNAL_LOTTERY_DURATION_STEP_MINUTES;
+  const fairShare = Math.floor(availableMinutes / possibleWinners);
   return Math.min(application.requestedMinutes, fairShare);
 }

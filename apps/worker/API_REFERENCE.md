@@ -263,7 +263,7 @@ Worker は以下の `Bindings` を前提としています。
 - 認証必須。抽選状況一覧用に、取り消されたものを除く全申込を返します。
 
 #### POST `/reservations/external/lottery`
-- 認証必須。`requested_duration_minutes`（30〜120分、10分単位）は必須です。
+- 認証必須。`requested_duration_minutes`（30〜120分の整数）は必須です。
 - `preferred_start_datetime` と `preferred_end_datetime` は任意ですが、指定する場合は両方必要です。
 - 希望時間帯を指定しない場合、6:00〜23:00の制限は適用せず、外部スタジオの時間枠全体を抽選対象にします。
 
