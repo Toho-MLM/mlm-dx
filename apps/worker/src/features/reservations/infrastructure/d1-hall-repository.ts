@@ -49,6 +49,43 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
       return Boolean(row);
     },
 
+    async listOverlappingLotteryTargets(startTime, endTime) {
+      const rows = await db.prepare(`
+        SELECT target.id, target.start_datetime, target.end_datetime,
+          EXISTS (
+            SELECT 1 FROM external_lottery_applications application
+            WHERE application.external_studio_id = target.id AND application.state = 'PENDING'
+          ) has_pending_applications
+        FROM external_studios target
+        WHERE target.target_type = 'HALL' AND target.start_datetime < ? AND target.end_datetime > ?
+        ORDER BY target.start_datetime ASC, target.id ASC
+      `).bind(endTime, startTime).all<{
+        id: string;
+        start_datetime: string;
+        end_datetime: string;
+        has_pending_applications: number;
+      }>();
+      return (rows.results ?? []).map((row) => ({
+        ...row,
+        has_pending_applications: Boolean(row.has_pending_applications),
+      }));
+    },
+
+    async createReservationIfAvailable(input) {
+      const result = await db.prepare(`
+        INSERT INTO reservations (id, user_id, group_id, start_time, end_time, state, created_at, updated_at)
+        SELECT ?, ?, ?, ?, ?, 'PENDING', ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM reservations
+          WHERE state IN ('PENDING','CONFIRMED') AND start_time < ? AND end_time > ?
+        )
+      `).bind(
+        input.id, input.userId, input.groupId, input.startTime, input.endTime, input.createdAt, input.createdAt,
+        input.endTime, input.startTime
+      ).run();
+      return Number(result.meta.changes ?? 0) > 0;
+    },
+
     async createReservation(input) {
       await db.prepare(`
         INSERT INTO reservations (id, user_id, group_id, start_time, end_time, state, created_at, updated_at)
@@ -86,17 +123,20 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
         UPDATE reservations SET start_time = ?, end_time = ?, state = ?, updated_at = ?
         WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
           AND (
-            ? != 'CONFIRMED'
+            (? = 0 AND ? != 'CONFIRMED')
             OR NOT EXISTS (
               SELECT 1 FROM reservations other
-              WHERE other.id != ? AND other.state = 'CONFIRMED'
+              WHERE other.id != ?
+                AND ((? = 1 AND other.state IN ('PENDING','CONFIRMED')) OR (? = 0 AND other.state = 'CONFIRMED'))
                 AND other.start_time < ? AND other.end_time > ?
             )
           )
       `).bind(
         input.startTime, input.endTime, input.state, input.updatedAt,
         input.id, input.previous.start_time, input.previous.end_time, input.previous.state, input.previous.updated_at,
-        input.state, input.id, input.endTime, input.startTime
+        input.enforceAvailability ? 1 : 0, input.state, input.id,
+        input.enforceAvailability ? 1 : 0, input.enforceAvailability ? 1 : 0,
+        input.endTime, input.startTime
       ).run();
       return Number(result.meta.changes ?? 0) > 0;
     },

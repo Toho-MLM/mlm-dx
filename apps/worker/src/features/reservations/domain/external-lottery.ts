@@ -1,7 +1,7 @@
 import {
   EXTERNAL_LOTTERY_MIN_DURATION_MINUTES,
 } from '@shared-schemas';
-import type { TimeInterval } from './time';
+import { getJSTDateString, type TimeInterval } from './time';
 
 export type LotteryStudio = {
   start_datetime: string;
@@ -37,6 +37,43 @@ export type RoomOption = {
   intervals: TimeInterval[];
   longestMinutes: number;
 };
+
+export type HallLotteryBookingTarget = {
+  start_datetime: string;
+  has_pending_applications: boolean;
+};
+
+export function isValidHallLotteryTarget(startValue: string, endValue: string): boolean {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return false;
+  const date = getJSTDateString(start);
+  if (getJSTDateString(new Date(end.getTime() - 1)) !== date) return false;
+  const businessStart = new Date(`${date}T06:00:00+09:00`);
+  const businessEnd = new Date(`${date}T23:00:00+09:00`);
+  return start >= businessStart && end <= businessEnd
+    && end.getTime() - start.getTime() >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES * 60_000;
+}
+
+export function isLotteryTargetProtected(targetStart: string, now = new Date()): boolean {
+  const targetDate = getJSTDateString(new Date(targetStart));
+  const drawAt = new Date(`${targetDate}T21:00:00+09:00`);
+  drawAt.setUTCDate(drawAt.getUTCDate() - 1);
+  return now < drawAt;
+}
+
+export function getHallLotteryBookingState(
+  targets: HallLotteryBookingTarget[],
+  now = new Date()
+): { protected: boolean; afterDraw: boolean } {
+  if (targets.length === 0) return { protected: false, afterDraw: false };
+  const protectedTarget = targets.some((target) => (
+    isLotteryTargetProtected(target.start_datetime, now) || target.has_pending_applications
+  ));
+  return protectedTarget
+    ? { protected: true, afterDraw: false }
+    : { protected: false, afterDraw: true };
+}
 
 export function parseRoomNames(value: string): string[] {
   const parsed: unknown = JSON.parse(value);

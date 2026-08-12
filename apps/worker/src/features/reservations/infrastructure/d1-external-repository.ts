@@ -11,7 +11,7 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
   return {
     async listStudios() {
       const rows = await db.prepare(`
-        SELECT id, start_datetime, end_datetime, room_names, created_at, updated_at
+        SELECT id, target_type, start_datetime, end_datetime, room_names, created_at, updated_at
         FROM external_studios ORDER BY start_datetime ASC, id ASC
       `).all<ExternalStudioRecord>();
       return rows.results ?? [];
@@ -19,36 +19,78 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
 
     async findStudio(id) {
       return await db.prepare(`
-        SELECT id, start_datetime, end_datetime, room_names, created_at, updated_at
+        SELECT id, target_type, start_datetime, end_datetime, room_names, created_at, updated_at
         FROM external_studios WHERE id = ?
       `).bind(id).first<ExternalStudioRecord>() ?? null;
     },
 
     async createStudio(input) {
-      await db.prepare(`
-        INSERT INTO external_studios (id, start_datetime, end_datetime, room_names, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+      const result = await db.prepare(`
+        INSERT INTO external_studios (id, target_type, start_datetime, end_datetime, room_names, created_at, updated_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?
+        WHERE ? != 'HALL' OR NOT EXISTS (
+          SELECT 1 FROM external_studios
+          WHERE target_type = 'HALL' AND start_datetime < ? AND end_datetime > ?
+        )
       `).bind(
-        input.id, input.startTime, input.endTime, JSON.stringify(input.roomNames), input.createdAt, input.createdAt
+        input.id, input.targetType, input.startTime, input.endTime, JSON.stringify(input.roomNames), input.createdAt, input.createdAt,
+        input.targetType, input.endTime, input.startTime
       ).run();
+      return Number(result.meta.changes ?? 0) > 0;
     },
 
-    async listConfirmedReservationIdsByStudio(studioId) {
+    async hasHallTargetOverlap(startTime, endTime, excludeId) {
+      const row = await db.prepare(`
+        SELECT id FROM external_studios
+        WHERE target_type = 'HALL' AND start_datetime < ? AND end_datetime > ?
+          ${excludeId ? 'AND id != ?' : ''}
+        LIMIT 1
+      `).bind(endTime, startTime, ...(excludeId ? [excludeId] : [])).first();
+      return Boolean(row);
+    },
+
+    async closeLotteryApplications(studioId, updatedAt) {
+      await db.prepare(`
+        UPDATE external_lottery_applications SET state = 'CANCELLED', updated_at = ?
+        WHERE external_studio_id = ? AND state = 'PENDING'
+      `).bind(updatedAt, studioId).run();
+    },
+
+    async listRevocableReservationIds(studioId, targetType) {
+      if (targetType === 'HALL') {
+        const rows = await db.prepare(`
+          SELECT reservation.id
+          FROM reservations reservation
+          INNER JOIN external_lottery_applications application ON application.id = reservation.id
+          WHERE application.external_studio_id = ? AND reservation.state IN ('PENDING','CONFIRMED')
+        `).bind(studioId).all<{ id: string }>();
+        return (rows.results ?? []).map((row) => row.id);
+      }
       const rows = await db.prepare(`
         SELECT id FROM external_reservations WHERE external_studio_id = ? AND state = 'CONFIRMED'
       `).bind(studioId).all<{ id: string }>();
       return (rows.results ?? []).map((row) => row.id);
     },
 
-    async deleteStudioCascade(studioId, updatedAt) {
-      await db.batch([
+    async deleteStudioCascade(studioId, targetType, updatedAt) {
+      const statements = [
         db.prepare(`
           UPDATE external_lottery_applications SET state = 'CANCELLED', updated_at = ?
           WHERE external_studio_id = ? AND state = 'PENDING'
         `).bind(updatedAt, studioId),
-        db.prepare('DELETE FROM external_reservations WHERE external_studio_id = ?').bind(studioId),
-        db.prepare('DELETE FROM external_studios WHERE id = ?').bind(studioId),
-      ]);
+      ];
+      if (targetType === 'HALL') {
+        statements.unshift(db.prepare(`
+          UPDATE reservations SET state = 'DECLINED', updated_at = ?
+          WHERE state IN ('PENDING','CONFIRMED') AND id IN (
+            SELECT id FROM external_lottery_applications WHERE external_studio_id = ?
+          )
+        `).bind(updatedAt, studioId));
+      } else {
+        statements.push(db.prepare('DELETE FROM external_reservations WHERE external_studio_id = ?').bind(studioId));
+      }
+      statements.push(db.prepare('DELETE FROM external_studios WHERE id = ?').bind(studioId));
+      await db.batch(statements);
     },
 
     async hasRoomConflict(input) {
@@ -230,7 +272,7 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
     async listLotteryApplications() {
       const rows = await db.prepare(`
         SELECT ela.*, COALESCE(u.nickname, u.name) user_name, g.name group_name, g.is_main,
-               es.start_datetime studio_start_datetime, es.end_datetime studio_end_datetime, es.room_names,
+               es.target_type, es.start_datetime studio_start_datetime, es.end_datetime studio_end_datetime, es.room_names,
                CASE WHEN ela.assigned_room_number IS NULL THEN NULL
                  ELSE json_extract(es.room_names, '$[' || (ela.assigned_room_number - 1) || ']') END assigned_room_name
         FROM external_lottery_applications ela

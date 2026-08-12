@@ -10,6 +10,7 @@ import { prepareAndSendReservationEmail } from '../utils/reservation-email';
 import { parseUuid } from '../utils/uuid';
 import { ZodError } from 'zod';
 import { getRemainingIntervalAfterUnavailablePeriod } from '../features/reservations/domain/time';
+import { getHallLotteryBookingState } from '../features/reservations/domain/external-lottery';
 import { createReservationLimitService, type ReservationLimitScope, type ReservationLimitType } from '../features/reservations/application/limits';
 import { createD1ReservationLimitRepository } from '../features/reservations/infrastructure/d1-limit-repository';
 import { createD1GroupMembershipReader } from '../features/reservations/infrastructure/d1-membership-reader';
@@ -107,6 +108,16 @@ async function hasDuplicateRollingReservationLimit(
   excludeId?: string
 ): Promise<boolean> {
   return createD1ReservationLimitRepository(env.DB).hasRollingLimit(scope, excludeId);
+}
+
+async function getHallLotteryWindowState(
+  repository: ReturnType<typeof createD1HallReservationRepository>,
+  startTime: string,
+  endTime: string,
+  now = new Date()
+): Promise<{ protected: boolean; afterDraw: boolean }> {
+  const targets = await repository.listOverlappingLotteryTargets(startTime, endTime);
+  return getHallLotteryBookingState(targets, now);
 }
 
 async function getReservationLimitRemaining(
@@ -227,6 +238,12 @@ reservationRoutes.post('/', async (c) => {
     }
 
     const hallRepository = createD1HallReservationRepository(c.env.DB);
+    const lotteryWindow = isAdminMode
+      ? { protected: false, afterDraw: false }
+      : await getHallLotteryWindowState(hallRepository, start_time, end_time);
+    if (lotteryWindow.protected) {
+      return c.json({ success: false, error: 'LOTTERY_PERIOD_PROTECTED' }, 409);
+    }
     if (await hallRepository.hasUnavailableOverlap(start_time, end_time)) {
       return c.json({
         success: false,
@@ -250,14 +267,20 @@ reservationRoutes.post('/', async (c) => {
       }
     }
 
-    await hallRepository.createReservation({
+    const reservationInput = {
       id: reservationId,
       userId,
       groupId,
       startTime: start_time,
       endTime: end_time,
       createdAt: now,
-    });
+    };
+    const created = lotteryWindow.afterDraw
+      ? await hallRepository.createReservationIfAvailable(reservationInput)
+      : (await hallRepository.createReservation(reservationInput), true);
+    if (!created) {
+      return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
+    }
 
     if (!isAdminMode && await hasReservationLimitConflict(
       c.env,
@@ -413,6 +436,13 @@ reservationRoutes.put('/:id', async (c) => {
       return c.json({ success: false, error: 'BLOCKED_PERIOD_CONFLICT' }, 400);
     }
 
+    const lotteryWindow = isAdminMode
+      ? { protected: false, afterDraw: false }
+      : await getHallLotteryWindowState(hallRepository, normalizedStartTime, normalizedEndTime, now);
+    if (lotteryWindow.protected) {
+      return c.json({ success: false, error: 'LOTTERY_PERIOD_PROTECTED' }, 409);
+    }
+
     if (!isAdminMode && await hasReservationLimitConflict(
       c.env,
       reservation.user_id,
@@ -447,6 +477,7 @@ reservationRoutes.put('/:id', async (c) => {
       endTime: finalEndTime,
       state: processResult.state,
       updatedAt: updateTime,
+      enforceAvailability: lotteryWindow.afterDraw,
     });
     if (!updated) {
       return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);

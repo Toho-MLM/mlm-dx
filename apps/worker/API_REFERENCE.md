@@ -259,13 +259,24 @@ Worker は以下の `Bindings` を前提としています。
 - 外部予約は最短10分・最長4時間で、選択した外部スタジオの時間枠内に収まる必要があります。
 - 6:00〜23:00と同日内の制限は適用せず、スタジオの時間枠内であれば日付をまたいで予約できます。
 
+#### GET `/reservation/external/studios` / POST `/reservation/external/studios/bulk`
+- 認証必須。管理用の抽選対象を返します。`target_type` は `HALL` または `EXTERNAL` です。
+- 作成は管理者のみです。ホールは同一JST日内の6:00〜23:00に30分以上で設定し、既存のホール抽選対象と時間が重複する場合は拒否します。
+- 既存の外部スタジオ行は migration により `EXTERNAL` として保持されます。
+- ホール対象を削除すると、未処理申込を閉じ、当選済みで利用前のホール予約を `DECLINED` にして取消通知を送ります。
+
 #### GET `/reservations/external/lottery`
-- 認証必須。抽選状況一覧用に、取り消されたものを除く全申込を返します。
+- 認証必須。ホールと外部を含む抽選状況一覧用に、取り消されたものを除く全申込を返します。
 
 #### POST `/reservations/external/lottery`
 - 認証必須。`requested_duration_minutes`（30〜120分の整数）は必須です。
 - `preferred_start_datetime` と `preferred_end_datetime` は任意ですが、指定する場合は両方必要です。
 - 希望時間帯を指定しない場合、6:00〜23:00の制限は適用せず、外部スタジオの時間枠全体を抽選対象にします。
+
+#### ホール予約の抽選期間制限
+- `POST /reservations` と `PUT /reservations/:id` は、未抽選の `HALL` 対象時間と一部でも重なる場合、`LOTTERY_PERIOD_PROTECTED` で拒否します。管理者モードでは適用しません。
+- 抽選後は、同時間帯の `PENDING` / `CONFIRMED` ホール予約と競合しない空き時間のみ通常予約できます。
+- ホール当選は `reservations`、外部当選は `external_reservations` に `CONFIRMED` として保存されます。
 
 #### 外部予約の抽選期間制限
 - `POST /reservations/external/check`、`POST /reservations/external`、`PUT /reservations/external/:id` は、利用日の前日21:00に行う抽選が未実施で、かつ利用日が翌日〜14日先に含まれる場合、`EXTERNAL_LOTTERY_PERIOD_PROTECTED` で拒否します。
