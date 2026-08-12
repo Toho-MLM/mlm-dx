@@ -78,8 +78,11 @@ export const ReservationSchema = z.object({
   cancellable: z.boolean(),
 });
 
+export const LotteryTargetTypeSchema = z.enum(['HALL', 'EXTERNAL']);
+
 export const ExternalSchema = z.object({
   id: UuidSchema,
+  target_type: LotteryTargetTypeSchema,
   start_datetime: z.string(),
   end_datetime: z.string(),
   room_names: z.array(z.string().min(1)).min(1),
@@ -332,6 +335,7 @@ export const UpdateReservationStatusRequestSchema = z.object({
 });
 
 export const CreateExternalRequestSchema = z.object({
+  target_type: LotteryTargetTypeSchema.default('EXTERNAL'),
   names: z.array(z.string().trim().min(1)).min(1),
   start_datetime: ValidDateTimeStringSchema,
   end_datetime: ValidDateTimeStringSchema,
@@ -413,6 +417,7 @@ export const isExternalLotteryReservationProtected = (
 export const ExternalLotteryApplicationSchema = z.object({
   id: UuidSchema,
   external_studio_id: UuidSchema,
+  target_type: LotteryTargetTypeSchema,
   user_id: UuidSchema,
   group_id: UuidSchema.nullable(),
   user_name: z.string().nullable(),
@@ -816,6 +821,7 @@ export type Member = z.infer<typeof MemberSchema>;
 export type Reservation = z.infer<typeof ReservationSchema>;
 export type ReservationState = z.infer<typeof ReservationStateSchema>;
 export type External = z.infer<typeof ExternalSchema>;
+export type LotteryTargetType = z.infer<typeof LotteryTargetTypeSchema>;
 export type ExternalReservation = z.infer<typeof ExternalReservationSchema>;
 export type ExternalReservationConflict = z.infer<typeof ExternalReservationConflictSchema>;
 export type ExternalLotteryState = z.infer<typeof ExternalLotteryStateSchema>;

@@ -11,6 +11,13 @@ export type HallReservationRecord = {
 
 export type AffectedHallReservation = Pick<HallReservationRecord, 'start_time' | 'end_time'> & { id: string };
 
+export type HallLotteryTargetRecord = {
+  id: string;
+  start_datetime: string;
+  end_datetime: string;
+  has_pending_applications: boolean;
+};
+
 export type UnavailableAdjustment = {
   reservationId: string;
   startTime?: string;
@@ -21,6 +28,10 @@ export type UnavailableAdjustment = {
 export interface HallReservationRepository {
   listVisibleReservations(input: { userId: string; admin: boolean; since: string }): Promise<Record<string, unknown>[]>;
   hasUnavailableOverlap(startTime: string, endTime: string): Promise<boolean>;
+  listOverlappingLotteryTargets(startTime: string, endTime: string): Promise<HallLotteryTargetRecord[]>;
+  createReservationIfAvailable(input: {
+    id: string; userId: string; groupId: string | null; startTime: string; endTime: string; createdAt: string;
+  }): Promise<boolean>;
   createReservation(input: {
     id: string; userId: string; groupId: string | null; startTime: string; endTime: string; createdAt: string;
   }): Promise<void>;
@@ -35,6 +46,7 @@ export interface HallReservationRepository {
     endTime: string;
     state: string;
     updatedAt: string;
+    enforceAvailability?: boolean;
   }): Promise<boolean>;
   restoreReservation(input: {
     id: string;

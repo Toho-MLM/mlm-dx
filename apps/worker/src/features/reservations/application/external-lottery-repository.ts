@@ -1,5 +1,6 @@
 export type LotteryStudioRecord = {
   id: string;
+  target_type: 'HALL' | 'EXTERNAL';
   start_datetime: string;
   end_datetime: string;
   room_names: string;
@@ -36,13 +37,14 @@ export type ExistingRoomReservation = {
 
 export interface ExternalLotteryRepository {
   listExistingReservationIdentities(rangeStart: string, rangeEnd: string): Promise<ReservationIdentityRecord[]>;
-  getFairnessUsageMinutes(userId: string, groupId: string | null, rangeStart: string, rangeEnd: string): Promise<number>;
+  getFairnessUsageMinutes(targetType: 'HALL' | 'EXTERNAL', userId: string, groupId: string | null, rangeStart: string, rangeEnd: string): Promise<number>;
   markLost(applicationId: string, score: number | null, updatedAt: string): Promise<void>;
   listStudios(rangeStart: string, rangeEnd: string): Promise<LotteryStudioRecord[]>;
   listPendingApplications(studio: LotteryStudioRecord, rangeStart: string, rangeEnd: string): Promise<LotteryApplicationRecord[]>;
-  findCreatedReservation(id: string): Promise<ExistingExternalReservation | null>;
+  findCreatedReservation(targetType: 'HALL' | 'EXTERNAL', id: string): Promise<ExistingExternalReservation | null>;
   recoverWon(input: { applicationId: string; score: number; reservation: ExistingExternalReservation; updatedAt: string }): Promise<boolean>;
   listConfirmedRoomReservations(studioId: string, rangeStart: string, rangeEnd: string): Promise<ExistingRoomReservation[]>;
+  listHallOccupiedIntervals(rangeStart: string, rangeEnd: string): Promise<ExistingRoomReservation[]>;
   allocateWon(input: {
     application: LotteryApplicationRecord;
     studioId: string;
@@ -52,4 +54,11 @@ export interface ExternalLotteryRepository {
     score: number;
     updatedAt: string;
   }): Promise<boolean>;
+  allocateHallWon(input: {
+    application: LotteryApplicationRecord;
+    startTime: string;
+    endTime: string;
+    score: number;
+    updatedAt: string;
+  }): Promise<'WON' | 'LOST' | 'UNCHANGED'>;
 }

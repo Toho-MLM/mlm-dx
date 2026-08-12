@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS reservations (
 
 CREATE TABLE IF NOT EXISTS external_studios (
   id TEXT PRIMARY KEY,
+  target_type TEXT NOT NULL DEFAULT 'EXTERNAL' CHECK (target_type IN ('HALL','EXTERNAL')),
   start_datetime DATETIME NOT NULL,
   end_datetime DATETIME NOT NULL,
   room_names TEXT NOT NULL CHECK (json_valid(room_names) AND json_type(room_names) = 'array' AND json_array_length(room_names) > 0),
@@ -132,6 +133,9 @@ CREATE TABLE IF NOT EXISTS external_reservations (
 
 CREATE INDEX IF NOT EXISTS idx_external_reservations_room_time
   ON external_reservations(external_studio_id, room_number, state, start_time, end_time);
+
+CREATE INDEX IF NOT EXISTS idx_external_studios_target_time
+  ON external_studios(target_type, start_datetime, end_datetime);
 
 CREATE TABLE IF NOT EXISTS external_lottery_applications (
   id TEXT PRIMARY KEY,
