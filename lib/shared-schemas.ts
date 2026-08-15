@@ -613,17 +613,18 @@ const YoutubeUrlSchema = z.string().trim().regex(
   /^https:\/\/(?:(?:www|m|music)\.)?(?:youtube\.com\/.+|youtu\.be\/[a-zA-Z0-9_-]{11}(?:[/?#].*)?)$/i,
   "有効なYouTube URLを入力してください。",
 );
+const ArchiveYearSchema = z.number().int().min(1900).max(9999);
 
 export const CreateArchiveRequestSchema = z.object({
   title: z.string().trim().min(1),
   youtube_url: YoutubeUrlSchema,
-  year: z.number().int().min(1900).max(new Date().getFullYear() + 10),
+  year: ArchiveYearSchema,
 });
 
 export const UpdateArchiveRequestSchema = z.object({
   title: z.string().trim().min(1),
   youtube_url: YoutubeUrlSchema,
-  year: z.number().int().min(1900).max(new Date().getFullYear() + 10),
+  year: ArchiveYearSchema,
 });
 
 export const CreateEventRequestSchema = z.object({
