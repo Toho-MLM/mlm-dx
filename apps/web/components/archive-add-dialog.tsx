@@ -13,6 +13,24 @@ interface ArchiveAddDialogProps {
   onArchiveAdded: () => void;
 }
 
+const normalizeYoutubeUrl = (value: string): string => {
+  const trimmedValue = value.trim();
+
+  try {
+    const url = new URL(trimmedValue);
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+
+    if (hostname !== 'youtu.be') return trimmedValue;
+
+    const videoId = url.pathname.split('/').filter(Boolean)[0];
+    if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) return trimmedValue;
+
+    return `https://www.youtube.com/watch?v=${videoId}`;
+  } catch {
+    return trimmedValue;
+  }
+};
+
 export function ArchiveAddDialog({ onArchiveAdded }: ArchiveAddDialogProps) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -28,7 +46,7 @@ export function ArchiveAddDialog({ onArchiveAdded }: ArchiveAddDialogProps) {
       setIsPending(true);
       const res = await apiClient.createArchive({
         title: title.trim(),
-        youtube_url: youtubeUrl.trim(),
+        youtube_url: normalizeYoutubeUrl(youtubeUrl),
         year
       });
       if (!res.success) {
@@ -73,6 +91,8 @@ export function ArchiveAddDialog({ onArchiveAdded }: ArchiveAddDialogProps) {
             <Label htmlFor="youtubeUrl">YouTube URL</Label>
             <Input
               id="youtubeUrl"
+              type="url"
+              inputMode="url"
               value={youtubeUrl}
               onChange={(e) => setYoutubeUrl(e.target.value)}
               disabled={isPending}
