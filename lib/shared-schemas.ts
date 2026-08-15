@@ -614,15 +614,20 @@ export const isReservationTimeValid = (date: Date, hour: number, minute: number)
   return selectedDate >= new Date() && hour >= 6 && !(hour === 23 && minute > 0);
 };
 
+const YoutubeUrlSchema = z.string().trim().regex(
+  /^https:\/\/(?:(?:www|m|music)\.)?(?:youtube\.com\/.+|youtu\.be\/[a-zA-Z0-9_-]{11}(?:[/?#].*)?)$/i,
+  "有効なYouTube URLを入力してください。",
+);
+
 export const CreateArchiveRequestSchema = z.object({
   title: z.string().trim().min(1),
-  youtube_url: z.string().url(),
+  youtube_url: YoutubeUrlSchema,
   year: z.number().int().min(1900).max(new Date().getFullYear() + 10),
 });
 
 export const UpdateArchiveRequestSchema = z.object({
   title: z.string().trim().min(1),
-  youtube_url: z.string().url(),
+  youtube_url: YoutubeUrlSchema,
   year: z.number().int().min(1900).max(new Date().getFullYear() + 10),
 });
 

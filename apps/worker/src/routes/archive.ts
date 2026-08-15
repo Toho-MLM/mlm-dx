@@ -13,6 +13,12 @@ const archiveRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 archiveRoutes.use('*', requireAuth);
 
+const logValidationIssues = (operation: 'create' | 'update', error: z.ZodError) => {
+  console.error(`Archive ${operation} validation error:`, JSON.stringify(
+    error.issues.map((issue) => ({ code: issue.code, path: issue.path })),
+  ));
+};
+
 archiveRoutes.get('/', async (c: Context<{ Bindings: Bindings; Variables: Variables }>) => {
   try {
     const results = await createD1ArchiveRepository(c.env.DB).list();
@@ -45,7 +51,6 @@ archiveRoutes.post('/', async (c: Context<{ Bindings: Bindings; Variables: Varia
     return c.json<ApiResponse>({ success: true }, 201);
 
   } catch (error) {
-    console.error('Create archive error:', error);
     if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
       return c.json<ApiResponse>({
         success: false,
@@ -53,8 +58,10 @@ archiveRoutes.post('/', async (c: Context<{ Bindings: Bindings; Variables: Varia
       }, 403);
     }
     if (error instanceof z.ZodError) {
+      logValidationIssues('create', error);
       return c.json<ApiResponse>({ success: false, error: 'INVALID_INPUT' }, 400);
     }
+    console.error('Create archive error:', error);
     return c.json<ApiResponse>({
       success: false,
       error: 'INTERNAL_SERVER_ERROR'
@@ -85,7 +92,6 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings; Variables: Var
     return c.json<ApiResponse>({ success: true });
 
   } catch (error) {
-    console.error('Update archive error:', error);
     if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
       return c.json<ApiResponse>({
         success: false,
@@ -93,8 +99,10 @@ archiveRoutes.put('/:id', async (c: Context<{ Bindings: Bindings; Variables: Var
       }, 403);
     }
     if (error instanceof z.ZodError) {
+      logValidationIssues('update', error);
       return c.json<ApiResponse>({ success: false, error: 'INVALID_INPUT' }, 400);
     }
+    console.error('Update archive error:', error);
     return c.json<ApiResponse>({
       success: false,
       error: 'INTERNAL_SERVER_ERROR'
