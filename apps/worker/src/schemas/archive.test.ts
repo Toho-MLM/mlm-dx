@@ -22,4 +22,20 @@ describe('CreateArchiveRequestSchema', () => {
       youtube_url: 'https://example.com/video',
     }).success).toBe(false);
   });
+
+  it.each([1900, 2025, 9999])('accepts four-digit archive year %i', (year) => {
+    expect(CreateArchiveRequestSchema.safeParse({
+      ...validArchive,
+      youtube_url: 'https://youtu.be/dQw4w9WgXcQ',
+      year,
+    }).success).toBe(true);
+  });
+
+  it.each([1899, 10000])('rejects archive year outside the four-digit range: %i', (year) => {
+    expect(CreateArchiveRequestSchema.safeParse({
+      ...validArchive,
+      youtube_url: 'https://youtu.be/dQw4w9WgXcQ',
+      year,
+    }).success).toBe(false);
+  });
 });
