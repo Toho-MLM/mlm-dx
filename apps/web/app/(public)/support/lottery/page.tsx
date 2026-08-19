@@ -14,9 +14,9 @@ export default function LotterySupportPage() {
       <main className="mx-auto w-full max-w-4xl space-y-4 p-4 pt-0">
         <Alert>
           <Clock3Icon className="h-4 w-4" />
-          <AlertTitle>抽選は各利用対象日の前日21:00に実施されます</AlertTitle>
+          <AlertTitle>抽選は対象ごとに表示された日の21:00に実施されます</AlertTitle>
           <AlertDescription>
-            外部抽選は翌日から14日先までの時間枠に申し込めます。日付をまたぐ時間枠には、まだ終了していない抽選日時がすべて表示されます。抽選後の空き部屋は「外部予約」から先着順で予約してください。
+            抽選は翌日から14日先までのホール・外部の対象時間枠に申し込めます。ホールの抽選実行日は対象ごとに設定され、外部抽選は利用日前日の21:00に実施されます。日付をまたぐ外部の時間枠には、まだ終了していない抽選日時がすべて表示されます。抽選後の空き時間は「予約表」または「外部予約」から予約してください。
           </AlertDescription>
         </Alert>
 
@@ -26,7 +26,7 @@ export default function LotterySupportPage() {
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-relaxed text-foreground">
             <ol className="list-decimal space-y-2 pl-5">
-              <li>「外部抽選」で「申込」を押します。</li>
+              <li>「抽選」で「申込」を押します。</li>
               <li>個人または所属バンドから予約名義を選びます。</li>
               <li>利用したい時間枠と必須の希望利用時間を選び、必要に応じて許容時間の起点・終点を入力します。部屋を選ぶ必要はありません。</li>
             </ol>
@@ -46,7 +46,7 @@ export default function LotterySupportPage() {
                   </tr>
                   <tr>
                     <td className={tdClass}>指定しない</td>
-                    <td className={tdClass}>スタジオの時間枠全体から、指定した長さの連続枠を探します。</td>
+                    <td className={tdClass}>選択した抽選対象の時間枠全体から、指定した長さの連続枠を探します。</td>
                   </tr>
                 </tbody>
               </table>
@@ -103,7 +103,7 @@ export default function LotterySupportPage() {
               <li>希望時間をすべて確保できない場合は、すべての部屋で最も長い連続空き枠へ短縮します。30分未満しか確保できない場合は落選です。</li>
             </ol>
             <p>
-              同じメンバーが参加する確定済みのホール予約・外部予約や、同じ抽選ですでに当選した予約と時間が重ならない候補だけを使います。実際の割当時間が予約上限を超える候補も使用しません。
+              同じメンバーが参加する受付済みのホール予約・確定済みの外部予約や、同じ抽選ですでに当選した予約と時間が重ならない候補だけを使います。ホールでは予約不可期間も空き時間から除外します。実際の割当時間が予約上限を超える候補も使用しません。
             </p>
           </CardContent>
         </Card>
@@ -117,7 +117,7 @@ export default function LotterySupportPage() {
               申し込み中は、希望分数を予約上限から一時的に確保します。<Badge variant="secondary" className="mx-1">当選</Badge>した場合は確定予約として引き継ぎ、<Badge variant="outline" className="mx-1">落選</Badge>または抽選前に取り消した場合は解放します。
             </div>
             <p>
-              外部予約の利用時間は公平性のため、個人予約は個人ID、バンド予約はグループIDごとに集計されます。キャンセル済みの予約も集計に含み、予約時間を変更した場合は変更後の分数を使います。
+              公平性は対象別に計算します。ホール抽選ではホール利用時間、外部抽選では外部利用時間を、個人は個人ID、バンドはグループIDごとに集計します。キャンセル済みの予約も集計に含み、予約時間を変更した場合は変更後の分数を使います。
             </p>
           </CardContent>
         </Card>
@@ -127,10 +127,10 @@ export default function LotterySupportPage() {
             <CardTitle>申込状況と結果の確認</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm leading-relaxed text-foreground">
-            <p>「外部抽選」では、抽選対象の時間枠が横方向に並び、その下に各時間枠への申込がすべて表示されます。</p>
+            <p>「抽選」では、ホールと外部の抽選対象が横方向に並び、その下に各時間枠への申込がすべて表示されます。</p>
             <ul className="list-disc space-y-1 pl-5">
               <li>自分または所属バンドに関係する申込は、濃い枠線で表示されます。</li>
-              <li>抽選前は、確定済み予約を除いた空きを競合申込へ公平配分し、優先区分ごとに時間の余裕と公平性から計算したウェイトで処理順を複数回抽選した、おおよその当選確率が表示されます。希望時間より短い割当でも、30分以上なら当選として数えます。</li>
+              <li>抽選前は、既存予約と予約不可期間を除いた空きを競合申込へ公平配分し、優先区分ごとに時間の余裕と公平性から計算したウェイトで処理順を複数回抽選した、おおよその当選確率が表示されます。希望時間より短い割当でも、30分以上なら当選として数えます。</li>
               <li>当選確率は目安です。予約上限、メンバーの予約重複、表示後の利用実績の変化などにより、実際の結果とは異なる場合があります。</li>
               <li>抽選後は、公平性スコア、割り当てられた部屋と利用時間を確認できます。</li>
             </ul>

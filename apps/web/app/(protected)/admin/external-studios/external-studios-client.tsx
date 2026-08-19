@@ -8,11 +8,13 @@ import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/app/context/AuthContext'
 import { apiClient } from '@/lib/api'
@@ -42,6 +44,15 @@ const getDefaultPeriod = () => {
   }
 }
 
+const getDefaultHallPeriod = () => {
+  const today = getJSTDateString(new Date())
+  const drawDate = new Date() < new Date(`${today}T21:00:00+09:00`)
+    ? today
+    : addJSTDays(today, 1)
+  const targetDate = addJSTDays(drawDate, 1)
+  return { startDateTime: `${targetDate}T06:00`, endDateTime: `${targetDate}T23:00`, drawDate }
+}
+
 export function ExternalStudiosClient({ initialExternals }: { initialExternals?: External[] | null }) {
   return (
     <Suspense fallback={null}>
@@ -60,9 +71,11 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [targetType, setTargetType] = useState<'HALL' | 'EXTERNAL'>('EXTERNAL')
   const [names, setNames] = useState<string[]>([''])
   const [startDateTime, setStartDateTime] = useState(() => getDefaultPeriod().startDateTime)
   const [endDateTime, setEndDateTime] = useState(() => getDefaultPeriod().endDateTime)
+  const [drawDate, setDrawDate] = useState(() => getDefaultHallPeriod().drawDate)
 
   const fetchExternals = useCallback(async (showLoading = false) => {
     try {
@@ -71,12 +84,12 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
       if (response.success && response.data) {
         setExternals(response.data)
       } else {
-        toast.error('外部スタジオの取得中にエラーが発生しました', {
+        toast.error('抽選対象の取得中にエラーが発生しました', {
           description: translateError(response.error || 'UNKNOWN_ERROR'),
         })
       }
     } catch (error) {
-      toast.error('外部スタジオの取得中にエラーが発生しました', {
+      toast.error('抽選対象の取得中にエラーが発生しました', {
         description: translateError((error as Error).message),
       })
     } finally {
@@ -100,7 +113,7 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
-    const normalizedNames = names.map((name) => name.trim())
+    const normalizedNames = targetType === 'HALL' ? ['ホール'] : names.map((name) => name.trim())
     if (normalizedNames.some((name) => !name)) {
       toast.error('すべての部屋名を入力してください')
       return
@@ -116,24 +129,47 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
       toast.error('終了日時は開始日時より後にしてください')
       return
     }
+    if (targetType === 'HALL' && (
+      startDateTime.slice(0, 10) !== endDateTime.slice(0, 10)
+      || startDateTime.slice(11) < '06:00'
+      || endDateTime.slice(11) > '23:00'
+      || end.getTime() - start.getTime() < 30 * 60_000
+    )) {
+      toast.error('ホールは同じ日の6:00〜23:00に30分以上で設定してください')
+      return
+    }
+    const drawAt = targetType === 'HALL' ? new Date(`${drawDate}T21:00:00+09:00`) : null
+    if (targetType === 'HALL' && (
+      !drawDate
+      || !drawAt
+      || Number.isNaN(drawAt.getTime())
+      || drawAt <= new Date()
+      || drawAt >= start
+    )) {
+      toast.error('抽選実行日の21:00は、現在より後かつ利用開始日時より前にしてください')
+      return
+    }
 
     try {
       setIsCreating(true)
       const response = await apiClient.createExternals({
+        target_type: targetType,
         names: normalizedNames,
         start_datetime: start.toISOString(),
         end_datetime: end.toISOString(),
+        draw_date: targetType === 'HALL' ? drawDate : null,
       })
       if (response.success) {
-        showSuccessToast({ message: '外部スタジオを追加しました' })
+        showSuccessToast({ message: '抽選対象を追加しました' })
+        setIsFormOpen(false)
         await fetchExternals()
       } else {
-        toast.error('外部スタジオの追加中にエラーが発生しました', {
+        toast.error('抽選対象の追加中にエラーが発生しました', {
           description: translateError(response.error || 'UNKNOWN_ERROR'),
         })
       }
     } catch (error) {
-      toast.error('外部スタジオの追加中にエラーが発生しました', {
+      toast.error('抽選対象の追加中にエラーが発生しました', {
         description: translateError((error as Error).message),
       })
     } finally {
@@ -146,15 +182,15 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
       setDeletingId(id)
       const response = await apiClient.deleteExternal(id)
       if (response.success) {
-        showSuccessToast({ message: '外部スタジオを削除しました' })
+        showSuccessToast({ message: '抽選対象を削除しました' })
         await fetchExternals()
       } else {
-        toast.error('外部スタジオの削除中にエラーが発生しました', {
+        toast.error('抽選対象の削除中にエラーが発生しました', {
           description: translateError(response.error || 'UNKNOWN_ERROR'),
         })
       }
     } catch (error) {
-      toast.error('外部スタジオの削除中にエラーが発生しました', {
+      toast.error('抽選対象の削除中にエラーが発生しました', {
         description: translateError((error as Error).message),
       })
     } finally {
@@ -180,18 +216,26 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
         <Card>
           <CardContent className="p-4">
             {externals.length === 0 ? (
-              <p className="py-8 text-center text-sm text-gray-600">外部スタジオが登録されていません</p>
+              <p className="py-8 text-center text-sm text-gray-600">抽選対象が登録されていません</p>
             ) : (
               <div className="space-y-2">
                 {externals.map((external) => (
                   <div key={external.id} className="flex items-center justify-between gap-3 rounded-lg border p-3 hover:bg-gray-50">
                     <div className="min-w-0 flex-1">
                       <div className="font-medium">
-                        {external.room_names.map((name, index) => `${index + 1}. ${name}`).join(' / ')}
+                        <Badge variant="outline" className="mr-2">{external.target_type === 'HALL' ? 'ホール' : '外部'}</Badge>
+                        {external.target_type === 'EXTERNAL'
+                          ? external.room_names.map((name, index) => `${index + 1}. ${name}`).join(' / ')
+                          : '抽選時間枠'}
                       </div>
                       <div className="mt-0.5 text-xs text-gray-600">
                         {format(new Date(external.start_datetime), 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(new Date(external.end_datetime), 'M月d日 H:mm', { locale: jaLocale })}
                       </div>
+                      {external.target_type === 'HALL' && external.draw_datetime && (
+                        <div className="mt-0.5 text-xs text-gray-600">
+                          抽選 {format(new Date(external.draw_datetime), 'M月d日 H:mm', { locale: jaLocale })}
+                        </div>
+                      )}
                     </div>
                     <Button
                       type="button"
@@ -199,7 +243,7 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
                       size="sm"
                       disabled={deletingId === external.id}
                       onClick={() => void handleDelete(external.id)}
-                      aria-label={`${external.room_names.join('、')}を削除`}
+                      aria-label={`${external.target_type === 'HALL' ? 'ホール' : external.room_names.join('、')}を削除`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -214,11 +258,33 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>外部スタジオを追加</DialogTitle>
-            <DialogDescription>利用時間枠と、その時間に利用できる部屋をまとめて作成します。</DialogDescription>
+            <DialogTitle>抽選対象を追加</DialogTitle>
+            <DialogDescription>抽選する場所と利用時間枠を登録します。</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="lottery-target-type">対象</Label>
+              <Select value={targetType} onValueChange={(value: 'HALL' | 'EXTERNAL') => {
+                setTargetType(value)
+                if (value === 'HALL') {
+                  const period = getDefaultHallPeriod()
+                  setStartDateTime(period.startDateTime)
+                  setEndDateTime(period.endDateTime)
+                  setDrawDate(period.drawDate)
+                } else {
+                  const period = getDefaultPeriod()
+                  setStartDateTime(period.startDateTime)
+                  setEndDateTime(period.endDateTime)
+                }
+              }}>
+                <SelectTrigger id="lottery-target-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="HALL">ホール</SelectItem>
+                  <SelectItem value="EXTERNAL">外部</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {targetType === 'EXTERNAL' && <div className="space-y-2">
               <Label>部屋名</Label>
               <div className="space-y-2">
                 {names.map((name, index) => (
@@ -250,7 +316,21 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
                 <Plus className="h-4 w-4" />
                 追加
               </Button>
-            </div>
+            </div>}
+            {targetType === 'HALL' && (
+              <div className="space-y-2">
+                <Label htmlFor="hall-lottery-draw-date">抽選実行日（21:00）</Label>
+                <Input
+                  id="hall-lottery-draw-date"
+                  type="date"
+                  min={getJSTDateString(new Date())}
+                  max={startDateTime.slice(0, 10) || undefined}
+                  value={drawDate}
+                  onChange={(event) => setDrawDate(event.target.value)}
+                  required
+                />
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="external-start-datetime">開始日時</Label>

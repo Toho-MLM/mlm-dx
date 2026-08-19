@@ -1,9 +1,11 @@
-import type { ReservationState } from '@shared-schemas';
+import type { LotteryTargetType, ReservationState } from '@shared-schemas';
 
 export type ExternalStudioRecord = {
   id: string;
+  target_type: LotteryTargetType;
   start_datetime: string;
   end_datetime: string;
+  draw_datetime: string | null;
   room_names: string;
   created_at: string;
   updated_at: string;
@@ -40,9 +42,11 @@ export type MemberConflictRow = {
 export interface ExternalReservationRepository {
   listStudios(): Promise<ExternalStudioRecord[]>;
   findStudio(id: string): Promise<ExternalStudioRecord | null>;
-  createStudio(input: { id: string; startTime: string; endTime: string; roomNames: string[]; createdAt: string }): Promise<void>;
-  listConfirmedReservationIdsByStudio(studioId: string): Promise<string[]>;
-  deleteStudioCascade(studioId: string, updatedAt: string): Promise<void>;
+  createStudio(input: { id: string; targetType: LotteryTargetType; startTime: string; endTime: string; drawTime: string | null; roomNames: string[]; createdAt: string }): Promise<boolean>;
+  hasHallTargetOverlap(startTime: string, endTime: string, excludeId?: string): Promise<boolean>;
+  closeLotteryApplications(studioId: string, updatedAt: string): Promise<void>;
+  listRevocableReservationIds(studioId: string, targetType: LotteryTargetType): Promise<string[]>;
+  deleteStudioCascade(studioId: string, targetType: LotteryTargetType, updatedAt: string): Promise<void>;
   hasRoomConflict(input: { studioId: string; roomNumber: number; startTime: string; endTime: string; excludeId?: string }): Promise<boolean>;
   listMemberConflictRows(input: { memberIds: string[]; startTime: string; endTime: string; excludeId?: string }): Promise<MemberConflictRow[]>;
   listVisibleReservations(userId: string, admin: boolean): Promise<Record<string, unknown>[]>;

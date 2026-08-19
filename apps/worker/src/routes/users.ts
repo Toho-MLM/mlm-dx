@@ -120,26 +120,6 @@ userRoutes.put('/', async (c) => {
       user.email, requestData.nickname, requestData.instruments, now,
     );
 
-    if (requestData.nickname !== user.nickname) {
-      const { generateJWT } = await import('../auth');
-      const { setCookie } = await import('hono/cookie');
-      
-      const jwt = await generateJWT({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        image: user.picture,
-      }, requestData.nickname, c.env.AUTH_SECRET);
-
-      setCookie(c, 'auth_token', jwt, {
-        httpOnly: true,
-        secure: c.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60,
-        path: '/',
-      });
-    }
-
     return c.json({ success: true });
   } catch (error) {
     if (error instanceof z.ZodError) {

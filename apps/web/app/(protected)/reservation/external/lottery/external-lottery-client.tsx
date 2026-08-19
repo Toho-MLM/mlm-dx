@@ -30,6 +30,8 @@ import {
   type External,
   type ExternalLotteryApplication,
   type ExternalReservation,
+  type Reservation,
+  type UnavailablePeriod,
 } from '@shared-schemas'
 
 type GroupOption = { id: string; name: string; is_main: boolean }
@@ -50,7 +52,10 @@ const addJSTDays = (dateString: string, days: number) => {
   date.setUTCDate(date.getUTCDate() + days)
   return getJSTDateString(date)
 }
-const getLotteryDrawAt = (studioDate: string) => {
+const getLotteryDrawAt = (studio: External, studioDate: string) => {
+  if (studio.target_type === 'HALL' && studio.draw_datetime) {
+    return new Date(studio.draw_datetime)
+  }
   const drawAt = new Date(`${studioDate}T21:00:00+09:00`)
   drawAt.setUTCDate(drawAt.getUTCDate() - 1)
   return drawAt
@@ -77,7 +82,7 @@ const getLotterySlots = (studio: External): LotterySlot[] => {
         studioEnd.getTime(),
         latestStart.getTime() + EXTERNAL_LOTTERY_MAX_DURATION_MINUTES * 60_000
       ))
-      slots.push({ id: `${studio.id}:${studioDate}`, studio, date: studioDate, start, latestStart, end, drawAt: getLotteryDrawAt(studioDate) })
+      slots.push({ id: `${studio.id}:${studioDate}`, studio, date: studioDate, start, latestStart, end, drawAt: getLotteryDrawAt(studio, studioDate) })
     }
     studioDate = addJSTDays(studioDate, 1)
   }
@@ -185,7 +190,9 @@ const getFairShareMinutes = (
 const estimateWinningProbabilities = (
   studio: External,
   studioApplications: ExternalLotteryApplication[],
-  reservations: ExternalReservation[]
+  externalReservations: ExternalReservation[],
+  hallReservations: Reservation[],
+  unavailablePeriods: UnavailablePeriod[]
 ) => {
   const candidates = studioApplications.flatMap((candidate): LotteryCandidate[] => {
     if (candidate.state !== 'PENDING') return []
@@ -202,13 +209,23 @@ const estimateWinningProbabilities = (
 
   const initialOccupied = new Map<number, OccupiedInterval[]>()
   studio.room_names.forEach((_, index) => initialOccupied.set(index + 1, []))
-  reservations.forEach((reservation) => {
-    if (reservation.external_studio_id !== studio.id || reservation.state !== 'CONFIRMED') return
-    initialOccupied.get(reservation.room_number)?.push({
-      start: new Date(reservation.start_time),
-      end: new Date(reservation.end_time),
+  if (studio.target_type === 'HALL') {
+    hallReservations.forEach((reservation) => {
+      if (!['PENDING', 'CONFIRMED'].includes(reservation.state)) return
+      initialOccupied.get(1)?.push({ start: new Date(reservation.start_time), end: new Date(reservation.end_time) })
     })
-  })
+    unavailablePeriods.forEach((period) => {
+      initialOccupied.get(1)?.push({ start: new Date(period.start_datetime), end: new Date(period.end_datetime) })
+    })
+  } else {
+    externalReservations.forEach((reservation) => {
+      if (reservation.external_studio_id !== studio.id || reservation.state !== 'CONFIRMED') return
+      initialOccupied.get(reservation.room_number)?.push({
+        start: new Date(reservation.start_time),
+        end: new Date(reservation.end_time),
+      })
+    })
+  }
 
   const trialCount = 240
   for (let trial = 0; trial < trialCount; trial += 1) {
@@ -276,6 +293,8 @@ export type ExternalLotteryInitialData = {
   studios: External[] | null
   applications: ExternalLotteryApplication[] | null
   reservations: ExternalReservation[] | null
+  hallReservations: Reservation[] | null
+  unavailablePeriods: UnavailablePeriod[] | null
   groups: GroupOption[] | null
 }
 
@@ -288,6 +307,8 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
     && initialData.studios !== null
     && initialData.applications !== null
     && initialData.reservations !== null
+    && initialData.hallReservations !== null
+    && initialData.unavailablePeriods !== null
     && initialData.groups !== null
   const router = useRouter()
   const pathname = usePathname()
@@ -301,6 +322,8 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
   const [studios, setStudios] = useState<External[]>(initialData?.studios ?? [])
   const [applications, setApplications] = useState<ExternalLotteryApplication[]>(initialData?.applications ?? [])
   const [reservations, setReservations] = useState<ExternalReservation[]>(initialData?.reservations ?? [])
+  const [hallReservations, setHallReservations] = useState<Reservation[]>(initialData?.hallReservations ?? [])
+  const [unavailablePeriods, setUnavailablePeriods] = useState<UnavailablePeriod[]>(initialData?.unavailablePeriods ?? [])
   const [groups, setGroups] = useState<GroupOption[]>(initialData?.groups ?? [])
   const [identity, setIdentity] = useState('__personal__')
   const [studioId, setStudioId] = useState('')
@@ -311,19 +334,23 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
   const fetchData = useCallback(async () => {
     setLoadError(null)
     try {
-      const [studioResponse, applicationResponse, groupResponse, reservationResponse] = await Promise.all([
+      const [studioResponse, applicationResponse, groupResponse, reservationResponse, hallResponse, unavailableResponse] = await Promise.all([
         apiClient.getExternals(),
         apiClient.getExternalLotteryApplications(),
         apiClient.getGroupOptions(false),
         apiClient.getExternalReservations(),
+        apiClient.getReservations(),
+        apiClient.getUnavailablePeriods(),
       ])
-      const failedResponse = [studioResponse, applicationResponse, groupResponse, reservationResponse]
+      const failedResponse = [studioResponse, applicationResponse, groupResponse, reservationResponse, hallResponse, unavailableResponse]
         .find((response) => !response.success || !response.data)
       if (failedResponse) throw new Error(failedResponse.error || 'EXTERNAL_LOTTERY_FETCH_FAILED')
       setStudios(studioResponse.data || [])
       setApplications(applicationResponse.data || [])
       setGroups(groupResponse.data || [])
       setReservations(reservationResponse.data || [])
+      setHallReservations(hallResponse.data || [])
+      setUnavailablePeriods(unavailableResponse.data || [])
     } catch (error) {
       console.error('Failed to fetch external lottery data:', error)
       setLoadError(translateError((error as Error).message))
@@ -372,8 +399,14 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
 
   const winningProbabilitiesByStudio = useMemo(() => new Map(targetStudios.map((studio) => [
     studio.id,
-    estimateWinningProbabilities(studio, applicationsByStudio.get(studio.id) || [], reservations),
-  ])), [applicationsByStudio, reservations, targetStudios])
+    estimateWinningProbabilities(
+      studio,
+      applicationsByStudio.get(studio.id) || [],
+      reservations,
+      hallReservations,
+      unavailablePeriods
+    ),
+  ])), [applicationsByStudio, hallReservations, reservations, targetStudios, unavailablePeriods])
 
   const myGroupIds = useMemo(() => new Set(groups.map((group) => group.id)), [groups])
 
@@ -414,7 +447,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
         toast.error('抽選申込を作成できませんでした', { description: translateError(response.error || 'UNKNOWN_ERROR') })
         return
       }
-      showSuccessToast({ message: '外部スタジオ抽選に申し込みました' })
+      showSuccessToast({ message: '抽選に申し込みました' })
       setOpen(false)
       resetForm()
       await fetchData()
@@ -455,12 +488,12 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
       <main className="w-full p-5">
         {loadError ? (
           <div className="flex flex-col items-center gap-3 rounded-md border p-8 text-center text-sm text-muted-foreground">
-            <p>外部スタジオ抽選を読み込めませんでした</p>
+            <p>抽選情報を読み込めませんでした</p>
             <p className="text-xs">{loadError}</p>
             <Button type="button" variant="outline" onClick={() => void fetchData()}>再試行</Button>
           </div>
         ) : targetStudios.length === 0 ? (
-          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">抽選対象の外部スタジオはありません</div>
+          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">抽選対象はありません</div>
         ) : (
             <div className="overflow-x-auto [transform:rotateX(180deg)]">
               <div className="grid min-w-max grid-flow-col auto-cols-[17rem] items-start gap-3 py-3 [transform:rotateX(180deg)]">
@@ -474,6 +507,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                       <CardContent className="space-y-1.5 p-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="text-sm font-semibold">
+                            <Badge variant="outline" className="mr-1.5">{studio.target_type === 'HALL' ? 'ホール' : '外部'}</Badge>
                             {formatJST(studio.start_datetime, 'M月d日 H:mm')}〜
                             {formatJST(studio.end_datetime, 'M月d日 H:mm')}
                           </div>
@@ -481,7 +515,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                             {isAccepting ? '受付中' : '受付終了'}
                           </Badge>
                         </div>
-                        <div className="truncate text-xs text-muted-foreground">{studio.room_names.join(' / ')}</div>
+                        {studio.target_type === 'EXTERNAL' && <div className="truncate text-xs text-muted-foreground">{studio.room_names.join(' / ')}</div>}
                         <div className="text-[11px] text-muted-foreground">
                           {upcomingDrawTimes.length > 0
                             ? `抽選 ${upcomingDrawTimes.map((drawAt) => formatJST(drawAt, 'M月d日 H:mm')).join(', ')}`
@@ -552,7 +586,9 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                               </div>
                               {application.state === 'WON' && (
                                 <div className="rounded bg-muted p-2">
-                                  <div>部屋 {application.assigned_room_number}. {application.assigned_room_name}</div>
+                                  <div>{application.target_type === 'HALL'
+                                    ? 'ホール'
+                                    : `部屋 ${application.assigned_room_number}. ${application.assigned_room_name}`}</div>
                                   <div>{formatJST(application.assigned_start_datetime as string, 'M月d日 H:mm')}〜{formatJST(application.assigned_end_datetime as string, 'H:mm')}</div>
                                 </div>
                               )}
@@ -572,8 +608,8 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>外部スタジオ抽選申込</DialogTitle>
-            <DialogDescription>抽選は利用日前日の21:00に実施し、部屋は空き状況から自動で割り当てられます。</DialogDescription>
+            <DialogTitle>抽選申込</DialogTitle>
+            <DialogDescription>抽選は対象に表示された日時に実施し、場所と時間は空き状況から自動で割り当てられます。</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
@@ -597,7 +633,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                 <SelectContent className="max-h-[240px]">
                   {eligibleSlots.map((slot) => (
                     <SelectItem key={slot.id} value={slot.id}>
-                      {formatJST(slot.start, 'M月d日 H:mm')}〜{formatJST(slot.end, 'M月d日 H:mm')}
+                      {slot.studio.target_type === 'HALL' ? 'ホール' : '外部'}・{formatJST(slot.start, 'M月d日 H:mm')}〜{formatJST(slot.end, 'M月d日 H:mm')}
                     </SelectItem>
                   ))}
                 </SelectContent>

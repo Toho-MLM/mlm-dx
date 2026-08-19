@@ -28,8 +28,8 @@ export const navigationConfig: NavigationGroup[] = [
     items: [
       { iconName: "CalendarIcon", href: "/reservation", title: "予約表" },
       { iconName: "CalendarIcon", href: "/reservation/external", title: "外部予約" },
-      { iconName: "CalendarIcon", href: "/reservation/external/lottery", title: "外部抽選" },
-      { iconName: "HelpCircleIcon", href: "/support/lottery", title: "外部抽選の仕組み" },
+      { iconName: "CalendarIcon", href: "/reservation/external/lottery", title: "抽選" },
+      { iconName: "HelpCircleIcon", href: "/support/lottery", title: "抽選の仕組み" },
       { iconName: "HelpCircleIcon", href: "/support/reservation", title: "予約の使い方" }
     ]
   },
@@ -60,7 +60,7 @@ export const navigationConfig: NavigationGroup[] = [
     label: "管理者",
     adminOnly: true,
     items: [
-      { iconName: "Building2Icon", href: "/admin/external-studios", title: "外部スタジオ管理", adminOnly: true },
+      { iconName: "Building2Icon", href: "/admin/external-studios", title: "抽選対象管理", adminOnly: true },
       { iconName: "CalendarIcon", href: "/admin/reservation-limits", title: "予約上限設定", adminOnly: true },
       { iconName: "BanIcon", href: "/admin/unavailable-periods", title: "予約不可期間設定", adminOnly: true }
     ]
@@ -76,10 +76,10 @@ export const additionalPages: Record<string, string> = {
   '/event/timeline': 'タイムライン',
   '/admin/reservation-limits': '予約上限設定',
   '/admin/unavailable-periods': '予約不可期間設定',
-  '/admin/external-studios': '外部スタジオ管理',
+  '/admin/external-studios': '抽選対象管理',
   '/reservation/external': '外部予約',
-  '/reservation/external/lottery': '外部抽選',
-  '/support/lottery': '外部抽選の仕組み',
+  '/reservation/external/lottery': '抽選',
+  '/support/lottery': '抽選の仕組み',
   '/band/main': '本バンド表',
 };
 

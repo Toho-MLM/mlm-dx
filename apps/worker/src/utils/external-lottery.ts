@@ -8,6 +8,7 @@ import { createD1GroupMembershipReader } from '../features/reservations/infrastr
 import { createD1ExternalLotteryRepository } from '../features/reservations/infrastructure/d1-external-lottery-repository';
 import type {
   LotteryApplicationRecord as ApplicationRow,
+  LotteryStudioRecord,
 } from '../features/reservations/application/external-lottery-repository';
 import {
   EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
@@ -95,11 +96,13 @@ export async function getExternalLotteryFairnessScore(
   env: Bindings,
   userId: string,
   groupId: string | null,
-  rangeEnd: Date
+  rangeEnd: Date,
+  targetType: 'HALL' | 'EXTERNAL' = 'EXTERNAL'
 ): Promise<number> {
   const rangeStart = new Date(rangeEnd);
   rangeStart.setUTCDate(rangeStart.getUTCDate() - 30);
   return createD1ExternalLotteryRepository(env.DB).getFairnessUsageMinutes(
+    targetType,
     userId,
     groupId,
     rangeStart.toISOString(),
@@ -111,16 +114,13 @@ async function markLost(env: Bindings, applicationId: string, score: number | nu
   await createD1ExternalLotteryRepository(env.DB).markLost(applicationId, score, new Date().toISOString());
 }
 
-export async function processExternalLotteryForNextDay(env: Bindings): Promise<number> {
-  const nextDay = new Date();
-  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-  const targetDate = getJSTDateString(nextDay);
+async function processLotteryForTargetDate(
+  env: Bindings,
+  targetDate: string,
+  studios: LotteryStudioRecord[]
+): Promise<number> {
   const dayRange = getJSTDayRange(targetDate);
   const lotteryRepository = createD1ExternalLotteryRepository(env.DB);
-  const studios = await lotteryRepository.listStudios(
-    dayRange.startUTC.toISOString(),
-    dayRange.endUTC.toISOString()
-  );
 
   const allocationRangeEnd = studios.reduce(
     (latest, studio) => Math.max(latest, new Date(studio.end_datetime).getTime()),
@@ -158,7 +158,13 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
       prepared.push({
         ...application,
         priority: application.group_id ? (identity.isMain ? 0 : 1) : 2,
-        fairnessScore: await getExternalLotteryFairnessScore(env, application.user_id, application.group_id, dayRange.startUTC),
+        fairnessScore: await getExternalLotteryFairnessScore(
+          env,
+          application.user_id,
+          application.group_id,
+          dayRange.startUTC,
+          studio.target_type
+        ),
         schedulingSlackMinutes: Math.round(
           (range.rangeEnd.getTime() - range.rangeStart.getTime()) / 60000
         ) - range.requestedMinutes,
@@ -184,7 +190,7 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
     prepared.sort((a, b) => a.priority - b.priority || a.weightedOrder - b.weightedOrder);
     for (let index = 0; index < prepared.length; index += 1) {
       const application = prepared[index];
-      const alreadyCreated = await lotteryRepository.findCreatedReservation(application.id);
+      const alreadyCreated = await lotteryRepository.findCreatedReservation(studio.target_type, application.id);
       if (alreadyCreated) {
         const recovered = await lotteryRepository.recoverWon({
           applicationId: application.id,
@@ -199,17 +205,22 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
           end: new Date(alreadyCreated.end_time),
         });
         await prepareAndSendReservationEmail(env, {
-          kind: 'EXTERNAL', reservationId: alreadyCreated.id, notificationType: 'RESERVATION_CONFIRMED',
+          kind: studio.target_type, reservationId: alreadyCreated.id, notificationType: 'RESERVATION_CONFIRMED',
         });
         processed += 1;
         continue;
       }
 
-      const reservations = await lotteryRepository.listConfirmedRoomReservations(
-        studio.id,
-        application.rangeStart.toISOString(),
-        application.rangeEnd.toISOString()
-      );
+      const reservations = studio.target_type === 'HALL'
+        ? await lotteryRepository.listHallOccupiedIntervals(
+            application.rangeStart.toISOString(),
+            application.rangeEnd.toISOString()
+          )
+        : await lotteryRepository.listConfirmedRoomReservations(
+            studio.id,
+            application.rangeStart.toISOString(),
+            application.rangeEnd.toISOString()
+          );
       const roomOptions: RoomOption[] = roomNames.map((_, roomIndex) => {
         const roomNumber = roomIndex + 1;
         const intervals = subtractRoomReservations(
@@ -271,18 +282,31 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
       }
 
       const now = new Date().toISOString();
-      const inserted = await lotteryRepository.allocateWon({
+      const allocationInput = {
         application,
-        studioId: studio.id,
-        roomNumber: assignment.roomNumber,
         startTime: assignment.start.toISOString(),
         endTime: assignment.end.toISOString(),
         score: application.fairnessScore,
         updatedAt: now,
-      });
-      if (!inserted) continue;
+      };
+      const allocationResult = studio.target_type === 'HALL'
+        ? await lotteryRepository.allocateHallWon(allocationInput)
+        : await lotteryRepository.allocateWon({
+            ...allocationInput,
+            studioId: studio.id,
+            roomNumber: assignment.roomNumber,
+          });
+      const inserted = studio.target_type === 'HALL'
+        ? allocationResult === 'WON'
+        : allocationResult;
+      if (!inserted) {
+        if (studio.target_type === 'HALL' && allocationResult === 'LOST') {
+          processed += 1;
+        }
+        continue;
+      }
       await prepareAndSendReservationEmail(env, {
-        kind: 'EXTERNAL', reservationId: application.id, notificationType: 'RESERVATION_CONFIRMED',
+        kind: studio.target_type, reservationId: application.id, notificationType: 'RESERVATION_CONFIRMED',
       });
       allocated.push({ memberIds: new Set(application.memberIds), start: assignment.start, end: assignment.end });
       processed += 1;
@@ -290,5 +314,40 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
   }
 
   if (processed > 0) await broadcastReservationRealtimeEvent(env, 'reservations_changed');
+  return processed;
+}
+
+export async function processExternalLotteryForNextDay(
+  env: Bindings,
+  now = new Date()
+): Promise<number> {
+  const nextDay = new Date(now);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+  const targetDate = getJSTDateString(nextDay);
+  const dayRange = getJSTDayRange(targetDate);
+  const lotteryRepository = createD1ExternalLotteryRepository(env.DB);
+  const studios = (await lotteryRepository.listStudios(
+    dayRange.startUTC.toISOString(),
+    dayRange.endUTC.toISOString()
+  )).filter((studio) => studio.target_type === 'EXTERNAL');
+  return processLotteryForTargetDate(env, targetDate, studios);
+}
+
+export async function processDueHallLotteries(
+  env: Bindings,
+  now = new Date()
+): Promise<number> {
+  const lotteryRepository = createD1ExternalLotteryRepository(env.DB);
+  const dueStudios = await lotteryRepository.listDueHallStudios(now.toISOString());
+  const studiosByDate = new Map<string, LotteryStudioRecord[]>();
+  for (const studio of dueStudios) {
+    const targetDate = getJSTDateString(new Date(studio.start_datetime));
+    studiosByDate.set(targetDate, [...(studiosByDate.get(targetDate) ?? []), studio]);
+  }
+
+  let processed = 0;
+  for (const [targetDate, studios] of studiosByDate) {
+    processed += await processLotteryForTargetDate(env, targetDate, studios);
+  }
   return processed;
 }

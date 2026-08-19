@@ -13,7 +13,22 @@ export type PasskeyChallengeRow = {
 };
 export type PasskeyWrite = Omit<PasskeyRow, 'id' | 'created_at' | 'updated_at'>;
 
-export interface AuthRepository {
+export type SessionWrite = {
+  id: string;
+  token_hash: string;
+  user_id: string;
+  expires_at: string;
+  created_at: string;
+};
+
+export interface SessionRepository {
+  createSession(session: SessionWrite): Promise<void>;
+  findUserBySessionTokenHash(tokenHash: string, now: string): Promise<UserRow | null>;
+  deleteSessionByTokenHash(tokenHash: string): Promise<void>;
+  deleteExpiredSessions(now: string): Promise<void>;
+}
+
+export interface AuthRepository extends SessionRepository {
   findUserById(id: string): Promise<UserRow | null>;
   findUserByEmail(email: string): Promise<UserRow | null>;
   updateGoogleProfile(email: string, values: { name?: string; avatar?: string | null }, now: string): Promise<void>;
@@ -31,4 +46,3 @@ export interface AuthRepository {
   emailExists(email: string): Promise<boolean>;
   createFirstUser(input: { id: string; name: string; email: string; grade: number }, now: string): Promise<boolean>;
 }
-

@@ -303,9 +303,9 @@ class ApiClient {
     return httpClient.get<ApiResponse<External[]>>('/reservation/external/studios')
   }
 
-  async createExternals(data: CreateExternalRequest): Promise<ApiResponse<{ id: string; start_datetime: string; end_datetime: string; room_names: string[] }>> {
+  async createExternals(data: CreateExternalRequest): Promise<ApiResponse<External>> {
     SharedSchemas.CreateExternalRequestSchema.parse(data)
-    return httpClient.post<ApiResponse<{ id: string; start_datetime: string; end_datetime: string; room_names: string[] }>>('/reservation/external/studios/bulk', data)
+    return httpClient.post<ApiResponse<External>>('/reservation/external/studios/bulk', data)
   }
 
   async deleteExternal(id: string): Promise<ApiResponse<void>> {

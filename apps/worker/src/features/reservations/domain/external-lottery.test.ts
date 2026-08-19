@@ -1,16 +1,63 @@
 import { describe, expect, it } from 'vitest';
-import { CreateExternalLotteryApplicationRequestSchema } from '@shared-schemas';
+import { CreateExternalLotteryApplicationRequestSchema, CreateExternalRequestSchema } from '@shared-schemas';
 import {
   enumerateStarts,
   getApplicationRange,
   getFairShareMinutes,
+  getHallLotteryBookingState,
   getMemberSchedulingImpact,
   hasMemberConflict,
+  isLotteryTargetProtected,
+  isValidHallLotteryTarget,
   parseRoomNames,
   subtractRoomReservations,
 } from './external-lottery';
 
 describe('external lottery domain', () => {
+  it('既存の抽選対象作成リクエストは外部として扱う', () => {
+    const result = CreateExternalRequestSchema.parse({
+      names: ['A'],
+      start_datetime: '2026-08-14T09:00:00+09:00',
+      end_datetime: '2026-08-14T12:00:00+09:00',
+    });
+    expect(result.target_type).toBe('EXTERNAL');
+  });
+
+  it('ホール抽選対象をJSTの同日6:00〜23:00に制限する', () => {
+    expect(isValidHallLotteryTarget('2026-08-14T09:00:00+09:00', '2026-08-14T12:00:00+09:00')).toBe(true);
+    expect(isValidHallLotteryTarget('2026-08-14T05:59:00+09:00', '2026-08-14T12:00:00+09:00')).toBe(false);
+    expect(isValidHallLotteryTarget('2026-08-14T22:45:00+09:00', '2026-08-14T23:15:00+09:00')).toBe(false);
+    expect(isValidHallLotteryTarget('2026-08-14T22:45:00+09:00', '2026-08-14T23:00:00+09:00')).toBe(false);
+  });
+
+  it('指定した抽選実行日の21:00 JSTを境に通常予約保護を解除する', () => {
+    const drawDatetime = '2026-08-10T21:00:00+09:00';
+    expect(isLotteryTargetProtected(drawDatetime, new Date('2026-08-10T20:59:59+09:00'))).toBe(true);
+    expect(isLotteryTargetProtected(drawDatetime, new Date('2026-08-10T21:00:00+09:00'))).toBe(false);
+  });
+
+  it('抽選時刻後もPENDING申込がある間は通常予約を保護する', () => {
+    const now = new Date('2026-08-10T21:00:01+09:00');
+    const target = { draw_datetime: '2026-08-10T21:00:00+09:00', has_pending_applications: true };
+    expect(getHallLotteryBookingState([target], now)).toEqual({ protected: true, afterDraw: false });
+    expect(getHallLotteryBookingState([{ ...target, has_pending_applications: false }], now))
+      .toEqual({ protected: false, afterDraw: true });
+    expect(getHallLotteryBookingState([], now)).toEqual({ protected: false, afterDraw: false });
+  });
+
+  it('ホール抽選対象は実行日のみを受け付け、21:00を利用開始前に制限する', () => {
+    const base = {
+      target_type: 'HALL' as const,
+      names: ['ホール'],
+      start_datetime: '2026-08-14T09:00:00+09:00',
+      end_datetime: '2026-08-14T12:00:00+09:00',
+    };
+    expect(CreateExternalRequestSchema.safeParse({ ...base, draw_date: '2026-08-10' }).success).toBe(true);
+    expect(CreateExternalRequestSchema.safeParse({ ...base, draw_date: '2026-08-14' }).success).toBe(false);
+    expect(CreateExternalRequestSchema.safeParse({ ...base, draw_date: '2026-02-30' }).success).toBe(false);
+    expect(CreateExternalRequestSchema.safeParse({ ...base, draw_date: '2026-13-01' }).success).toBe(false);
+  });
+
   it('10の倍数でない希望利用時間を受け付ける', () => {
     expect(CreateExternalLotteryApplicationRequestSchema.safeParse({
       external_studio_id: '00000000-0000-4000-8000-000000000000',

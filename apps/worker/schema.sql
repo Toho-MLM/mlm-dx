@@ -19,6 +19,7 @@ DROP TABLE IF EXISTS group_member_instruments;
 DROP TABLE IF EXISTS groups;
 DROP TABLE IF EXISTS passkey_challenges;
 DROP TABLE IF EXISTS passkeys;
+DROP TABLE IF EXISTS auth_sessions;
 DROP TABLE IF EXISTS users;
 
 CREATE TABLE IF NOT EXISTS users (
@@ -34,6 +35,19 @@ CREATE TABLE IF NOT EXISTS users (
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE CHECK (length(token_hash) = 43),
+  user_id TEXT NOT NULL,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CHECK (expires_at > created_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS passkeys (
   id TEXT PRIMARY KEY,
@@ -106,12 +120,18 @@ CREATE TABLE IF NOT EXISTS reservations (
 
 CREATE TABLE IF NOT EXISTS external_studios (
   id TEXT PRIMARY KEY,
+  target_type TEXT NOT NULL DEFAULT 'EXTERNAL' CHECK (target_type IN ('HALL','EXTERNAL')),
   start_datetime DATETIME NOT NULL,
   end_datetime DATETIME NOT NULL,
+  draw_datetime DATETIME,
   room_names TEXT NOT NULL CHECK (json_valid(room_names) AND json_type(room_names) = 'array' AND json_array_length(room_names) > 0),
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
-  CHECK (end_datetime > start_datetime)
+  CHECK (end_datetime > start_datetime),
+  CHECK (
+    (target_type = 'HALL' AND draw_datetime IS NOT NULL AND draw_datetime < start_datetime)
+    OR (target_type = 'EXTERNAL' AND draw_datetime IS NULL)
+  )
 );
 
 CREATE TABLE IF NOT EXISTS external_reservations (
@@ -132,6 +152,12 @@ CREATE TABLE IF NOT EXISTS external_reservations (
 
 CREATE INDEX IF NOT EXISTS idx_external_reservations_room_time
   ON external_reservations(external_studio_id, room_number, state, start_time, end_time);
+
+CREATE INDEX IF NOT EXISTS idx_external_studios_target_time
+  ON external_studios(target_type, start_datetime, end_datetime);
+
+CREATE INDEX IF NOT EXISTS idx_external_studios_due_hall_lottery
+  ON external_studios(target_type, draw_datetime);
 
 CREATE TABLE IF NOT EXISTS external_lottery_applications (
   id TEXT PRIMARY KEY,

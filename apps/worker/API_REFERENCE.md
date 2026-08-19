@@ -1,6 +1,6 @@
 # Worker API リファレンス
 
-最終更新日: 2026-08-01
+最終更新日: 2026-08-19
 
 ## 概要
 
@@ -15,17 +15,18 @@ Worker は以下の `Bindings` を前提としています。
 | キー | 説明 |
 | --- | --- |
 | `DB` | Cloudflare D1 Database インスタンス |
-| `AUTH_SECRET` | JWT 署名に利用する秘密鍵 |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth クライアント |
 | `CORS_ORIGIN` | 許可するオリジンのカンマ区切りリスト |
 | `FRONTEND_URL` | フロントエンドアプリのルート URL |
-| `NODE_ENV` | `production` であれば Cookie を `Secure` 化 |
+| `NODE_ENV` | 実行環境の識別子 |
 | `AUTH_URL` | Worker 自身のパブリック URL (OAuth コールバックに利用) |
 
 ## 認証と権限
 
-- すべての API は `auth_token` Cookie によるセッション認証を要求します（一部の `/auth` エンドポイントを除く）。
-- `requireAuth` ミドルウェアが Cookie 検証・ユーザー取得・`c.set('user', ...)` を実施します。失敗時は `401` で `NO_AUTHENTICATION_TOKEN`、`INVALID_TOKEN`、`USER_NOT_FOUND` 等を返却します。
+- すべての API は不透明なセッション Cookie による認証を要求します（一部の `/auth` エンドポイントを除く）。HTTPS では `__Host-mlm_dx_session`、ローカル HTTP 開発では `mlm_dx_session` を使用します。
+- Cookie は `HttpOnly`、HTTPS では `Secure`、`SameSite=Lax`、`Path=/` とし、有効期間は7日です。Cookie には256ビットのランダム値だけを保存し、D1 の `auth_sessions` には SHA-256 ハッシュだけを保存します。
+- `requireAuth` ミドルウェアが D1 上の有効期限とユーザーを検証し、`c.set('user', ...)` を実施します。失敗時は `401` で `NO_AUTHENTICATION_TOKEN` または `INVALID_SESSION` を返却します。
+- `POST`、`PUT`、`PATCH`、`DELETE` は同一 origin または `CORS_ORIGIN` に列挙された origin だけを許可します。
 - 管理者権限チェックは `requireAdmin` を使用し、ユーザーの `role` が `MBR` 以外の場合に許可されます。
 
 ### Google OAuth フロー
@@ -33,24 +34,12 @@ Worker は以下の `Bindings` を前提としています。
 | メソッド | パス | 説明 |
 | --- | --- | --- |
 | `POST` | `/auth/signin/google` | PKCE 付き Google サインイン開始。`authUrl` を返し、`oauth_state` `pkce_verifier` `oauth_nonce` Cookie を設定。 |
-| `POST` | `/auth/signin/google/onetap` | Google One Tap の credential JWT を検証し、許可済みユーザーなら `auth_token` Cookie を発行。 |
-| `GET` | `/auth/callback/google` | Google からのコールバック。ユーザー存在確認・JWT 発行後、`FRONTEND_URL/auth/callback` へリダイレクト。 |
+| `POST` | `/auth/signin/google/onetap` | Google One Tap の ID token を検証し、許可済みユーザーならサーバー側セッションを発行。 |
+| `GET` | `/auth/callback/google` | Google からのコールバック。ユーザー存在確認・サーバー側セッション発行後、`FRONTEND_URL/auth/callback` へリダイレクト。 |
 | `GET` | `/auth/session` | 有効な Cookie があればユーザー情報を JSON で返却。未認証時は `{ "user": null }`。 |
-| `POST` | `/auth/signout` | `auth_token` Cookie を削除し `{ "success": true }` を返却。 |
+| `POST` | `/auth/signout` | D1 のセッションを失効させて Cookie を削除し、`{ "success": true }` を返却。 |
 
-発行される JWT (`auth_token`) には以下のクレームが含まれます。
-
-```json
-{
-  "sub": "<user-id>",
-  "email": "<email>",
-  "name": "<display-name>",
-  "nickname": "<nickname|null>",
-  "picture": "<avatar-url?>",
-  "iat": 1730112000,
-  "exp": 1730716800
-}
-```
+ログイン、セッション確認、保護 API、ログアウトのすべてで `auth_sessions` を一次情報とします。ユーザー属性や権限は Cookie に格納せず、リクエストごとに D1 の最新値を取得します。
 
 ## 共通レスポンス仕様
 
@@ -120,7 +109,7 @@ Worker は以下の `Bindings` を前提としています。
   "instruments": ["VO","GT"]
 }
 ```
-- `nickname` 変更時は新しい JWT が再発行され Cookie にセットされます。
+- `nickname` 変更後は、次のリクエストから D1 の最新値が反映されます。
 - レスポンス: `{ "success": true }` のみ。
 
 #### GET `/me/email-notification-preferences`
@@ -259,13 +248,24 @@ Worker は以下の `Bindings` を前提としています。
 - 外部予約は最短10分・最長4時間で、選択した外部スタジオの時間枠内に収まる必要があります。
 - 6:00〜23:00と同日内の制限は適用せず、スタジオの時間枠内であれば日付をまたいで予約できます。
 
+#### GET `/reservation/external/studios` / POST `/reservation/external/studios/bulk`
+- 認証必須。管理用の抽選対象を返します。`target_type` は `HALL` または `EXTERNAL` です。
+- 作成は管理者のみです。ホールは同一JST日内の6:00〜23:00に30分以上で設定し、`draw_date` で抽選実行日を指定します。抽選は指定日の21:00 JSTに実行され、既存のホール抽選対象と時間が重複する場合は拒否します。
+- 既存の外部スタジオ行は migration により `EXTERNAL` として保持されます。
+- ホール対象を削除すると、未処理申込を閉じ、当選済みで利用前のホール予約を `DECLINED` にして取消通知を送ります。
+
 #### GET `/reservations/external/lottery`
-- 認証必須。抽選状況一覧用に、取り消されたものを除く全申込を返します。
+- 認証必須。ホールと外部を含む抽選状況一覧用に、取り消されたものを除く全申込を返します。
 
 #### POST `/reservations/external/lottery`
 - 認証必須。`requested_duration_minutes`（30〜120分の整数）は必須です。
 - `preferred_start_datetime` と `preferred_end_datetime` は任意ですが、指定する場合は両方必要です。
 - 希望時間帯を指定しない場合、6:00〜23:00の制限は適用せず、外部スタジオの時間枠全体を抽選対象にします。
+
+#### ホール予約の抽選期間制限
+- `POST /reservations` と `PUT /reservations/:id` は、未抽選の `HALL` 対象時間と一部でも重なる場合、`LOTTERY_PERIOD_PROTECTED` で拒否します。管理者モードでは適用しません。
+- 抽選後は、同時間帯の `PENDING` / `CONFIRMED` ホール予約と競合しない空き時間のみ通常予約できます。
+- ホール当選は `reservations`、外部当選は `external_reservations` に `CONFIRMED` として保存されます。
 
 #### 外部予約の抽選期間制限
 - `POST /reservations/external/check`、`POST /reservations/external`、`PUT /reservations/external/:id` は、利用日の前日21:00に行う抽選が未実施で、かつ利用日が翌日〜14日先に含まれる場合、`EXTERNAL_LOTTERY_PERIOD_PROTECTED` で拒否します。

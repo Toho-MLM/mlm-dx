@@ -30,7 +30,7 @@ import { createReservationLimitService } from '../features/reservations/applicat
 import { createD1ReservationLimitRepository } from '../features/reservations/infrastructure/d1-limit-repository';
 import { createD1GroupMembershipReader } from '../features/reservations/infrastructure/d1-membership-reader';
 import { checkActiveGroupAccess } from '../features/reservations/application/membership';
-import { parseRoomNames } from '../features/reservations/domain/external-lottery';
+import { isValidHallLotteryTarget, parseRoomNames } from '../features/reservations/domain/external-lottery';
 import { createD1ExternalReservationRepository } from '../features/reservations/infrastructure/d1-external-repository';
 import type { ExternalStudioRecord as StudioRow } from '../features/reservations/application/external-repository';
 
@@ -99,6 +99,7 @@ async function validateReservationBase(
 
   const studio = await getStudio(env, externalStudioId);
   if (!studio) return { error: 'EXTERNAL_NOT_FOUND', status: 404 };
+  if (studio.target_type !== 'EXTERNAL') return { error: 'EXTERNAL_NOT_FOUND', status: 404 };
   if (roomNumber < 1 || roomNumber > studio.roomNames.length) return { error: 'INVALID_ROOM_NUMBER', status: 400 };
   if (new Date(startTime) < new Date(studio.start_datetime) || new Date(endTime) > new Date(studio.end_datetime)) {
     return { error: 'EXTERNAL_PERIOD_CONFLICT', status: 400 };
@@ -172,21 +173,50 @@ externalStudioRoutes.post('/studios/bulk', async (c) => {
   try {
     requireAdmin(c.get('user').role);
     const data = CreateExternalRequestSchema.parse(await c.req.json());
-    const roomNames = data.names.map((name) => name.trim());
+    const roomNames = data.target_type === 'HALL'
+      ? ['ホール']
+      : data.names.map((name) => name.trim());
     if (roomNames.some((name) => !name) || new Set(roomNames).size !== roomNames.length) {
       return c.json({ success: false, error: 'INVALID_ROOM_NAMES' }, 400);
     }
+    const externalRepository = createD1ExternalReservationRepository(c.env.DB);
+    const drawTime = data.target_type === 'HALL' && data.draw_date
+      ? new Date(`${data.draw_date}T21:00:00+09:00`).toISOString()
+      : null;
+    if (data.target_type === 'HALL') {
+      if (!isValidHallLotteryTarget(data.start_datetime, data.end_datetime)) {
+        return c.json({ success: false, error: 'INVALID_HALL_LOTTERY_TARGET' }, 400);
+      }
+      if (!drawTime || new Date(drawTime) <= new Date()) {
+        return c.json({ success: false, error: 'INVALID_HALL_LOTTERY_DRAW_TIME' }, 400);
+      }
+      if (await externalRepository.hasHallTargetOverlap(data.start_datetime, data.end_datetime)) {
+        return c.json({ success: false, error: 'HALL_LOTTERY_TARGET_CONFLICT' }, 409);
+      }
+    }
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    await createD1ExternalReservationRepository(c.env.DB).createStudio({
+    const created = await externalRepository.createStudio({
       id,
+      targetType: data.target_type,
       startTime: data.start_datetime,
       endTime: data.end_datetime,
+      drawTime,
       roomNames,
       createdAt: now,
     });
+    if (!created) {
+      return c.json({ success: false, error: 'HALL_LOTTERY_TARGET_CONFLICT' }, 409);
+    }
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
-    return c.json({ success: true, data: { id, start_datetime: data.start_datetime, end_datetime: data.end_datetime, room_names: roomNames } });
+    return c.json({ success: true, data: {
+      id,
+      target_type: data.target_type,
+      start_datetime: data.start_datetime,
+      end_datetime: data.end_datetime,
+      draw_datetime: drawTime,
+      room_names: roomNames,
+    } });
   } catch (error) {
     if (error instanceof ZodError) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -200,19 +230,22 @@ externalStudioRoutes.delete('/studios/:id', async (c) => {
     requireAdmin(c.get('user').role);
     const id = parseUuid(c.req.param('id'));
     if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
-    if (!await getStudio(c.env, id)) return c.json({ success: false, error: 'EXTERNAL_NOT_FOUND' }, 404);
+    const studio = await getStudio(c.env, id);
+    if (!studio) return c.json({ success: false, error: 'EXTERNAL_NOT_FOUND' }, 404);
     const externalRepository = createD1ExternalReservationRepository(c.env.DB);
-    const affected = await externalRepository.listConfirmedReservationIdsByStudio(id);
+    const updatedAt = new Date().toISOString();
+    await externalRepository.closeLotteryApplications(id, updatedAt);
+    const affected = await externalRepository.listRevocableReservationIds(id, studio.target_type);
     const preparedEmails = [];
     for (const reservationId of affected) {
       try {
         preparedEmails.push(await prepareReservationEmail(c.env, {
-          kind: 'EXTERNAL', reservationId,
+          kind: studio.target_type, reservationId,
           notificationType: 'RESERVATION_REVOKED', reservationStatusOverride: 'DECLINED',
         }));
-      } catch (error) { console.error('Failed to prepare revoked external email:', error); }
+      } catch (error) { console.error('Failed to prepare revoked reservation email:', error); }
     }
-    await externalRepository.deleteStudioCascade(id, new Date().toISOString());
+    await externalRepository.deleteStudioCascade(id, studio.target_type, updatedAt);
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     c.executionCtx.waitUntil((async () => { for (const email of preparedEmails) await sendPreparedReservationEmail(c.env, email); })());
     return c.json({ success: true });
@@ -315,14 +348,16 @@ externalReservationRoutes.get('/lottery', async (c) => {
       if (row.state === 'PENDING') {
         const groupId = row.group_id === null ? null : String(row.group_id);
         const targetDate = getJSTDateString(new Date(String(row.studio_start_datetime)));
-        const cacheKey = `${targetDate}:${groupId ?? `user:${String(row.user_id)}`}`;
+        const targetType = row.target_type === 'HALL' ? 'HALL' : 'EXTERNAL';
+        const cacheKey = `${targetType}:${targetDate}:${groupId ?? `user:${String(row.user_id)}`}`;
         let scorePromise = fairnessCache.get(cacheKey);
         if (!scorePromise) {
           scorePromise = getExternalLotteryFairnessScore(
             c.env,
             String(row.user_id),
             groupId,
-            getJSTDayRange(targetDate).startUTC
+            getJSTDayRange(targetDate).startUTC,
+            targetType
           );
           fairnessCache.set(cacheKey, scorePromise);
         }
@@ -370,8 +405,12 @@ externalReservationRoutes.post('/lottery', async (c) => {
     const max = new Date(`${today}T00:00:00+09:00`); max.setUTCDate(max.getUTCDate() + 14);
     const target = new Date(`${targetDate}T00:00:00+09:00`);
     if (target < tomorrow || target > max) return c.json({ success: false, error: 'EXTERNAL_LOTTERY_DATE_OUT_OF_RANGE' }, 400);
-    const drawAt = new Date(`${targetDate}T21:00:00+09:00`);
-    drawAt.setUTCDate(drawAt.getUTCDate() - 1);
+    const drawAt = studio.target_type === 'HALL' && studio.draw_datetime
+      ? new Date(studio.draw_datetime)
+      : new Date(`${targetDate}T21:00:00+09:00`);
+    if (studio.target_type !== 'HALL' || !studio.draw_datetime) {
+      drawAt.setUTCDate(drawAt.getUTCDate() - 1);
+    }
     if (new Date() >= drawAt) return c.json({ success: false, error: 'EXTERNAL_LOTTERY_CLOSED' }, 400);
     if (preferredStart && preferredEnd) {
       if (

@@ -202,9 +202,11 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   const [isAdminMode] = useAdminMode(user && isAdmin(user.role), initialAdminMode)
   const [loading, setLoading] = useState(!hasCompleteInitialData)
   const [loadError, setLoadError] = useState<string | null>(initialData?.externals === null || initialData?.reservations === null ? '外部予約を読み込めませんでした。' : null)
-  const [externals, setExternals] = useState<External[]>(initialData?.externals ?? [])
+  const [externals, setExternals] = useState<External[]>(
+    (initialData?.externals ?? []).filter((external) => external.target_type === 'EXTERNAL')
+  )
   const [selectedExternalId, setSelectedExternalId] = useState<string | null>(() => {
-    const initialExternals = initialData?.externals ?? []
+    const initialExternals = (initialData?.externals ?? []).filter((external) => external.target_type === 'EXTERNAL')
     const now = new Date()
     return initialExternals.find((external) => new Date(external.start_datetime) <= now && new Date(external.end_datetime) > now)?.id
       || initialExternals.find((external) => new Date(external.end_datetime) > now)?.id
@@ -258,13 +260,14 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
         throw new Error(reservationsResponse.error || 'EXTERNAL_RESERVATION_FETCH_FAILED')
       }
 
-      setExternals(externalsResponse.data)
+      const externalTargets = externalsResponse.data.filter((external) => external.target_type === 'EXTERNAL')
+      setExternals(externalTargets)
       setSelectedExternalId((currentId) => {
-        if (currentId && externalsResponse.data?.some((external) => external.id === currentId)) return currentId
+        if (currentId && externalTargets.some((external) => external.id === currentId)) return currentId
         const now = new Date()
-        return externalsResponse.data?.find((external) => (
+        return externalTargets.find((external) => (
           new Date(external.start_datetime) <= now && new Date(external.end_datetime) > now
-        ))?.id || externalsResponse.data?.find((external) => new Date(external.end_datetime) > now)?.id || externalsResponse.data?.at(-1)?.id || null
+        ))?.id || externalTargets.find((external) => new Date(external.end_datetime) > now)?.id || externalTargets.at(-1)?.id || null
       })
       setReservations(reservationsResponse.data)
     } catch (error) {
@@ -1005,7 +1008,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>抽選対象の期間です</AlertTitle>
-                <AlertDescription>この期間は外部予約できません。外部抽選から申し込んでください。</AlertDescription>
+                <AlertDescription>この期間は外部予約できません。抽選から申し込んでください。</AlertDescription>
               </Alert>
             )}
 

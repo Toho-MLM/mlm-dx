@@ -24,10 +24,11 @@ export function createD1ExternalLotteryRepository(db: D1Database): ExternalLotte
       return [...(hall.results ?? []), ...(external.results ?? [])];
     },
 
-    async getFairnessUsageMinutes(userId, groupId, rangeStart, rangeEnd) {
+    async getFairnessUsageMinutes(targetType, userId, groupId, rangeStart, rangeEnd) {
+      const table = targetType === 'HALL' ? 'reservations' : 'external_reservations';
       const row = await db.prepare(`
         SELECT COALESCE(ROUND(SUM((julianday(end_time) - julianday(start_time)) * 1440)), 0) AS minutes
-        FROM external_reservations
+        FROM ${table}
         WHERE ((? IS NULL AND group_id IS NULL AND user_id = ?) OR group_id = ?)
           AND state IN ('CONFIRMED', 'CANCELLED', 'COMPLETED', 'WITHDRAWN')
           AND start_time >= ? AND start_time < ?
@@ -44,9 +45,24 @@ export function createD1ExternalLotteryRepository(db: D1Database): ExternalLotte
 
     async listStudios(rangeStart, rangeEnd) {
       const rows = await db.prepare(`
-        SELECT id, start_datetime, end_datetime, room_names FROM external_studios
+        SELECT id, target_type, start_datetime, end_datetime, draw_datetime, room_names FROM external_studios
         WHERE start_datetime < ? AND end_datetime > ? ORDER BY start_datetime ASC, id ASC
       `).bind(rangeEnd, rangeStart).all<LotteryStudioRecord>();
+      return rows.results ?? [];
+    },
+
+    async listDueHallStudios(drawBefore) {
+      const rows = await db.prepare(`
+        SELECT studio.id, studio.target_type, studio.start_datetime, studio.end_datetime,
+               studio.draw_datetime, studio.room_names
+        FROM external_studios studio
+        WHERE studio.target_type = 'HALL' AND studio.draw_datetime <= ?
+          AND EXISTS (
+            SELECT 1 FROM external_lottery_applications application
+            WHERE application.external_studio_id = studio.id AND application.state = 'PENDING'
+          )
+        ORDER BY studio.draw_datetime ASC, studio.id ASC
+      `).bind(drawBefore).all<LotteryStudioRecord>();
       return rows.results ?? [];
     },
 
@@ -65,11 +81,18 @@ export function createD1ExternalLotteryRepository(db: D1Database): ExternalLotte
       return rows.results ?? [];
     },
 
-    async findCreatedReservation(id) {
+    async findCreatedReservation(targetType, id) {
+      if (targetType === 'HALL') {
+        const row = await db.prepare(`
+          SELECT id, user_id, group_id, 1 room_number, start_time, end_time
+          FROM reservations WHERE id = ?
+        `).bind(id).first<ExistingExternalReservation>();
+        return row ? { ...row, room_number: 1 } : null;
+      }
       const row = await db.prepare(`
-        SELECT id, user_id, group_id, room_number, start_time, end_time
-        FROM external_reservations WHERE id = ?
-      `).bind(id).first<ExistingExternalReservation>();
+          SELECT id, user_id, group_id, room_number, start_time, end_time
+          FROM external_reservations WHERE id = ?
+        `).bind(id).first<ExistingExternalReservation>();
       return row ? { ...row, room_number: Number(row.room_number) } : null;
     },
 
@@ -94,6 +117,21 @@ export function createD1ExternalLotteryRepository(db: D1Database): ExternalLotte
       return (rows.results ?? []).map((row) => ({ ...row, room_number: Number(row.room_number) }));
     },
 
+    async listHallOccupiedIntervals(rangeStart, rangeEnd) {
+      const [reservations, unavailable] = await Promise.all([
+        db.prepare(`
+          SELECT 1 room_number, start_time, end_time FROM reservations
+          WHERE state IN ('PENDING','CONFIRMED') AND start_time < ? AND end_time > ?
+        `).bind(rangeEnd, rangeStart).all<ExistingRoomReservation>(),
+        db.prepare(`
+          SELECT 1 room_number, start_datetime start_time, end_datetime end_time FROM unavailable_periods
+          WHERE start_datetime < ? AND end_datetime > ?
+        `).bind(rangeEnd, rangeStart).all<ExistingRoomReservation>(),
+      ]);
+      return [...(reservations.results ?? []), ...(unavailable.results ?? [])]
+        .map((row) => ({ ...row, room_number: 1 }));
+    },
+
     async allocateWon(input) {
       const [insert] = await db.batch([
         db.prepare(`
@@ -116,6 +154,47 @@ export function createD1ExternalLotteryRepository(db: D1Database): ExternalLotte
         ),
       ]);
       return Number(insert.meta.changes ?? 0) > 0;
+    },
+
+    async allocateHallWon(input) {
+      const [insert, , lost] = await db.batch([
+        db.prepare(`
+          INSERT INTO reservations
+            (id, user_id, group_id, start_time, end_time, state, created_at, updated_at)
+          SELECT ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?
+          WHERE EXISTS (SELECT 1 FROM external_lottery_applications WHERE id = ? AND state = 'PENDING')
+            AND NOT EXISTS (
+              SELECT 1 FROM reservations
+              WHERE state IN ('PENDING','CONFIRMED') AND start_time < ? AND end_time > ?
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM unavailable_periods WHERE start_datetime < ? AND end_datetime > ?
+            )
+        `).bind(
+          input.application.id, input.application.user_id, input.application.group_id,
+          input.startTime, input.endTime, input.updatedAt, input.updatedAt, input.application.id,
+          input.endTime, input.startTime, input.endTime, input.startTime
+        ),
+        db.prepare(`
+          UPDATE external_lottery_applications
+          SET state = 'WON', fairness_score = ?, assigned_room_number = 1,
+              assigned_start_datetime = ?, assigned_end_datetime = ?, updated_at = ?
+          WHERE id = ? AND state = 'PENDING'
+            AND EXISTS (SELECT 1 FROM reservations WHERE id = ?)
+        `).bind(
+          input.score, input.startTime, input.endTime, input.updatedAt,
+          input.application.id, input.application.id
+        ),
+        db.prepare(`
+          UPDATE external_lottery_applications
+          SET state = 'LOST', fairness_score = ?, updated_at = ?
+          WHERE id = ? AND state = 'PENDING'
+            AND NOT EXISTS (SELECT 1 FROM reservations WHERE id = ?)
+        `).bind(input.score, input.updatedAt, input.application.id, input.application.id),
+      ]);
+      if (Number(insert.meta.changes ?? 0) > 0) return 'WON';
+      if (Number(lost.meta.changes ?? 0) > 0) return 'LOST';
+      return 'UNCHANGED';
     },
   };
 }
