@@ -45,9 +45,24 @@ export function createD1ExternalLotteryRepository(db: D1Database): ExternalLotte
 
     async listStudios(rangeStart, rangeEnd) {
       const rows = await db.prepare(`
-        SELECT id, target_type, start_datetime, end_datetime, room_names FROM external_studios
+        SELECT id, target_type, start_datetime, end_datetime, draw_datetime, room_names FROM external_studios
         WHERE start_datetime < ? AND end_datetime > ? ORDER BY start_datetime ASC, id ASC
       `).bind(rangeEnd, rangeStart).all<LotteryStudioRecord>();
+      return rows.results ?? [];
+    },
+
+    async listDueHallStudios(drawBefore) {
+      const rows = await db.prepare(`
+        SELECT studio.id, studio.target_type, studio.start_datetime, studio.end_datetime,
+               studio.draw_datetime, studio.room_names
+        FROM external_studios studio
+        WHERE studio.target_type = 'HALL' AND studio.draw_datetime <= ?
+          AND EXISTS (
+            SELECT 1 FROM external_lottery_applications application
+            WHERE application.external_studio_id = studio.id AND application.state = 'PENDING'
+          )
+        ORDER BY studio.draw_datetime ASC, studio.id ASC
+      `).bind(drawBefore).all<LotteryStudioRecord>();
       return rows.results ?? [];
     },
 

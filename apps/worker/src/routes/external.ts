@@ -180,9 +180,15 @@ externalStudioRoutes.post('/studios/bulk', async (c) => {
       return c.json({ success: false, error: 'INVALID_ROOM_NAMES' }, 400);
     }
     const externalRepository = createD1ExternalReservationRepository(c.env.DB);
+    const drawTime = data.target_type === 'HALL' && data.draw_date
+      ? new Date(`${data.draw_date}T21:00:00+09:00`).toISOString()
+      : null;
     if (data.target_type === 'HALL') {
       if (!isValidHallLotteryTarget(data.start_datetime, data.end_datetime)) {
         return c.json({ success: false, error: 'INVALID_HALL_LOTTERY_TARGET' }, 400);
+      }
+      if (!drawTime || new Date(drawTime) <= new Date()) {
+        return c.json({ success: false, error: 'INVALID_HALL_LOTTERY_DRAW_TIME' }, 400);
       }
       if (await externalRepository.hasHallTargetOverlap(data.start_datetime, data.end_datetime)) {
         return c.json({ success: false, error: 'HALL_LOTTERY_TARGET_CONFLICT' }, 409);
@@ -195,6 +201,7 @@ externalStudioRoutes.post('/studios/bulk', async (c) => {
       targetType: data.target_type,
       startTime: data.start_datetime,
       endTime: data.end_datetime,
+      drawTime,
       roomNames,
       createdAt: now,
     });
@@ -207,6 +214,7 @@ externalStudioRoutes.post('/studios/bulk', async (c) => {
       target_type: data.target_type,
       start_datetime: data.start_datetime,
       end_datetime: data.end_datetime,
+      draw_datetime: drawTime,
       room_names: roomNames,
     } });
   } catch (error) {
@@ -397,8 +405,12 @@ externalReservationRoutes.post('/lottery', async (c) => {
     const max = new Date(`${today}T00:00:00+09:00`); max.setUTCDate(max.getUTCDate() + 14);
     const target = new Date(`${targetDate}T00:00:00+09:00`);
     if (target < tomorrow || target > max) return c.json({ success: false, error: 'EXTERNAL_LOTTERY_DATE_OUT_OF_RANGE' }, 400);
-    const drawAt = new Date(`${targetDate}T21:00:00+09:00`);
-    drawAt.setUTCDate(drawAt.getUTCDate() - 1);
+    const drawAt = studio.target_type === 'HALL' && studio.draw_datetime
+      ? new Date(studio.draw_datetime)
+      : new Date(`${targetDate}T21:00:00+09:00`);
+    if (studio.target_type !== 'HALL' || !studio.draw_datetime) {
+      drawAt.setUTCDate(drawAt.getUTCDate() - 1);
+    }
     if (new Date() >= drawAt) return c.json({ success: false, error: 'EXTERNAL_LOTTERY_CLOSED' }, 400);
     if (preferredStart && preferredEnd) {
       if (

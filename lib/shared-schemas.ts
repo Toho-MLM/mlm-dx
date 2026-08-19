@@ -34,6 +34,13 @@ const ValidDateTimeStringSchema = z.string()
   .datetime({ offset: true })
   .transform((value) => new Date(value).toISOString());
 
+const ValidDateStringSchema = z.string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00+09:00`);
+    return Number.isFinite(date.getTime()) && getJSTDateString(date) === value;
+  });
+
 export const UserSchema = z.object({
   id: UuidSchema,
   email: z.string().email(),
@@ -85,6 +92,7 @@ export const ExternalSchema = z.object({
   target_type: LotteryTargetTypeSchema,
   start_datetime: z.string(),
   end_datetime: z.string(),
+  draw_datetime: z.string().nullable(),
   room_names: z.array(z.string().min(1)).min(1),
 });
 
@@ -339,6 +347,7 @@ export const CreateExternalRequestSchema = z.object({
   names: z.array(z.string().trim().min(1)).min(1),
   start_datetime: ValidDateTimeStringSchema,
   end_datetime: ValidDateTimeStringSchema,
+  draw_date: ValidDateStringSchema.nullable().optional(),
 }).refine((data) => {
   const start = new Date(data.start_datetime);
   const end = new Date(data.end_datetime);
@@ -348,6 +357,33 @@ export const CreateExternalRequestSchema = z.object({
 }).refine((data) => new Set(data.names.map((name) => name.trim())).size === data.names.length, {
   message: "部屋名は重複できません。",
   path: ['names'],
+}).superRefine((data, ctx) => {
+  if (data.target_type === 'EXTERNAL') {
+    if (data.draw_date != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '外部抽選の実行日は指定できません。',
+        path: ['draw_date'],
+      });
+    }
+    return;
+  }
+  if (!data.draw_date) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'ホール抽選の実行日を指定してください。',
+      path: ['draw_date'],
+    });
+    return;
+  }
+  const drawAt = new Date(`${data.draw_date}T21:00:00+09:00`);
+  if (drawAt >= new Date(data.start_datetime)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '抽選実行日の21:00は利用開始日時より前にしてください。',
+      path: ['draw_date'],
+    });
+  }
 });
 
 export const CreateExternalReservationRequestSchema = z.object({

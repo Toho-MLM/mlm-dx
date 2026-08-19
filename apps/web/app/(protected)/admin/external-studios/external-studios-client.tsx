@@ -45,8 +45,12 @@ const getDefaultPeriod = () => {
 }
 
 const getDefaultHallPeriod = () => {
-  const tomorrow = addJSTDays(getJSTDateString(new Date()), 1)
-  return { startDateTime: `${tomorrow}T06:00`, endDateTime: `${tomorrow}T23:00` }
+  const today = getJSTDateString(new Date())
+  const drawDate = new Date() < new Date(`${today}T21:00:00+09:00`)
+    ? today
+    : addJSTDays(today, 1)
+  const targetDate = addJSTDays(drawDate, 1)
+  return { startDateTime: `${targetDate}T06:00`, endDateTime: `${targetDate}T23:00`, drawDate }
 }
 
 export function ExternalStudiosClient({ initialExternals }: { initialExternals?: External[] | null }) {
@@ -71,6 +75,7 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
   const [names, setNames] = useState<string[]>([''])
   const [startDateTime, setStartDateTime] = useState(() => getDefaultPeriod().startDateTime)
   const [endDateTime, setEndDateTime] = useState(() => getDefaultPeriod().endDateTime)
+  const [drawDate, setDrawDate] = useState(() => getDefaultHallPeriod().drawDate)
 
   const fetchExternals = useCallback(async (showLoading = false) => {
     try {
@@ -133,6 +138,17 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
       toast.error('ホールは同じ日の6:00〜23:00に30分以上で設定してください')
       return
     }
+    const drawAt = targetType === 'HALL' ? new Date(`${drawDate}T21:00:00+09:00`) : null
+    if (targetType === 'HALL' && (
+      !drawDate
+      || !drawAt
+      || Number.isNaN(drawAt.getTime())
+      || drawAt <= new Date()
+      || drawAt >= start
+    )) {
+      toast.error('抽選実行日の21:00は、現在より後かつ利用開始日時より前にしてください')
+      return
+    }
 
     try {
       setIsCreating(true)
@@ -141,6 +157,7 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
         names: normalizedNames,
         start_datetime: start.toISOString(),
         end_datetime: end.toISOString(),
+        draw_date: targetType === 'HALL' ? drawDate : null,
       })
       if (response.success) {
         showSuccessToast({ message: '抽選対象を追加しました' })
@@ -214,6 +231,11 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
                       <div className="mt-0.5 text-xs text-gray-600">
                         {format(new Date(external.start_datetime), 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(new Date(external.end_datetime), 'M月d日 H:mm', { locale: jaLocale })}
                       </div>
+                      {external.target_type === 'HALL' && external.draw_datetime && (
+                        <div className="mt-0.5 text-xs text-gray-600">
+                          抽選 {format(new Date(external.draw_datetime), 'M月d日 H:mm', { locale: jaLocale })}
+                        </div>
+                      )}
                     </div>
                     <Button
                       type="button"
@@ -244,9 +266,16 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
               <Label htmlFor="lottery-target-type">対象</Label>
               <Select value={targetType} onValueChange={(value: 'HALL' | 'EXTERNAL') => {
                 setTargetType(value)
-                const period = value === 'HALL' ? getDefaultHallPeriod() : getDefaultPeriod()
-                setStartDateTime(period.startDateTime)
-                setEndDateTime(period.endDateTime)
+                if (value === 'HALL') {
+                  const period = getDefaultHallPeriod()
+                  setStartDateTime(period.startDateTime)
+                  setEndDateTime(period.endDateTime)
+                  setDrawDate(period.drawDate)
+                } else {
+                  const period = getDefaultPeriod()
+                  setStartDateTime(period.startDateTime)
+                  setEndDateTime(period.endDateTime)
+                }
               }}>
                 <SelectTrigger id="lottery-target-type"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -288,6 +317,20 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
                 追加
               </Button>
             </div>}
+            {targetType === 'HALL' && (
+              <div className="space-y-2">
+                <Label htmlFor="hall-lottery-draw-date">抽選実行日（21:00）</Label>
+                <Input
+                  id="hall-lottery-draw-date"
+                  type="date"
+                  min={getJSTDateString(new Date())}
+                  max={startDateTime.slice(0, 10) || undefined}
+                  value={drawDate}
+                  onChange={(event) => setDrawDate(event.target.value)}
+                  required
+                />
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="external-start-datetime">開始日時</Label>

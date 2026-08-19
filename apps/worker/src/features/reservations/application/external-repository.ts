@@ -5,6 +5,7 @@ export type ExternalStudioRecord = {
   target_type: LotteryTargetType;
   start_datetime: string;
   end_datetime: string;
+  draw_datetime: string | null;
   room_names: string;
   created_at: string;
   updated_at: string;
@@ -41,7 +42,7 @@ export type MemberConflictRow = {
 export interface ExternalReservationRepository {
   listStudios(): Promise<ExternalStudioRecord[]>;
   findStudio(id: string): Promise<ExternalStudioRecord | null>;
-  createStudio(input: { id: string; targetType: LotteryTargetType; startTime: string; endTime: string; roomNames: string[]; createdAt: string }): Promise<boolean>;
+  createStudio(input: { id: string; targetType: LotteryTargetType; startTime: string; endTime: string; drawTime: string | null; roomNames: string[]; createdAt: string }): Promise<boolean>;
   hasHallTargetOverlap(startTime: string, endTime: string, excludeId?: string): Promise<boolean>;
   closeLotteryApplications(studioId: string, updatedAt: string): Promise<void>;
   listRevocableReservationIds(studioId: string, targetType: LotteryTargetType): Promise<string[]>;

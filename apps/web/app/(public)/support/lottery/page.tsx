@@ -14,9 +14,9 @@ export default function LotterySupportPage() {
       <main className="mx-auto w-full max-w-4xl space-y-4 p-4 pt-0">
         <Alert>
           <Clock3Icon className="h-4 w-4" />
-          <AlertTitle>抽選は各利用対象日の前日21:00に実施されます</AlertTitle>
+          <AlertTitle>抽選は対象ごとに表示された日の21:00に実施されます</AlertTitle>
           <AlertDescription>
-            抽選は翌日から14日先までのホール・外部の対象時間枠に申し込めます。日付をまたぐ外部の時間枠には、まだ終了していない抽選日時がすべて表示されます。抽選後の空き時間は「予約表」または「外部予約」から予約してください。
+            抽選は翌日から14日先までのホール・外部の対象時間枠に申し込めます。ホールの抽選実行日は対象ごとに設定され、外部抽選は利用日前日の21:00に実施されます。日付をまたぐ外部の時間枠には、まだ終了していない抽選日時がすべて表示されます。抽選後の空き時間は「予約表」または「外部予約」から予約してください。
           </AlertDescription>
         </Alert>
 

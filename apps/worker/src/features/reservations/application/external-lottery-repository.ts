@@ -3,6 +3,7 @@ export type LotteryStudioRecord = {
   target_type: 'HALL' | 'EXTERNAL';
   start_datetime: string;
   end_datetime: string;
+  draw_datetime: string | null;
   room_names: string;
 };
 
@@ -40,6 +41,7 @@ export interface ExternalLotteryRepository {
   getFairnessUsageMinutes(targetType: 'HALL' | 'EXTERNAL', userId: string, groupId: string | null, rangeStart: string, rangeEnd: string): Promise<number>;
   markLost(applicationId: string, score: number | null, updatedAt: string): Promise<void>;
   listStudios(rangeStart: string, rangeEnd: string): Promise<LotteryStudioRecord[]>;
+  listDueHallStudios(drawBefore: string): Promise<LotteryStudioRecord[]>;
   listPendingApplications(studio: LotteryStudioRecord, rangeStart: string, rangeEnd: string): Promise<LotteryApplicationRecord[]>;
   findCreatedReservation(targetType: 'HALL' | 'EXTERNAL', id: string): Promise<ExistingExternalReservation | null>;
   recoverWon(input: { applicationId: string; score: number; reservation: ExistingExternalReservation; updatedAt: string }): Promise<boolean>;

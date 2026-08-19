@@ -11,7 +11,7 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
   return {
     async listStudios() {
       const rows = await db.prepare(`
-        SELECT id, target_type, start_datetime, end_datetime, room_names, created_at, updated_at
+        SELECT id, target_type, start_datetime, end_datetime, draw_datetime, room_names, created_at, updated_at
         FROM external_studios ORDER BY start_datetime ASC, id ASC
       `).all<ExternalStudioRecord>();
       return rows.results ?? [];
@@ -19,21 +19,21 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
 
     async findStudio(id) {
       return await db.prepare(`
-        SELECT id, target_type, start_datetime, end_datetime, room_names, created_at, updated_at
+        SELECT id, target_type, start_datetime, end_datetime, draw_datetime, room_names, created_at, updated_at
         FROM external_studios WHERE id = ?
       `).bind(id).first<ExternalStudioRecord>() ?? null;
     },
 
     async createStudio(input) {
       const result = await db.prepare(`
-        INSERT INTO external_studios (id, target_type, start_datetime, end_datetime, room_names, created_at, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?
+        INSERT INTO external_studios (id, target_type, start_datetime, end_datetime, draw_datetime, room_names, created_at, updated_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?
         WHERE ? != 'HALL' OR NOT EXISTS (
           SELECT 1 FROM external_studios
           WHERE target_type = 'HALL' AND start_datetime < ? AND end_datetime > ?
         )
       `).bind(
-        input.id, input.targetType, input.startTime, input.endTime, JSON.stringify(input.roomNames), input.createdAt, input.createdAt,
+        input.id, input.targetType, input.startTime, input.endTime, input.drawTime, JSON.stringify(input.roomNames), input.createdAt, input.createdAt,
         input.targetType, input.endTime, input.startTime
       ).run();
       return Number(result.meta.changes ?? 0) > 0;
