@@ -1,34 +1,37 @@
 import type { Context } from 'hono';
 import type { Bindings, Variables } from '../index';
 import type { User } from '../types';
-import { getCookie } from 'hono/cookie';
-import { verifyJWT } from '../auth';
 import { createD1AuthRepository } from '../features/auth/infrastructure/d1-repository';
+import { resolveSession } from '../features/auth/application/session';
+import { webCryptoSessionTokenProvider } from '../features/auth/infrastructure/session-token';
+import { clearSessionCookies, getSessionCookie, hasLegacySessionCookie } from './session-cookie';
 
 export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Variables }>, next: () => Promise<void>) => {
   try {
-    const token = getCookie(c, 'auth_token');
+    const token = getSessionCookie(c);
     
     if (!token) {
+      if (hasLegacySessionCookie(c)) clearSessionCookies(c);
       return c.json({ success: false, error: 'NO_AUTHENTICATION_TOKEN' }, 401);
     }
 
-    const payload = await verifyJWT(token, c.env.AUTH_SECRET);
-    if (!payload) {
-      return c.json({ success: false, error: 'INVALID_TOKEN' }, 401);
-    }
-
-    const fullUser = await createD1AuthRepository(c.env.DB).findUserById(payload.sub);
+    const fullUser = await resolveSession(
+      createD1AuthRepository(c.env.DB),
+      webCryptoSessionTokenProvider,
+      token,
+      new Date(),
+    );
 
     if (!fullUser) {
-      return c.json({ success: false, error: 'USER_NOT_FOUND' }, 401);
+      clearSessionCookies(c);
+      return c.json({ success: false, error: 'INVALID_SESSION' }, 401);
     }
 
-    const avatarUrl = fullUser.avatar || payload.picture || undefined;
+    const avatarUrl = fullUser.avatar || undefined;
     const userData: User = {
       id: fullUser.id,
       name: fullUser.name,
-      nickname: fullUser.nickname ?? payload.nickname ?? null,
+      nickname: fullUser.nickname ?? null,
       email: fullUser.email,
       picture: avatarUrl,
       instruments: safeJsonParse(fullUser.instruments, []) as User['instruments'],

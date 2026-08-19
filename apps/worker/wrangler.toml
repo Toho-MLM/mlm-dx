@@ -40,7 +40,6 @@ new_sqlite_classes = ["ReservationRoom"]
 [env.production.vars]
 NODE_ENV = ""
 AUTH_URL = ""
-AUTH_SECRET = ""
 GOOGLE_CLIENT_ID = ""
 GOOGLE_CLIENT_SECRET = ""
 CORS_ORIGIN = ""

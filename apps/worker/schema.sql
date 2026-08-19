@@ -19,6 +19,7 @@ DROP TABLE IF EXISTS group_member_instruments;
 DROP TABLE IF EXISTS groups;
 DROP TABLE IF EXISTS passkey_challenges;
 DROP TABLE IF EXISTS passkeys;
+DROP TABLE IF EXISTS auth_sessions;
 DROP TABLE IF EXISTS users;
 
 CREATE TABLE IF NOT EXISTS users (
@@ -34,6 +35,19 @@ CREATE TABLE IF NOT EXISTS users (
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE CHECK (length(token_hash) = 43),
+  user_id TEXT NOT NULL,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CHECK (expires_at > created_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS passkeys (
   id TEXT PRIMARY KEY,

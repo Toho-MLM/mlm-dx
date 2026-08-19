@@ -1,7 +1,4 @@
-import { sign, verify } from 'hono/jwt';
 import { z } from 'zod';
-
-const UuidSchema = z.string().uuid();
 
 const GoogleUserSchema = z.object({
   id: z.string(),
@@ -47,16 +44,6 @@ const GoogleIdTokenPayloadSchema = z.object({
   nonce: z.string().optional(),
 });
 
-const CustomJWTPayloadSchema = z.object({
-  sub: UuidSchema,
-  email: z.string().email(),
-  name: z.string(),
-  nickname: z.string().nullable(),
-  picture: z.string().url().optional(),
-  iat: z.number(),
-  exp: z.number(),
-});
-
 type GoogleJWKS = z.infer<typeof GoogleJWKSchema>;
 type GoogleIdTokenPayload = z.infer<typeof GoogleIdTokenPayloadSchema>;
 
@@ -68,16 +55,6 @@ export interface AuthUser {
   family_name?: string;
   image?: string;
   emailVerified?: boolean;
-}
-
-export interface CustomJWTPayload {
-  sub: string;
-  email: string;
-  name: string;
-  nickname: string | null;
-  picture?: string;
-  iat: number;
-  exp: number;
 }
 
 export function generateState(): string {
@@ -105,31 +82,6 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
   let str = '';
   for (let i = 0; i < bytes.byteLength; i++) str += String.fromCharCode(bytes[i]);
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-export async function generateJWT(user: AuthUser, nickname: string | null, secret: string): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    sub: user.id,
-    email: user.email,
-    name: user.name,
-    nickname: nickname,
-    picture: user.image,
-    iat: now,
-    exp: now + (7 * 24 * 60 * 60),
-  };
-  
-  return await sign(payload, secret);
-}
-
-export async function verifyJWT(token: string, secret: string): Promise<CustomJWTPayload | null> {
-  try {
-    const payload = await verify(token, secret);
-    return CustomJWTPayloadSchema.parse(payload);
-  } catch (error) {
-    console.error('JWT verification failed:', error);
-    return null;
-  }
 }
 
 export async function getGoogleUserInfo(accessToken: string): Promise<AuthUser | null> {
