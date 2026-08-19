@@ -1,6 +1,6 @@
 # Worker API リファレンス
 
-最終更新日: 2026-08-01
+最終更新日: 2026-08-19
 
 ## 概要
 
@@ -15,17 +15,18 @@ Worker は以下の `Bindings` を前提としています。
 | キー | 説明 |
 | --- | --- |
 | `DB` | Cloudflare D1 Database インスタンス |
-| `AUTH_SECRET` | JWT 署名に利用する秘密鍵 |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth クライアント |
 | `CORS_ORIGIN` | 許可するオリジンのカンマ区切りリスト |
 | `FRONTEND_URL` | フロントエンドアプリのルート URL |
-| `NODE_ENV` | `production` であれば Cookie を `Secure` 化 |
+| `NODE_ENV` | 実行環境の識別子 |
 | `AUTH_URL` | Worker 自身のパブリック URL (OAuth コールバックに利用) |
 
 ## 認証と権限
 
-- すべての API は `auth_token` Cookie によるセッション認証を要求します（一部の `/auth` エンドポイントを除く）。
-- `requireAuth` ミドルウェアが Cookie 検証・ユーザー取得・`c.set('user', ...)` を実施します。失敗時は `401` で `NO_AUTHENTICATION_TOKEN`、`INVALID_TOKEN`、`USER_NOT_FOUND` 等を返却します。
+- すべての API は不透明なセッション Cookie による認証を要求します（一部の `/auth` エンドポイントを除く）。HTTPS では `__Host-mlm_dx_session`、ローカル HTTP 開発では `mlm_dx_session` を使用します。
+- Cookie は `HttpOnly`、HTTPS では `Secure`、`SameSite=Lax`、`Path=/` とし、有効期間は7日です。Cookie には256ビットのランダム値だけを保存し、D1 の `auth_sessions` には SHA-256 ハッシュだけを保存します。
+- `requireAuth` ミドルウェアが D1 上の有効期限とユーザーを検証し、`c.set('user', ...)` を実施します。失敗時は `401` で `NO_AUTHENTICATION_TOKEN` または `INVALID_SESSION` を返却します。
+- `POST`、`PUT`、`PATCH`、`DELETE` は同一 origin または `CORS_ORIGIN` に列挙された origin だけを許可します。
 - 管理者権限チェックは `requireAdmin` を使用し、ユーザーの `role` が `MBR` 以外の場合に許可されます。
 
 ### Google OAuth フロー
@@ -33,24 +34,12 @@ Worker は以下の `Bindings` を前提としています。
 | メソッド | パス | 説明 |
 | --- | --- | --- |
 | `POST` | `/auth/signin/google` | PKCE 付き Google サインイン開始。`authUrl` を返し、`oauth_state` `pkce_verifier` `oauth_nonce` Cookie を設定。 |
-| `POST` | `/auth/signin/google/onetap` | Google One Tap の credential JWT を検証し、許可済みユーザーなら `auth_token` Cookie を発行。 |
-| `GET` | `/auth/callback/google` | Google からのコールバック。ユーザー存在確認・JWT 発行後、`FRONTEND_URL/auth/callback` へリダイレクト。 |
+| `POST` | `/auth/signin/google/onetap` | Google One Tap の ID token を検証し、許可済みユーザーならサーバー側セッションを発行。 |
+| `GET` | `/auth/callback/google` | Google からのコールバック。ユーザー存在確認・サーバー側セッション発行後、`FRONTEND_URL/auth/callback` へリダイレクト。 |
 | `GET` | `/auth/session` | 有効な Cookie があればユーザー情報を JSON で返却。未認証時は `{ "user": null }`。 |
-| `POST` | `/auth/signout` | `auth_token` Cookie を削除し `{ "success": true }` を返却。 |
+| `POST` | `/auth/signout` | D1 のセッションを失効させて Cookie を削除し、`{ "success": true }` を返却。 |
 
-発行される JWT (`auth_token`) には以下のクレームが含まれます。
-
-```json
-{
-  "sub": "<user-id>",
-  "email": "<email>",
-  "name": "<display-name>",
-  "nickname": "<nickname|null>",
-  "picture": "<avatar-url?>",
-  "iat": 1730112000,
-  "exp": 1730716800
-}
-```
+ログイン、セッション確認、保護 API、ログアウトのすべてで `auth_sessions` を一次情報とします。ユーザー属性や権限は Cookie に格納せず、リクエストごとに D1 の最新値を取得します。
 
 ## 共通レスポンス仕様
 
@@ -120,7 +109,7 @@ Worker は以下の `Bindings` を前提としています。
   "instruments": ["VO","GT"]
 }
 ```
-- `nickname` 変更時は新しい JWT が再発行され Cookie にセットされます。
+- `nickname` 変更後は、次のリクエストから D1 の最新値が反映されます。
 - レスポンス: `{ "success": true }` のみ。
 
 #### GET `/me/email-notification-preferences`

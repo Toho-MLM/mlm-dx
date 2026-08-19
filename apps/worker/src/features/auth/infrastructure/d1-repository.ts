@@ -3,6 +3,25 @@ import type { AuthRepository, PasskeyChallengeRow, PasskeyRow, UserRow } from '.
 
 export function createD1AuthRepository(db: D1Database): AuthRepository {
   return {
+    async createSession(session) {
+      await db.prepare(`
+        INSERT INTO auth_sessions (id, token_hash, user_id, expires_at, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).bind(session.id, session.token_hash, session.user_id, session.expires_at, session.created_at).run();
+    },
+    async findUserBySessionTokenHash(tokenHash, now) {
+      return await db.prepare(`
+        SELECT users.* FROM auth_sessions
+        INNER JOIN users ON users.id = auth_sessions.user_id
+        WHERE auth_sessions.token_hash = ? AND auth_sessions.expires_at > ?
+      `).bind(tokenHash, now).first<UserRow>();
+    },
+    async deleteSessionByTokenHash(tokenHash) {
+      await db.prepare('DELETE FROM auth_sessions WHERE token_hash = ?').bind(tokenHash).run();
+    },
+    async deleteExpiredSessions(now) {
+      await db.prepare('DELETE FROM auth_sessions WHERE expires_at <= ?').bind(now).run();
+    },
     async findUserById(id) { return await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>(); },
     async findUserByEmail(email) { return await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<UserRow>(); },
     async updateGoogleProfile(email, values, now) {
@@ -78,4 +97,3 @@ export function createD1AuthRepository(db: D1Database): AuthRepository {
     },
   };
 }
-

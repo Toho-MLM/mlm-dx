@@ -20,7 +20,7 @@ describe('unified worker API dispatch', () => {
     const original = new Request('https://dx.example/api/auth/callback/google?code=abc&state=xyz', {
       method: 'POST',
       headers: {
-        cookie: 'auth_token=token',
+        cookie: '__Host-mlm_dx_session=token',
         upgrade: 'websocket',
         'content-type': 'application/json',
       },
@@ -31,7 +31,7 @@ describe('unified worker API dispatch', () => {
 
     expect(rewritten.url).toBe('https://dx.example/auth/callback/google?code=abc&state=xyz');
     expect(rewritten.method).toBe('POST');
-    expect(rewritten.headers.get('cookie')).toBe('auth_token=token');
+    expect(rewritten.headers.get('cookie')).toBe('__Host-mlm_dx_session=token');
     expect(rewritten.headers.get('upgrade')).toBe('websocket');
     expect(await rewritten.json()).toEqual({ hello: 'world' });
   });

@@ -5,7 +5,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
-import { generateState, generateNonce, generateCodeVerifier, generateCodeChallenge, createGoogleAuthUrl, exchangeCodeForToken, getGoogleUserInfo, verifyGoogleIdToken, generateJWT, verifyJWT } from './auth';
+import { generateState, generateNonce, generateCodeVerifier, generateCodeChallenge, createGoogleAuthUrl, exchangeCodeForToken, getGoogleUserInfo, verifyGoogleIdToken } from './auth';
 import type { AuthUser } from './auth';
 import { userRoutes } from './routes/users';
 import { groupRoutes } from './routes/groups';
@@ -33,13 +33,16 @@ import { createRegistrationOptions, verifyRegistration, createAuthenticationOpti
 import { parseUuid } from './utils/uuid';
 import type { PasskeyChallengeRow, PasskeyRow } from './features/auth/application/repository';
 import { createD1AuthRepository } from './features/auth/infrastructure/d1-repository';
+import { issueSession, resolveSession } from './features/auth/application/session';
+import { webCryptoSessionTokenProvider } from './features/auth/infrastructure/session-token';
+import { clearSessionCookies, getSessionCookie, hasLegacySessionCookie, isSecureRequest, setSessionCookie } from './middleware/session-cookie';
+import { signOut } from './routes/auth-signout';
 import { createUnifiedWorker } from './api-dispatch';
 
 const UuidSchema = z.string().uuid();
 
 export type Bindings = {
   DB: D1Database;
-  AUTH_SECRET: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   CORS_ORIGIN: string;
@@ -152,20 +155,8 @@ async function signInGoogleUser(c: Context<{ Bindings: Bindings; Variables: Vari
     }, now);
   }
 
-  const jwt = await generateJWT({
-    id: dbUser.id,
-    email: googleUser.email,
-    name: formattedName,
-    image: googleUser.image,
-  }, dbUser.nickname, c.env.AUTH_SECRET);
-
-  setCookie(c, 'auth_token', jwt, {
-    httpOnly: true,
-    secure: c.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60,
-    path: '/',
-  });
+  const session = await issueSession(repository, webCryptoSessionTokenProvider, dbUser.id, new Date());
+  setSessionCookie(c, session.token);
 
   return { success: true };
 }
@@ -196,10 +187,29 @@ app.use('*', cors({
     const allowedOrigins = c.env.CORS_ORIGIN.split(',').map((o: string) => o.trim());
     return allowedOrigins.includes(origin) ? origin : null;
   },
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
 }));
+
+app.use('*', async (c, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method)) {
+    await next();
+    return c.res;
+  }
+
+  const origin = c.req.header('Origin');
+  if (origin) {
+    const requestOrigin = new URL(c.req.url).origin;
+    const allowedOrigins = c.env.CORS_ORIGIN.split(',').map((value) => value.trim()).filter(Boolean);
+    if (origin !== requestOrigin && !allowedOrigins.includes(origin)) {
+      return c.json({ success: false, error: 'INVALID_ORIGIN' }, 403);
+    }
+  }
+
+  await next();
+  return c.res;
+});
 
 app.post('/auth/signin/google', async (c) => {
   try {
@@ -211,7 +221,7 @@ app.post('/auth/signin/google', async (c) => {
 
     setCookie(c, `oauth_state_${state}`, state, {
       httpOnly: true,
-      secure: c.env.NODE_ENV === 'production',
+      secure: isSecureRequest(c),
       sameSite: 'lax',
       maxAge: 600, 
       path: '/',
@@ -219,7 +229,7 @@ app.post('/auth/signin/google', async (c) => {
 
     setCookie(c, `pkce_verifier_${state}`, codeVerifier, {
       httpOnly: true,
-      secure: c.env.NODE_ENV === 'production',
+      secure: isSecureRequest(c),
       sameSite: 'lax',
       maxAge: 600,
       path: '/',
@@ -227,7 +237,7 @@ app.post('/auth/signin/google', async (c) => {
 
     setCookie(c, `oauth_nonce_${state}`, nonce, {
       httpOnly: true,
-      secure: c.env.NODE_ENV === 'production',
+      secure: isSecureRequest(c),
       sameSite: 'lax',
       maxAge: 600,
       path: '/',
@@ -266,7 +276,7 @@ app.get('/auth/callback/google', async (c) => {
     const oauthCookieOptions = {
       path: '/',
       httpOnly: true,
-      secure: c.env.NODE_ENV === 'production',
+      secure: isSecureRequest(c),
       sameSite: 'lax' as const,
     };
     deleteCookie(c, `oauth_state_${state}`, oauthCookieOptions);
@@ -348,20 +358,22 @@ app.post('/auth/signin/google/onetap', async (c) => {
 
 app.get('/auth/session', async (c) => {
   try {
-    const token = getCookie(c, 'auth_token');
+    const token = getSessionCookie(c);
     
     if (!token) {
+      if (hasLegacySessionCookie(c)) clearSessionCookies(c);
       return c.json({ user: null });
     }
 
-    const payload = await verifyJWT(token, c.env.AUTH_SECRET);
-    if (!payload) {
-      return c.json({ user: null });
-    }
-
-    const dbUserRaw = await createD1AuthRepository(c.env.DB).findUserById(payload.sub);
+    const dbUserRaw = await resolveSession(
+      createD1AuthRepository(c.env.DB),
+      webCryptoSessionTokenProvider,
+      token,
+      new Date(),
+    );
 
     if (!dbUserRaw) {
+      clearSessionCookies(c);
       return c.json({ user: null });
     }
 
@@ -380,13 +392,13 @@ app.get('/auth/session', async (c) => {
       student_number: dbUserRaw.email.substring(0, 6).toUpperCase(),
     });
 
-    const avatarUrl = dbUserRaw?.avatar || payload.picture || undefined;
+    const avatarUrl = dbUserRaw.avatar || undefined;
     return c.json({
       user: {
         id: dbUser.id,
         email: dbUser.email,
         name: dbUser.name,
-        nickname: payload.nickname,
+        nickname: dbUser.nickname,
         picture: avatarUrl,
         role: dbUser.role,
         grade: dbUser.grade,
@@ -399,21 +411,7 @@ app.get('/auth/session', async (c) => {
   }
 });
 
-app.post('/auth/signout', async (c) => {
-  try {
-    deleteCookie(c, 'auth_token', {
-      path: '/',
-      httpOnly: true,
-      secure: c.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-    });
-
-    return c.json({ success: true });
-  } catch (error) {
-    console.error('Signout error:', error);
-    return c.json({ success: false, error: 'SIGNOUT_FAILED' }, 500);
-  }
-});
+app.post('/auth/signout', signOut);
 
 app.post('/auth/passkey/register/start', requireAuth, async (c) => {
   try {
@@ -516,6 +514,7 @@ app.post('/auth/passkey/login/options', async (c) => {
 
 app.post('/auth/passkey/login/finish', async (c) => {
   try {
+    const repository = createD1AuthRepository(c.env.DB);
     const body = await c.req.json();
     const parsed = z.object({
       challengeId: UuidSchema,
@@ -578,20 +577,8 @@ app.post('/auth/passkey/login/finish', async (c) => {
       counterUpdated: true
     });
     await createD1AuthRepository(c.env.DB).updatePasskeyCounter(matched.id, authenticationInfo.newCounter, nowISO());
-    const avatarUrl = userRow.avatar || undefined;
-    const jwt = await generateJWT({
-      id: userRow.id,
-      email: userRow.email,
-      name: userRow.name,
-      image: avatarUrl,
-    }, userRow.nickname ?? null, c.env.AUTH_SECRET);
-    setCookie(c, 'auth_token', jwt, {
-      httpOnly: true,
-      secure: c.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60,
-      path: '/',
-    });
+    const session = await issueSession(repository, webCryptoSessionTokenProvider, userRow.id, new Date());
+    setSessionCookie(c, session.token);
     await deleteChallenge(c.env, challenge.id);
     return c.json({ success: true });
   } catch (error) {
@@ -735,6 +722,7 @@ export const apiWorker = {
         await processExternalLotteryForNextDay(env);
         break;
       case "0 15 * * *":
+        await createD1AuthRepository(env.DB).deleteExpiredSessions(new Date().toISOString());
         await processPastReservations(env);
         await processPastExternalReservations(env);
         await processTodayReservations(env);
