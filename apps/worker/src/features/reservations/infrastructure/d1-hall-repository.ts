@@ -51,7 +51,7 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
 
     async listOverlappingLotteryTargets(startTime, endTime) {
       const rows = await db.prepare(`
-        SELECT target.id, target.start_datetime, target.end_datetime,
+        SELECT target.id, target.start_datetime, target.end_datetime, target.draw_datetime,
           EXISTS (
             SELECT 1 FROM external_lottery_applications application
             WHERE application.external_studio_id = target.id AND application.state = 'PENDING'
@@ -63,6 +63,7 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
         id: string;
         start_datetime: string;
         end_datetime: string;
+        draw_datetime: string;
         has_pending_applications: number;
       }>();
       return (rows.results ?? []).map((row) => ({

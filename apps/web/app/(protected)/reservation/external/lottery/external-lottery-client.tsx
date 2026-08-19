@@ -52,7 +52,10 @@ const addJSTDays = (dateString: string, days: number) => {
   date.setUTCDate(date.getUTCDate() + days)
   return getJSTDateString(date)
 }
-const getLotteryDrawAt = (studioDate: string) => {
+const getLotteryDrawAt = (studio: External, studioDate: string) => {
+  if (studio.target_type === 'HALL' && studio.draw_datetime) {
+    return new Date(studio.draw_datetime)
+  }
   const drawAt = new Date(`${studioDate}T21:00:00+09:00`)
   drawAt.setUTCDate(drawAt.getUTCDate() - 1)
   return drawAt
@@ -79,7 +82,7 @@ const getLotterySlots = (studio: External): LotterySlot[] => {
         studioEnd.getTime(),
         latestStart.getTime() + EXTERNAL_LOTTERY_MAX_DURATION_MINUTES * 60_000
       ))
-      slots.push({ id: `${studio.id}:${studioDate}`, studio, date: studioDate, start, latestStart, end, drawAt: getLotteryDrawAt(studioDate) })
+      slots.push({ id: `${studio.id}:${studioDate}`, studio, date: studioDate, start, latestStart, end, drawAt: getLotteryDrawAt(studio, studioDate) })
     }
     studioDate = addJSTDays(studioDate, 1)
   }
@@ -606,7 +609,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
         <DialogContent>
           <DialogHeader>
             <DialogTitle>抽選申込</DialogTitle>
-            <DialogDescription>抽選は利用日前日の21:00に実施し、場所と時間は空き状況から自動で割り当てられます。</DialogDescription>
+            <DialogDescription>抽選は対象に表示された日時に実施し、場所と時間は空き状況から自動で割り当てられます。</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">

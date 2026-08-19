@@ -39,7 +39,7 @@ export type RoomOption = {
 };
 
 export type HallLotteryBookingTarget = {
-  start_datetime: string;
+  draw_datetime: string;
   has_pending_applications: boolean;
 };
 
@@ -55,11 +55,9 @@ export function isValidHallLotteryTarget(startValue: string, endValue: string): 
     && end.getTime() - start.getTime() >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES * 60_000;
 }
 
-export function isLotteryTargetProtected(targetStart: string, now = new Date()): boolean {
-  const targetDate = getJSTDateString(new Date(targetStart));
-  const drawAt = new Date(`${targetDate}T21:00:00+09:00`);
-  drawAt.setUTCDate(drawAt.getUTCDate() - 1);
-  return now < drawAt;
+export function isLotteryTargetProtected(drawDatetime: string, now = new Date()): boolean {
+  const drawAt = new Date(drawDatetime);
+  return !Number.isNaN(drawAt.getTime()) && now < drawAt;
 }
 
 export function getHallLotteryBookingState(
@@ -68,7 +66,7 @@ export function getHallLotteryBookingState(
 ): { protected: boolean; afterDraw: boolean } {
   if (targets.length === 0) return { protected: false, afterDraw: false };
   const protectedTarget = targets.some((target) => (
-    isLotteryTargetProtected(target.start_datetime, now) || target.has_pending_applications
+    isLotteryTargetProtected(target.draw_datetime, now) || target.has_pending_applications
   ));
   return protectedTarget
     ? { protected: true, afterDraw: false }

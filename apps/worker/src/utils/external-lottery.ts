@@ -8,6 +8,7 @@ import { createD1GroupMembershipReader } from '../features/reservations/infrastr
 import { createD1ExternalLotteryRepository } from '../features/reservations/infrastructure/d1-external-lottery-repository';
 import type {
   LotteryApplicationRecord as ApplicationRow,
+  LotteryStudioRecord,
 } from '../features/reservations/application/external-lottery-repository';
 import {
   EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
@@ -113,16 +114,13 @@ async function markLost(env: Bindings, applicationId: string, score: number | nu
   await createD1ExternalLotteryRepository(env.DB).markLost(applicationId, score, new Date().toISOString());
 }
 
-export async function processExternalLotteryForNextDay(env: Bindings): Promise<number> {
-  const nextDay = new Date();
-  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-  const targetDate = getJSTDateString(nextDay);
+async function processLotteryForTargetDate(
+  env: Bindings,
+  targetDate: string,
+  studios: LotteryStudioRecord[]
+): Promise<number> {
   const dayRange = getJSTDayRange(targetDate);
   const lotteryRepository = createD1ExternalLotteryRepository(env.DB);
-  const studios = await lotteryRepository.listStudios(
-    dayRange.startUTC.toISOString(),
-    dayRange.endUTC.toISOString()
-  );
 
   const allocationRangeEnd = studios.reduce(
     (latest, studio) => Math.max(latest, new Date(studio.end_datetime).getTime()),
@@ -316,5 +314,40 @@ export async function processExternalLotteryForNextDay(env: Bindings): Promise<n
   }
 
   if (processed > 0) await broadcastReservationRealtimeEvent(env, 'reservations_changed');
+  return processed;
+}
+
+export async function processExternalLotteryForNextDay(
+  env: Bindings,
+  now = new Date()
+): Promise<number> {
+  const nextDay = new Date(now);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+  const targetDate = getJSTDateString(nextDay);
+  const dayRange = getJSTDayRange(targetDate);
+  const lotteryRepository = createD1ExternalLotteryRepository(env.DB);
+  const studios = (await lotteryRepository.listStudios(
+    dayRange.startUTC.toISOString(),
+    dayRange.endUTC.toISOString()
+  )).filter((studio) => studio.target_type === 'EXTERNAL');
+  return processLotteryForTargetDate(env, targetDate, studios);
+}
+
+export async function processDueHallLotteries(
+  env: Bindings,
+  now = new Date()
+): Promise<number> {
+  const lotteryRepository = createD1ExternalLotteryRepository(env.DB);
+  const dueStudios = await lotteryRepository.listDueHallStudios(now.toISOString());
+  const studiosByDate = new Map<string, LotteryStudioRecord[]>();
+  for (const studio of dueStudios) {
+    const targetDate = getJSTDateString(new Date(studio.start_datetime));
+    studiosByDate.set(targetDate, [...(studiosByDate.get(targetDate) ?? []), studio]);
+  }
+
+  let processed = 0;
+  for (const [targetDate, studios] of studiosByDate) {
+    processed += await processLotteryForTargetDate(env, targetDate, studios);
+  }
   return processed;
 }

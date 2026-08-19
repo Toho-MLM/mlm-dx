@@ -25,6 +25,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'EXTERNAL_LOTTERY_PERIOD_PROTECTED': '抽選対象の期間は外部予約できません。抽選申込を利用してください。',
   'LOTTERY_PERIOD_PROTECTED': 'この時間帯は抽選受付中のためホール予約できません。抽選申込を利用してください。',
   'INVALID_HALL_LOTTERY_TARGET': 'ホールの抽選対象は同じ日の6:00〜23:00に30分以上で設定してください。',
+  'INVALID_HALL_LOTTERY_DRAW_TIME': '抽選実行日の21:00は、現在より後かつ利用開始日時より前にしてください。',
   'HALL_LOTTERY_TARGET_CONFLICT': 'この時間帯にはホールの抽選対象がすでに登録されています。',
   'LOTTERY_APPLICATION_CONFLICT': '同じ名義の希望可能時間帯と重なる申込があります。',
   'LOTTERY_APPLICATION_NOT_FOUND': '抽選申込が見つかりません。',

@@ -15,6 +15,7 @@ export type HallLotteryTargetRecord = {
   id: string;
   start_datetime: string;
   end_datetime: string;
+  draw_datetime: string;
   has_pending_applications: boolean;
 };
 
