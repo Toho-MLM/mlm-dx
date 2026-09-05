@@ -190,6 +190,13 @@ Worker は以下の `Bindings` を前提としています。
 }
 ```
 - `assignments` を指定すると既存の割り当ては全削除後に再登録されます。
+- 一般メンバーは、所属する本バンドでは `assignments` を省略した名称変更のみ可能です。`is_main` と `is_active` は現在値を指定する必要があります。
+- レスポンス: `{ "success": true }` のみ。
+
+#### PUT `/groups/active`
+- 管理者のみ。
+- ボディ: `{ "ids": ["group-uuid"], "is_active": true }`。1〜100件のバンドを一括で有効化または無効化します。
+- 指定IDが1件でも存在しない場合は `404 GROUP_NOT_FOUND` とし、更新しません。
 - レスポンス: `{ "success": true }` のみ。
 
 ### Members

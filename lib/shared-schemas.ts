@@ -295,6 +295,11 @@ export const DeleteGroupsRequestSchema = z.object({
   ids: z.array(UuidSchema).min(1).max(100),
 });
 
+export const SetGroupsActiveRequestSchema = z.object({
+  ids: z.array(UuidSchema).min(1).max(100),
+  is_active: z.boolean(),
+});
+
 export const UpdateUserRequestSchema = z.object({
   nickname: z.string().trim().min(1),
   instruments: z.array(InstrumentSchema),
@@ -874,6 +879,7 @@ export type UserHolderResponse = z.infer<typeof UserHolderResponseSchema>;
 export type CreateGroupRequest = z.infer<typeof CreateGroupRequestSchema>;
 export type UpdateGroupRequest = z.infer<typeof UpdateGroupRequestSchema>;
 export type DeleteGroupsRequest = z.infer<typeof DeleteGroupsRequestSchema>;
+export type SetGroupsActiveRequest = z.infer<typeof SetGroupsActiveRequestSchema>;
 export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
 export type EmailNotificationType = z.infer<typeof EmailNotificationTypeSchema>;
 export type EmailNotificationPreferences = z.infer<typeof EmailNotificationPreferencesSchema>;

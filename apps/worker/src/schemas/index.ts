@@ -17,6 +17,7 @@ export const {
   CreateGroupRequestSchema,
   UpdateGroupRequestSchema,
   DeleteGroupsRequestSchema,
+  SetGroupsActiveRequestSchema,
   UpdateUserRequestSchema,
   EmailNotificationTypeSchema,
   EmailNotificationPreferencesSchema,

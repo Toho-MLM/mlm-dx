@@ -79,6 +79,16 @@ export function createD1GroupRepository(db: D1Database): GroupRepository {
       );
       await db.batch(statements);
     },
+    async setActive(ids, isActive, updatedAt) {
+      if (!ids.length) return false;
+      const placeholders = ids.map(() => '?').join(',');
+      const result = await db.prepare(`
+        UPDATE groups SET is_active = ?, updated_at = ?
+        WHERE id IN (${placeholders})
+          AND ? = (SELECT COUNT(*) FROM groups WHERE id IN (${placeholders}))
+      `).bind(isActive ? 1 : 0, updatedAt, ...ids, ids.length, ...ids).run();
+      return Number(result.meta.changes ?? 0) === ids.length;
+    },
     async allExist(ids) {
       if (!ids.length) return true;
       const placeholders = ids.map(() => '?').join(',');
@@ -100,4 +110,3 @@ export function createD1GroupRepository(db: D1Database): GroupRepository {
     },
   };
 }
-
