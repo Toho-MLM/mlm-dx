@@ -53,6 +53,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
   const [isMain, setIsMain] = useState(band?.isMain ? 'main' : 'free')
   const [isPending, setIsPending] = useState(false)
   const { user } = useAuth()
+  const isNameOnlyEdit = Boolean(band?.isMain && !isAdminMode)
 
   useEffect(() => {
     if (band) {
@@ -90,7 +91,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
         if (band) {
           response = await apiClient.updateGroup(band.id, {
             name,
-            assignments: JSON.stringify(assignments),
+            assignments: isNameOnlyEdit ? undefined : JSON.stringify(assignments),
             is_main: isAdminMode ? isMainBand : band.isMain,
             is_active: band.isActive
           });
@@ -176,12 +177,13 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
 
   const isFormValid = useMemo(() => {
     if (name.trim() === '') return false;
+    if (isNameOnlyEdit) return true;
     if (bandMembers.length === 0) return false;
     if (bandMembers.length < 2) return false;
     if (bandMembers.some(member => member.instruments.length === 0)) return false;
     if (!isAdminMode && !bandMembers.some(member => member.id === user?.id)) return false;
     return true;
-  }, [name, bandMembers, user?.id, isAdminMode]);
+  }, [name, bandMembers, user?.id, isAdminMode, isNameOnlyEdit]);
 
   const validationChecks = useMemo(() => {
     return {
@@ -197,7 +199,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
     <Dialog open={isOpen} onOpenChange={onDialogClose}>
       <DialogContent className="p-5">
         <DialogHeader>
-          <DialogTitle>{band ? 'バンドを更新' : 'バンドを作成'}</DialogTitle>
+          <DialogTitle>{isNameOnlyEdit ? '本バンド名を変更' : band ? 'バンドを更新' : 'バンドを作成'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Input
@@ -224,7 +226,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
               </RadioGroup>
             </div>
           )}
-          <div className="space-y-2">
+          {!isNameOnlyEdit && <div className="space-y-2">
             <h3 className="font-medium">メンバー</h3>
             {sortedBandMembers.map((bandMember, index) => {
               const memberOption = memberOptions.find(m => m.id === bandMember.id);
@@ -346,10 +348,12 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <LoadingButton onClick={handleSubmit} isLoading={isPending} disabled={!isFormValid}>
-                {band ? '保存' : '作成'}
-              </LoadingButton>
             </div>
+          </div>}
+          <div className="flex justify-end">
+            <LoadingButton onClick={handleSubmit} isLoading={isPending} disabled={!isFormValid}>
+              {band ? '保存' : '作成'}
+            </LoadingButton>
           </div>
         </div>
       </DialogContent>
