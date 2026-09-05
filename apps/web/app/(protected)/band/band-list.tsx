@@ -43,6 +43,7 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
   const [deletingBands, setDeletingBands] = useState<Group[]>([])
   const [selectedBandIds, setSelectedBandIds] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isUpdatingActive, setIsUpdatingActive] = useState(false)
   const placeholderMain: Group = { id: 'placeholder-main', name: '', isMain: true, isActive: true, assignments: [] }
   const placeholderFree: Group = { id: 'placeholder-free', name: '', isMain: false, isActive: true, assignments: [] }
 
@@ -178,6 +179,37 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
     }
   }
 
+  const handleBulkActiveChange = async (isActive: boolean) => {
+    const ids = [...selectedBandIds]
+    if (ids.length === 0 || isUpdatingActive) return
+
+    try {
+      setIsUpdatingActive(true)
+      const response = await apiClient.setGroupsActive({ ids, is_active: isActive })
+      if (!response.success) {
+        toast.error(`バンドを${isActive ? '有効化' : '無効化'}できませんでした`, {
+          description: response.error ? translateError(response.error) : undefined,
+        })
+        return
+      }
+
+      const updatedIds = new Set(ids)
+      setBands(prev => prev.map(band => updatedIds.has(band.id) ? { ...band, isActive } : band))
+      setSelectedBandIds(new Set())
+      toast.success(`${ids.length}件のバンドを${isActive ? '有効化' : '無効化'}しました`)
+    } catch (error) {
+      toast.error(`バンドを${isActive ? '有効化' : '無効化'}できませんでした`, {
+        description: translateError((error as Error).message),
+      })
+    } finally {
+      setIsUpdatingActive(false)
+    }
+  }
+
+  const selectedBands = bands.filter(band => selectedBandIds.has(band.id))
+  const hasSelectedActiveBand = selectedBands.some(band => band.isActive)
+  const hasSelectedInactiveBand = selectedBands.some(band => !band.isActive)
+
   return (
     <>
       <BandPageHeader 
@@ -197,14 +229,32 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
               />
               {selectedBandIds.size > 0 ? `${selectedBandIds.size}件選択中` : 'すべて選択'}
             </label>
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={selectedBandIds.size === 0}
-              onClick={() => setDeletingBands(bands.filter(band => selectedBandIds.has(band.id)))}
-            >
-              選択したバンドを完全に削除
-            </Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasSelectedInactiveBand || isUpdatingActive || isDeleting}
+                onClick={() => handleBulkActiveChange(true)}
+              >
+                有効化
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasSelectedActiveBand || isUpdatingActive || isDeleting}
+                onClick={() => handleBulkActiveChange(false)}
+              >
+                無効化
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={selectedBandIds.size === 0 || isUpdatingActive || isDeleting}
+                onClick={() => setDeletingBands(selectedBands)}
+              >
+                完全に削除
+              </Button>
+            </div>
           </div>
         )}
         <div className="space-y-2">

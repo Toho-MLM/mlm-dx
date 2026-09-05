@@ -17,6 +17,7 @@ type Archive = SharedSchemas.Archive
 type CreateGroupRequest = SharedSchemas.CreateGroupRequest
 type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest
 type DeleteGroupsRequest = SharedSchemas.DeleteGroupsRequest
+type SetGroupsActiveRequest = SharedSchemas.SetGroupsActiveRequest
 type UpdateUserRequest = SharedSchemas.UpdateUserRequest
 export type EmailNotificationType = SharedSchemas.EmailNotificationType
 export type EmailNotificationPreferences = SharedSchemas.EmailNotificationPreferences
@@ -187,6 +188,11 @@ class ApiClient {
   async deleteGroups(data: DeleteGroupsRequest): Promise<ApiResponse<void>> {
     SharedSchemas.DeleteGroupsRequestSchema.parse(data)
     return httpClient.delete<ApiResponse<void>>('/groups', data)
+  }
+
+  async setGroupsActive(data: SetGroupsActiveRequest): Promise<ApiResponse<void>> {
+    SharedSchemas.SetGroupsActiveRequestSchema.parse(data)
+    return httpClient.put<ApiResponse<void>>('/groups/active', data)
   }
 
   async createBandMainDraft(): Promise<ApiResponse<{ shareToken: string }>> {

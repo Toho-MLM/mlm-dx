@@ -8,7 +8,7 @@ export interface GroupRepository {
   list(userId: string, mode: 'main' | 'admin' | 'member'): Promise<Record<string, unknown>[]>;
   findState(groupId: string): Promise<GroupState | null>;
   update(id: string, name: string, isMain: boolean, isActive: boolean, assignments: Record<string, string[]> | undefined, now: string, createId: () => string): Promise<void>;
+  setActive(ids: string[], isActive: boolean, updatedAt: string): Promise<boolean>;
   allExist(ids: string[]): Promise<boolean>;
   delete(ids: string[]): Promise<void>;
 }
-
