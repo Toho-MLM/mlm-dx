@@ -50,16 +50,16 @@ function sortGroupMemberInstruments(members: GroupMember[]) {
 export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAdminMode = false }: BandFormProps) {
   const [name, setName] = useState(band?.name || '')
   const [bandMembers, setBandMembers] = useState<GroupMember[]>(band?.assignments || [])
-  const [isMain, setIsMain] = useState(band?.isMain ? 'main' : 'free')
+  const [isMain, setIsMain] = useState(band?.mainIndex !== null ? 'main' : 'free')
   const [isPending, setIsPending] = useState(false)
   const { user } = useAuth()
-  const isNameOnlyEdit = Boolean(band?.isMain && !isAdminMode)
+  const isNameOnlyEdit = Boolean(band?.mainIndex !== null && !isAdminMode)
 
   useEffect(() => {
     if (band) {
       setName(band.name)
       setBandMembers(sortGroupMemberInstruments(band.assignments))
-      setIsMain(band.isMain ? 'main' : 'free')
+      setIsMain(band.mainIndex !== null ? 'main' : 'free')
     } else {
       setName('')
       setBandMembers([])
@@ -92,14 +92,14 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
           response = await apiClient.updateGroup(band.id, {
             name,
             assignments: isNameOnlyEdit ? undefined : JSON.stringify(assignments),
-            is_main: isAdminMode ? isMainBand : band.isMain,
+            main_index: isAdminMode ? (isMainBand ? band.mainIndex ?? 0 : null) : band.mainIndex,
             is_active: band.isActive
           });
         } else {
           response = await apiClient.createGroup({
             name,
             assignments: JSON.stringify(assignments),
-            is_main: isMainBand
+            main_index: isMainBand ? 0 : null
           });
         }
 

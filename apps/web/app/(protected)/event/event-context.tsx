@@ -2,7 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react'
 
-type GroupOption = { id: string; name: string; is_main: boolean }
+type GroupOption = { id: string; name: string; main_index: number | null }
 type UserEntry = { id: string; event_id: string; group_id: string; note?: string | null }
 
 export type EventContextValue = {

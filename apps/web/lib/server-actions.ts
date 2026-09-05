@@ -35,7 +35,7 @@ export async function createArchiveAction(data: {
 export async function createGroupAction(data: {
   name: string
   assignments?: string
-  is_main?: boolean
+  main_index?: number | null
 }): Promise<ApiResponse<void>> {
   try {
     const result = await serverRequest('/groups', {
@@ -56,7 +56,7 @@ export async function createGroupAction(data: {
 export async function updateGroupAction(id: string, data: {
   name: string
   assignments?: string
-  is_main?: boolean
+  main_index?: number | null
   is_active?: boolean
 }): Promise<ApiResponse<void>> {
   try {

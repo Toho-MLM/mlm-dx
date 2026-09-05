@@ -47,7 +47,7 @@ export interface Group {
   id: string;
   name: string;
   assignments?: unknown; // JSON object
-  is_main: boolean;
+  main_index: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

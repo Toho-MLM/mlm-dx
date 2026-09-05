@@ -16,6 +16,7 @@ type ReservationLimitScope = SharedSchemas.ReservationLimitScope
 type Archive = SharedSchemas.Archive
 type CreateGroupRequest = SharedSchemas.CreateGroupRequest
 type UpdateGroupRequest = SharedSchemas.UpdateGroupRequest
+type ReorderMainGroupsRequest = SharedSchemas.ReorderMainGroupsRequest
 type DeleteGroupsRequest = SharedSchemas.DeleteGroupsRequest
 type SetGroupsActiveRequest = SharedSchemas.SetGroupsActiveRequest
 type UpdateUserRequest = SharedSchemas.UpdateUserRequest
@@ -158,9 +159,9 @@ class ApiClient {
     return httpClient.get<ApiResponse<Group[]>>('/groups?main=true')
   }
 
-  async getGroupOptions(admin: boolean = false): Promise<ApiResponse<{ id: string; name: string; is_main: boolean }[]>> {
+  async getGroupOptions(admin: boolean = false): Promise<ApiResponse<{ id: string; name: string; main_index: number | null }[]>> {
     const params = admin ? '?admin=true' : '';
-    return httpClient.get<ApiResponse<{ id: string; name: string; is_main: boolean }[]>>(`/me/groups/select${params}`)
+    return httpClient.get<ApiResponse<{ id: string; name: string; main_index: number | null }[]>>(`/me/groups/select${params}`)
   }
 
   async getMemberOptions(): Promise<ApiResponse<{ id: string; name: string; display_name?: string; real_name?: string; instruments: string[] }[]>> {
@@ -193,6 +194,11 @@ class ApiClient {
   async setGroupsActive(data: SetGroupsActiveRequest): Promise<ApiResponse<void>> {
     SharedSchemas.SetGroupsActiveRequestSchema.parse(data)
     return httpClient.put<ApiResponse<void>>('/groups/active', data)
+  }
+
+  async reorderMainGroups(data: ReorderMainGroupsRequest): Promise<ApiResponse<void>> {
+    SharedSchemas.ReorderMainGroupsRequestSchema.parse(data)
+    return httpClient.put<ApiResponse<void>>('/groups/main-order', data)
   }
 
   async createBandMainDraft(): Promise<ApiResponse<{ shareToken: string }>> {

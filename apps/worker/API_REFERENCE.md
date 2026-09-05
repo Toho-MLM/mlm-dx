@@ -147,7 +147,7 @@ Worker は以下の `Bindings` を前提としています。
 {
   "success": true,
   "data": [
-    { "id": "group-uuid", "name": "Band A", "is_main": true }
+    { "id": "group-uuid", "name": "Band A", "main_index": 0 }
   ]
 }
 ```
@@ -156,25 +156,26 @@ Worker は以下の `Bindings` を前提としています。
 ### Groups
 
 #### POST `/groups`
-- 認証必須。管理者権限不要（任意ユーザーが利用可能）。
+- 認証必須。自由バンドは任意ユーザー、本バンドは管理者のみ作成できます。
 - ボディ (`CreateGroupRequestSchema`):
 ```json
 {
   "name": "Band A",
-  "is_main": true,
+  "main_index": 0,
   "assignments": {
     "VO": "user-id-1",
     "GT": "user-id-2"
   }
 }
 ```
-- `assignments` は `"楽器コード": "user_id"` のマップ。省略時は空のまま作成。
+- `main_index` は自由バンドでは `null`、本バンドでは非負整数を指定します。本バンド作成時の保存値はサーバーが末尾の番号へ正規化します。
+- `assignments` は `"楽器コード": ["user_id"]` のマップで、2人以上のメンバーが必要です。
 - レスポンス: `{ "success": true }` のみ。
 
 #### GET `/groups`
 - 認証必須。
 - クエリ `admin=true` を付けると全グループ取得 (管理者権限が必要)。付けない場合はログインユーザーが所属するグループのみ。
-- 応答は `is_main`, `is_active` などテーブルの生データに加え、`assignments` 配列（`{ "id": "<user-id>", "instruments": ["VO","GT"] }`）を含みます。
+- 応答は `main_index`, `is_active` に加え、`assignments` 配列（`{ "id": "<user-id>", "instruments": ["VO","GT"] }`）を含みます。`main_index` が `null` の場合は自由バンドです。
 
 #### PUT `/groups/:id`
 - 認証必須。
@@ -182,7 +183,7 @@ Worker は以下の `Bindings` を前提としています。
 ```json
 {
   "name": "Band A",
-  "is_main": false,
+  "main_index": null,
   "is_active": true,
   "assignments": {
     "VO": "user-id-1"
@@ -190,13 +191,19 @@ Worker は以下の `Bindings` を前提としています。
 }
 ```
 - `assignments` を指定すると既存の割り当ては全削除後に再登録されます。
-- 一般メンバーは、所属する本バンドでは `assignments` を省略した名称変更のみ可能です。`is_main` と `is_active` は現在値を指定する必要があります。
+- 一般メンバーは、所属する本バンドでは `assignments` を省略した名称変更のみ可能です。`main_index` と `is_active` は現在値を指定する必要があります。
 - レスポンス: `{ "success": true }` のみ。
 
 #### PUT `/groups/active`
 - 管理者のみ。
 - ボディ: `{ "ids": ["group-uuid"], "is_active": true }`。1〜100件のバンドを一括で有効化または無効化します。
 - 指定IDが1件でも存在しない場合は `404 GROUP_NOT_FOUND` とし、更新しません。
+- レスポンス: `{ "success": true }` のみ。
+
+#### PUT `/groups/main-order`
+- 管理者のみ。
+- ボディ: `{ "ids": ["group-uuid-2", "group-uuid-1"] }`。有効な本バンドを表示順どおり全件指定します。
+- 対象の不足・重複・対象外IDがある場合は更新せず、`409 GROUP_ORDER_MISMATCH` を返します。
 - レスポンス: `{ "success": true }` のみ。
 
 ### Members

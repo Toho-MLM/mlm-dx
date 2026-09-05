@@ -44,8 +44,8 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
   const [selectedBandIds, setSelectedBandIds] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
   const [isUpdatingActive, setIsUpdatingActive] = useState(false)
-  const placeholderMain: Group = { id: 'placeholder-main', name: '', isMain: true, isActive: true, assignments: [] }
-  const placeholderFree: Group = { id: 'placeholder-free', name: '', isMain: false, isActive: true, assignments: [] }
+  const placeholderMain: Group = { id: 'placeholder-main', name: '', mainIndex: 0, isActive: true, assignments: [] }
+  const placeholderFree: Group = { id: 'placeholder-free', name: '', mainIndex: null, isActive: true, assignments: [] }
 
   const fetchBandsAndMembers = useCallback(async (adminFlag: boolean) => {
     try {
@@ -90,7 +90,7 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
     try {
       const response = await apiClient.updateGroup(id, {
         name: band.name,
-        is_main: band.isMain,
+        main_index: band.mainIndex,
         is_active: !band.isActive,
         assignments: JSON.stringify(band.assignments.reduce((acc, member) => {
           member.instruments.forEach(instrument => {

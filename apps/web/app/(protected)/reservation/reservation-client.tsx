@@ -39,7 +39,7 @@ import {
 type GroupOption = {
   id: string;
   name: string;
-  is_main: boolean;
+  main_index: number | null;
 }
 
 const toJSTISOString = (date: Date, hour: number, minute: number) => {
@@ -1164,8 +1164,8 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
                         <SelectItem key={group.id} value={group.id}>
                           <div className="flex items-center justify-between w-full gap-2">
                             <span>{group.name}</span>
-                            <Badge variant={group.is_main ? "default" : "outline"} className="text-sm px-1.5 py-0 shrink-0">
-                              {group.is_main ? '本バンド' : '自由バンド'}
+                            <Badge variant={group.main_index !== null ? "default" : "outline"} className="text-sm px-1.5 py-0 shrink-0">
+                              {group.main_index !== null ? '本バンド' : '自由バンド'}
                             </Badge>
                           </div>
                         </SelectItem>

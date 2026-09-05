@@ -271,7 +271,7 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
 
     async listLotteryApplications() {
       const rows = await db.prepare(`
-        SELECT ela.*, COALESCE(u.nickname, u.name) user_name, g.name group_name, g.is_main,
+        SELECT ela.*, COALESCE(u.nickname, u.name) user_name, g.name group_name, g.main_index,
                es.target_type, es.start_datetime studio_start_datetime, es.end_datetime studio_end_datetime, es.room_names,
                CASE WHEN ela.assigned_room_number IS NULL THEN NULL
                  ELSE json_extract(es.room_names, '$[' || (ela.assigned_room_number - 1) || ']') END assigned_room_name

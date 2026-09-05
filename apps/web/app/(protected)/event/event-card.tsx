@@ -119,7 +119,7 @@ export function EventCard({ event }: EventCardProps) {
     const options = groupOptions ?? []
     const entries = userEntries ?? []
     if (groupLimit === 0) {
-      return options.filter(g => g.is_main).map(g => g.name)
+      return options.filter(g => g.main_index !== null).map(g => g.name)
     }
     const groupMap = new Map(options.map(g => [g.id, g.name]))
     const eventEntries = entries.filter(e => e.event_id === event.id)

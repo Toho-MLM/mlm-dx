@@ -28,7 +28,7 @@ import { Event } from '@/app/types'
 interface Group {
   id: string
   name: string
-  is_main: boolean
+  main_index: number | null
 }
 
 interface EventEntryDialogProps {
@@ -97,7 +97,7 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
     setSelectedGroups(prev => prev.filter(id => id !== groupId))
   }
 
-  const availableGroups = groups.filter(group => !selectedGroups.includes(group.id) && !group.is_main)
+  const availableGroups = groups.filter(group => !selectedGroups.includes(group.id) && group.main_index === null)
 
   const getGroupName = (groupId: string) => {
     return groups.find(g => g.id === groupId)?.name || groupId

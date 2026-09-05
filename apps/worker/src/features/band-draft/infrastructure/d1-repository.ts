@@ -44,8 +44,8 @@ export function createD1BandDraftRepository(db: D1Database): BandDraftRepository
     async finalize(draft, groups, now, createId) {
       const statements = groups.flatMap((group) => [
         db.prepare(`
-          INSERT INTO groups (id, name, is_main, is_active, created_at, updated_at)
-          SELECT ?, ?, TRUE, TRUE, ?, ? WHERE EXISTS (
+          INSERT INTO groups (id, name, main_index, is_active, created_at, updated_at)
+          SELECT ?, ?, (SELECT COALESCE(MAX(main_index) + 1, 0) FROM groups), TRUE, ?, ? WHERE EXISTS (
             SELECT 1 FROM main_band_drafts WHERE id = ? AND state_json = ?)
         `).bind(group.id, group.name, now, now, draft.id, draft.state_json),
         ...group.assignments.map((assignment) => db.prepare(`
@@ -71,4 +71,3 @@ export function createD1BandDraftRepository(db: D1Database): BandDraftRepository
     },
   };
 }
-
