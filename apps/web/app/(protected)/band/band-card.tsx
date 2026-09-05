@@ -118,7 +118,7 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, onD
       </div>
 
       <div className="col-start-2 row-start-1 flex shrink-0 justify-end sm:col-start-3">
-        {!loading && !(band.isMain && !isAdminMode) && (
+        {!loading && (band.isActive || !band.isMain || isAdminMode) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -139,7 +139,7 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, onD
                   >
                     編集
                   </DropdownMenuItem>
-                  {onToggleActive && (
+                  {onToggleActive && (!band.isMain || isAdminMode) && (
                     <DropdownMenuItem
                       onClick={() => onToggleActive(band.id)}
                       className="flex items-center gap-2"
@@ -149,7 +149,7 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, onD
                   )}
                 </>
               ) : (
-                onToggleActive && (
+                onToggleActive && (!band.isMain || isAdminMode) && (
                   <DropdownMenuItem
                     onClick={() => onToggleActive(band.id)}
                     className="flex items-center gap-2"

@@ -355,7 +355,7 @@ Worker は以下の `Bindings` を前提としています。
 Worker は Cron トリガーを利用した自動処理を実装しています。
 
 - `0 15 * * *`（UTC 15:00 = JST 00:00）: `processDailyReservations` が当日分の `PENDING` 予約を取得し、`processReservationState` により重複検出・部分調整を実施したうえで `CONFIRMED` / `DECLINED` を更新します。
-- `0 16 * * *`（UTC 16:00 = JST 01:00、トリガー登録時）: `deleteExpiredEvents` が開催から2日経過したイベントを削除し、紐づくバンドを `is_active = false` に更新します。
+- `0 16 * * *`（UTC 16:00 = JST 01:00、トリガー登録時）: `deleteExpiredEvents` が開催から2日経過したイベントを削除し、紐づく自由バンドを `is_active = false` に更新します。本バンドは有効なまま維持されます。
 
 同日の予約は作成時に即時判定されるため、Cron 処理では未来日から当日に切り替わった予約のみが評価対象となります。
 

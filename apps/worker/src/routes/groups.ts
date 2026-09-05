@@ -6,6 +6,7 @@ import { isAdmin, requireAdmin } from '../utils/admin';
 import { ZodError } from 'zod';
 import { parseUuid } from '../utils/uuid';
 import { assignmentMemberIds, normalizeAssignments } from '../features/groups/domain/assignments';
+import { canMemberUpdateGroup } from '../features/groups/domain/update-permissions';
 import { createD1GroupRepository } from '../features/groups/infrastructure/d1-repository';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -123,10 +124,11 @@ groupRoutes.put('/:id', async (c) => {
     const userIsAdmin = isAdmin(user.role);
     if (!userIsAdmin) {
       const isMember = await isUserInGroup(c.env, user.id, groupId);
-      if (!isMember || currentGroup.isMain) {
-        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
-      }
-      if (requestData.is_main || requestData.is_active !== currentGroup.isActive) {
+      if (!isMember || !canMemberUpdateGroup(currentGroup, {
+        isMain: requestData.is_main,
+        isActive: requestData.is_active,
+        includesAssignments: requestData.assignments !== undefined,
+      })) {
         return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
       }
     }
