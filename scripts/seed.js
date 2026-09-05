@@ -29,9 +29,10 @@ function createUserSQL(user) {
 function createGroupSQL(group) {
   const id = randomUUID();
   const timestamp = generateTimestamp();
+  const mainIndex = group.mainIndex == null ? 'NULL' : Number(group.mainIndex);
   
-  return `INSERT OR IGNORE INTO groups (id, name, is_main, is_active, created_at, updated_at) VALUES 
-('${id}', '${group.name}', ${group.isMain ? 'TRUE' : 'FALSE'}, ${group.isActive ? 'TRUE' : 'FALSE'}, '${timestamp}', '${timestamp}');`;
+  return `INSERT OR IGNORE INTO groups (id, name, main_index, is_active, created_at, updated_at) VALUES
+('${id}', '${group.name}', ${mainIndex}, ${group.isActive ? 'TRUE' : 'FALSE'}, '${timestamp}', '${timestamp}');`;
 }
 
 function createGroupMemberSQL(groupId, userId, instrument) {
@@ -191,7 +192,7 @@ function listReservations(isLocal = false) {
 function listGroups(isLocal = false) {
   console.log('Listing groups...');
   
-  const query = 'SELECT id, name, is_main, is_active, created_at FROM groups ORDER BY created_at DESC';
+  const query = 'SELECT id, name, main_index, is_active, created_at FROM groups ORDER BY main_index IS NULL, main_index, created_at DESC';
   const command = isLocal 
     ? `wrangler d1 execute mlm-dx-db --command="${query}" --local`
     : `wrangler d1 execute mlm-dx-db --command="${query}"`;

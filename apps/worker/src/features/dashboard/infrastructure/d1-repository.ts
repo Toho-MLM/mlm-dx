@@ -15,7 +15,7 @@ export function createD1DashboardRepository(db: D1Database): DashboardRepository
       const rows = await db.prepare(`
         SELECT ev.id AS event_id, ev.title AS event_title, ev.entry_deadline AS due_at,
                COUNT(DISTINCT g.id) AS eligible_group_count
-        FROM events ev INNER JOIN groups g ON g.is_active = TRUE AND g.is_main = FALSE
+        FROM events ev INNER JOIN groups g ON g.is_active = TRUE AND g.main_index IS NULL
         INNER JOIN group_member_instruments gmi ON gmi.group_id = g.id AND gmi.user_id = ?
         LEFT JOIN entries en ON en.event_id = ev.id AND en.group_id = g.id
         WHERE ev.group_limit > 0 AND ev.is_entry_accepting = TRUE
@@ -33,7 +33,7 @@ export function createD1DashboardRepository(db: D1Database): DashboardRepository
           INNER JOIN group_member_instruments gmi ON gmi.group_id = en.group_id AND gmi.user_id = ?
           UNION
           SELECT en.id, ev.id, g.id, g.name FROM events ev
-          INNER JOIN groups g ON g.is_main = TRUE AND g.is_active = TRUE
+          INNER JOIN groups g ON g.main_index IS NOT NULL AND g.is_active = TRUE
           INNER JOIN group_member_instruments gmi ON gmi.group_id = g.id AND gmi.user_id = ?
           LEFT JOIN entries en ON en.event_id = ev.id AND en.group_id = g.id WHERE ev.group_limit = 0
         )
@@ -100,7 +100,7 @@ export function createD1DashboardRepository(db: D1Database): DashboardRepository
           WHERE ev.group_limit > 0 AND date(ev.event_date) BETWEEN date(?) AND date(?)
           UNION ALL
           SELECT ev.id, ev.title, ev.event_date, en.id, en.position, en.start_time, en.end_time
-          FROM events ev INNER JOIN groups g ON g.is_main = TRUE AND g.is_active = TRUE
+          FROM events ev INNER JOIN groups g ON g.main_index IS NOT NULL AND g.is_active = TRUE
           LEFT JOIN entries en ON en.event_id = ev.id AND en.group_id = g.id
           WHERE ev.group_limit = 0 AND date(ev.event_date) BETWEEN date(?) AND date(?)
         )

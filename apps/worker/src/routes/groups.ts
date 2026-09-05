@@ -1,12 +1,15 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
-import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema, DeleteGroupsRequestSchema } from '../schemas';
+import { GroupSchema, CreateGroupRequestSchema, UpdateGroupRequestSchema, DeleteGroupsRequestSchema, ReorderMainGroupsRequestSchema, SetGroupsActiveRequestSchema } from '../schemas';
 import { isAdmin, requireAdmin } from '../utils/admin';
 import { ZodError } from 'zod';
 import { parseUuid } from '../utils/uuid';
 import { assignmentMemberIds, normalizeAssignments } from '../features/groups/domain/assignments';
+import { canMemberUpdateGroup } from '../features/groups/domain/update-permissions';
 import { createD1GroupRepository } from '../features/groups/infrastructure/d1-repository';
+import { setGroupsActive } from '../features/groups/application/set-groups-active';
+import { reorderMainGroups } from '../features/groups/application/reorder-main-groups';
 
 const groupRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -41,7 +44,7 @@ groupRoutes.post('/', async (c) => {
     const user = c.get('user');
     const requestData = CreateGroupRequestSchema.parse(await c.req.json());
 
-    if (requestData.is_main && !isAdmin(user.role)) {
+    if (requestData.main_index !== null && !isAdmin(user.role)) {
       return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -60,7 +63,7 @@ groupRoutes.post('/', async (c) => {
     const newId = crypto.randomUUID();
 
     await createD1GroupRepository(c.env.DB).create(
-      newId, requestData.name, requestData.is_main, assignments, now, () => crypto.randomUUID(),
+      newId, requestData.name, requestData.main_index, assignments, now, () => crypto.randomUUID(),
     );
     
     return c.json({ success: true });
@@ -105,6 +108,63 @@ groupRoutes.get('/', async (c) => {
 });
 
 
+groupRoutes.put('/active', async (c) => {
+  try {
+    try {
+      requireAdmin(c.get('user').role);
+    } catch {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const requestData = SetGroupsActiveRequestSchema.parse(await c.req.json());
+    const result = await setGroupsActive(
+      createD1GroupRepository(c.env.DB),
+      requestData.ids,
+      requestData.is_active,
+      new Date().toISOString(),
+    );
+    if (result === 'GROUP_NOT_FOUND') {
+      return c.json({ success: false, error: 'GROUP_NOT_FOUND' }, 404);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_REQUEST' }, 400);
+    }
+    console.error('Error updating group active statuses:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
+groupRoutes.put('/main-order', async (c) => {
+  try {
+    try {
+      requireAdmin(c.get('user').role);
+    } catch {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const requestData = ReorderMainGroupsRequestSchema.parse(await c.req.json());
+    const result = await reorderMainGroups(
+      createD1GroupRepository(c.env.DB),
+      requestData.ids,
+      new Date().toISOString(),
+    );
+    if (result === 'GROUP_ORDER_MISMATCH') {
+      return c.json({ success: false, error: 'GROUP_ORDER_MISMATCH' }, 409);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return c.json({ success: false, error: 'INVALID_REQUEST' }, 400);
+    }
+    console.error('Error reordering main groups:', error);
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
+  }
+});
+
 groupRoutes.put('/:id', async (c) => {
   try {
     const user = c.get('user');
@@ -123,10 +183,11 @@ groupRoutes.put('/:id', async (c) => {
     const userIsAdmin = isAdmin(user.role);
     if (!userIsAdmin) {
       const isMember = await isUserInGroup(c.env, user.id, groupId);
-      if (!isMember || currentGroup.isMain) {
-        return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
-      }
-      if (requestData.is_main || requestData.is_active !== currentGroup.isActive) {
+      if (!isMember || !canMemberUpdateGroup(currentGroup, {
+        mainIndex: requestData.main_index,
+        isActive: requestData.is_active,
+        includesAssignments: requestData.assignments !== undefined,
+      })) {
         return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
       }
     }
@@ -144,7 +205,7 @@ groupRoutes.put('/:id', async (c) => {
     const now = new Date().toISOString();
 
     await repository.update(
-      groupId, requestData.name, requestData.is_main, requestData.is_active, assignments ?? undefined, now, () => crypto.randomUUID(),
+      groupId, requestData.name, requestData.main_index, requestData.is_active, assignments ?? undefined, now, () => crypto.randomUUID(),
     );
 
     return c.json({ success: true });

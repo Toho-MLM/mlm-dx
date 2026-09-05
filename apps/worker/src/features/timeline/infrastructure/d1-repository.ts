@@ -20,7 +20,7 @@ export function createD1TimelineRepository(db: D1Database): TimelineRepository {
         .bind(eventId).first<{ group_limit: number }>();
       if (!event || Number(event.group_limit) !== 0) return;
 
-      const groups = await db.prepare('SELECT id FROM groups WHERE is_main = TRUE AND is_active = TRUE')
+      const groups = await db.prepare('SELECT id FROM groups WHERE main_index IS NOT NULL AND is_active = TRUE ORDER BY main_index ASC')
         .all<{ id: string }>();
       if (!groups.results.length) return;
 
@@ -66,4 +66,3 @@ export function createD1TimelineRepository(db: D1Database): TimelineRepository {
     },
   };
 }
-

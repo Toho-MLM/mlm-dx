@@ -33,7 +33,7 @@ import { toJSTWallClockDate } from '../reservation-calendar'
 type GroupOption = {
   id: string
   name: string
-  is_main: boolean
+  main_index: number | null
 }
 
 type ExternalResource = {
@@ -931,7 +931,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
                         <SelectItem key={group.id} value={group.id}>
                         <div className="flex items-center justify-between gap-2">
                           <span>{group.name}</span>
-                          <Badge variant={group.is_main ? 'default' : 'outline'}>{group.is_main ? '本バンド' : '自由バンド'}</Badge>
+                          <Badge variant={group.main_index !== null ? 'default' : 'outline'}>{group.main_index !== null ? '本バンド' : '自由バンド'}</Badge>
                         </div>
                         </SelectItem>
                       ))}

@@ -13,14 +13,14 @@ export function formatGroups(raw: unknown[]): Group[] {
     const g = group as { 
       id: string
       name: string
-      is_main?: boolean
+      main_index?: number | null
       is_active?: boolean
       assignments?: Array<{ id: string; instruments: string[] }>
     }
     return {
       id: g.id,
       name: g.name,
-      isMain: g.is_main ?? false,
+      mainIndex: g.main_index ?? null,
       isActive: g.is_active ?? false,
       assignments: (g.assignments || []).map(assignment => ({
         id: assignment.id,

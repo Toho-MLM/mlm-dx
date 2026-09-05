@@ -77,11 +77,14 @@ CREATE TABLE IF NOT EXISTS passkey_challenges (
 CREATE TABLE IF NOT EXISTS groups (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  is_main BOOLEAN NOT NULL DEFAULT FALSE,
+  main_index INTEGER,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_main_index
+  ON groups(main_index) WHERE main_index IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS group_member_instruments (
   id TEXT PRIMARY KEY,

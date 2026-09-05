@@ -36,7 +36,7 @@ interface EntryWithSetlist {
 function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateEntry }: { event: Event, onEdit: (item: EntryWithSetlist) => void, isAdminMode?: boolean, onCreateEntry?: (groupId: string) => Promise<void> }, ref: React.Ref<{ reload: () => void }>) {
   const [sectionLoading, setSectionLoading] = useState(true)
   const [sectionEntriesWithSetlist, setSectionEntriesWithSetlist] = useState<EntryWithSetlist[]>([])
-  const [groupOptions, setGroupOptions] = useState<Array<{ id: string; name: string; is_main: boolean }>>([])
+  const [groupOptions, setGroupOptions] = useState<Array<{ id: string; name: string; main_index: number | null }>>([])
   const [existingEntries, setExistingEntries] = useState<Entry[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
   const [creatingEntry, setCreatingEntry] = useState(false)
@@ -104,7 +104,7 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
     const existingGroupIds = new Set(existingEntries.map(e => e.group_id))
 
     return groupOptions.filter(group =>
-      !group.is_main &&
+      group.main_index === null &&
       !existingGroupIds.has(group.id)
     )
   }, [isAdminMode, event, groupOptions, existingEntries])

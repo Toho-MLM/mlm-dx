@@ -54,7 +54,7 @@ export function createD1SetlistRepository(db: D1Database): SetlistRepository {
       const event = await db.prepare('SELECT group_limit FROM events WHERE id = ?')
         .bind(eventId).first<{ group_limit: number }>();
       if (!event || Number(event.group_limit) !== 0) return;
-      const groups = await db.prepare('SELECT id FROM groups WHERE is_main = TRUE AND is_active = TRUE')
+      const groups = await db.prepare('SELECT id FROM groups WHERE main_index IS NOT NULL AND is_active = TRUE ORDER BY main_index ASC')
         .all<{ id: string }>();
       if (!groups.results.length) return;
       await db.batch(groups.results.map((group) => db.prepare(`
@@ -100,4 +100,3 @@ export function createD1SetlistRepository(db: D1Database): SetlistRepository {
     },
   };
 }
-

@@ -50,15 +50,16 @@ function sortGroupMemberInstruments(members: GroupMember[]) {
 export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAdminMode = false }: BandFormProps) {
   const [name, setName] = useState(band?.name || '')
   const [bandMembers, setBandMembers] = useState<GroupMember[]>(band?.assignments || [])
-  const [isMain, setIsMain] = useState(band?.isMain ? 'main' : 'free')
+  const [isMain, setIsMain] = useState(band?.mainIndex !== null ? 'main' : 'free')
   const [isPending, setIsPending] = useState(false)
   const { user } = useAuth()
+  const isNameOnlyEdit = Boolean(band?.mainIndex !== null && !isAdminMode)
 
   useEffect(() => {
     if (band) {
       setName(band.name)
       setBandMembers(sortGroupMemberInstruments(band.assignments))
-      setIsMain(band.isMain ? 'main' : 'free')
+      setIsMain(band.mainIndex !== null ? 'main' : 'free')
     } else {
       setName('')
       setBandMembers([])
@@ -90,15 +91,15 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
         if (band) {
           response = await apiClient.updateGroup(band.id, {
             name,
-            assignments: JSON.stringify(assignments),
-            is_main: isAdminMode ? isMainBand : band.isMain,
+            assignments: isNameOnlyEdit ? undefined : JSON.stringify(assignments),
+            main_index: isAdminMode ? (isMainBand ? band.mainIndex ?? 0 : null) : band.mainIndex,
             is_active: band.isActive
           });
         } else {
           response = await apiClient.createGroup({
             name,
             assignments: JSON.stringify(assignments),
-            is_main: isMainBand
+            main_index: isMainBand ? 0 : null
           });
         }
 
@@ -176,12 +177,13 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
 
   const isFormValid = useMemo(() => {
     if (name.trim() === '') return false;
+    if (isNameOnlyEdit) return true;
     if (bandMembers.length === 0) return false;
     if (bandMembers.length < 2) return false;
     if (bandMembers.some(member => member.instruments.length === 0)) return false;
     if (!isAdminMode && !bandMembers.some(member => member.id === user?.id)) return false;
     return true;
-  }, [name, bandMembers, user?.id, isAdminMode]);
+  }, [name, bandMembers, user?.id, isAdminMode, isNameOnlyEdit]);
 
   const validationChecks = useMemo(() => {
     return {
@@ -197,7 +199,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
     <Dialog open={isOpen} onOpenChange={onDialogClose}>
       <DialogContent className="p-5">
         <DialogHeader>
-          <DialogTitle>{band ? 'バンドを更新' : 'バンドを作成'}</DialogTitle>
+          <DialogTitle>{isNameOnlyEdit ? '本バンド名を変更' : band ? 'バンドを更新' : 'バンドを作成'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Input
@@ -224,7 +226,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
               </RadioGroup>
             </div>
           )}
-          <div className="space-y-2">
+          {!isNameOnlyEdit && <div className="space-y-2">
             <h3 className="font-medium">メンバー</h3>
             {sortedBandMembers.map((bandMember, index) => {
               const memberOption = memberOptions.find(m => m.id === bandMember.id);
@@ -346,10 +348,12 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <LoadingButton onClick={handleSubmit} isLoading={isPending} disabled={!isFormValid}>
-                {band ? '保存' : '作成'}
-              </LoadingButton>
             </div>
+          </div>}
+          <div className="flex justify-end">
+            <LoadingButton onClick={handleSubmit} isLoading={isPending} disabled={!isFormValid}>
+              {band ? '保存' : '作成'}
+            </LoadingButton>
           </div>
         </div>
       </DialogContent>

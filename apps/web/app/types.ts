@@ -140,7 +140,7 @@ export interface GroupMember {
 export interface Group {
     id: string
     name: string
-    isMain: boolean
+    mainIndex: number | null
     isActive: boolean
     assignments: GroupMember[]
 }

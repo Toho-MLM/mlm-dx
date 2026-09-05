@@ -45,6 +45,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'USERS_ALREADY_EXIST': '既にユーザーが存在します。',
   'MEMBER_NOT_FOUND': 'メンバーが見つかりません。',
   'NO_VALID_GROUPS': '有効なグループがありません。',
+  'GROUP_ORDER_MISMATCH': '本バンドの一覧が更新されています。再読み込みしてからもう一度お試しください。',
   
   // イベント・エントリー関連エラー
   'INVALID_DATE_ORDER': 'イベントの日付が不正な順序です。',

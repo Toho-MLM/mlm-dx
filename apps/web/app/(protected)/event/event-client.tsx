@@ -20,7 +20,7 @@ import { apiClient } from '@/lib/api'
 import { EventProvider } from './event-context'
 import { showSuccessToast } from '@/lib/utils'
 
-type GroupOption = { id: string; name: string; is_main: boolean }
+type GroupOption = { id: string; name: string; main_index: number | null }
 type EntryOption = { id: string; event_id: string; group_id: string; note?: string | null }
 
 export function EventClient({ initialEvents, initialGroups, initialEntries }: { initialEvents?: Event[] | null; initialGroups?: GroupOption[] | null; initialEntries?: EntryOption[] | null }) {

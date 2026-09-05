@@ -27,11 +27,11 @@ export function createD1GroupMembershipReader(db: D1Database): GroupMembershipRe
     listGroupMemberIds,
 
     async getActiveGroupIdentity(groupId) {
-      const group = await db.prepare('SELECT is_main, is_active FROM groups WHERE id = ?')
-        .bind(groupId).first<{ is_main: number; is_active: number }>();
+      const group = await db.prepare('SELECT main_index, is_active FROM groups WHERE id = ?')
+        .bind(groupId).first<{ main_index: number | null; is_active: number }>();
       if (!group || !group.is_active) return null;
       const memberIds = await listGroupMemberIds(groupId);
-      return memberIds.length === 0 ? null : { isMain: Boolean(group.is_main), memberIds };
+      return memberIds.length === 0 ? null : { isMain: group.main_index !== null, memberIds };
     },
 
     async listIdentityMembers(userId, groupId) {
