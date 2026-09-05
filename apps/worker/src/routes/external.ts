@@ -366,7 +366,7 @@ externalReservationRoutes.get('/lottery', async (c) => {
       return ExternalLotteryApplicationSchema.parse({
         ...row,
         fairness_score: fairnessScore,
-        is_main: row.is_main === null ? null : Boolean(row.is_main),
+        main_index: row.main_index === null ? null : Number(row.main_index),
         room_names: parseRoomNames(String(row.room_names)),
       });
     }));

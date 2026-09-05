@@ -15,18 +15,22 @@ export function createD1UserRepository(db: D1Database): UserRepository {
   return {
     async listSelectableGroups(userId, includeAll) {
       const query = includeAll ? `
-        SELECT DISTINCT g.id, g.name, g.is_main FROM groups g
-        WHERE g.is_active = TRUE ORDER BY g.is_main DESC, g.created_at DESC
+        SELECT DISTINCT g.id, g.name, g.main_index FROM groups g
+        WHERE g.is_active = TRUE
+        ORDER BY g.main_index IS NULL, g.main_index ASC, g.created_at DESC
       ` : `
-        SELECT DISTINCT g.id, g.name, g.is_main FROM groups g
+        SELECT DISTINCT g.id, g.name, g.main_index FROM groups g
         JOIN group_member_instruments gmi ON g.id = gmi.group_id
         WHERE gmi.user_id = ? AND g.is_active = TRUE
-        ORDER BY g.is_main DESC, g.created_at DESC
+        ORDER BY g.main_index IS NULL, g.main_index ASC, g.created_at DESC
       `;
       const result = includeAll
         ? await db.prepare(query).all<Record<string, unknown>>()
         : await db.prepare(query).bind(userId).all<Record<string, unknown>>();
-      return result.results.map((group) => ({ ...group, is_main: Boolean(group.is_main) }));
+      return result.results.map((group) => ({
+        ...group,
+        main_index: group.main_index === null ? null : Number(group.main_index),
+      }));
     },
     async findEmailPreferences(userId) {
       const row = await db.prepare(`
@@ -73,4 +77,3 @@ export function createD1UserRepository(db: D1Database): UserRepository {
     },
   };
 }
-

@@ -60,9 +60,9 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, onD
               <div className="truncate text-sm font-semibold leading-5">{band.name}</div>
               <Badge
                 className="h-5 shrink-0 px-1.5 text-[11px] font-medium"
-                variant={band.isMain ? "default" : "secondary"}
+                variant={band.mainIndex !== null ? "default" : "secondary"}
               >
-                {band.isMain ? "本バンド" : "自由バンド"}
+                {band.mainIndex !== null ? "本バンド" : "自由バンド"}
               </Badge>
             </div>
             {!band.isActive && (
@@ -118,7 +118,7 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, onD
       </div>
 
       <div className="col-start-2 row-start-1 flex shrink-0 justify-end sm:col-start-3">
-        {!loading && (band.isActive || !band.isMain || isAdminMode) && (
+        {!loading && (band.isActive || band.mainIndex === null || isAdminMode) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -139,7 +139,7 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, onD
                   >
                     編集
                   </DropdownMenuItem>
-                  {onToggleActive && (!band.isMain || isAdminMode) && (
+                  {onToggleActive && (band.mainIndex === null || isAdminMode) && (
                     <DropdownMenuItem
                       onClick={() => onToggleActive(band.id)}
                       className="flex items-center gap-2"
@@ -149,7 +149,7 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, onD
                   )}
                 </>
               ) : (
-                onToggleActive && (!band.isMain || isAdminMode) && (
+                onToggleActive && (band.mainIndex === null || isAdminMode) && (
                   <DropdownMenuItem
                     onClick={() => onToggleActive(band.id)}
                     className="flex items-center gap-2"

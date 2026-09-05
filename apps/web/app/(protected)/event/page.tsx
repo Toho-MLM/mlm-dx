@@ -3,7 +3,7 @@ import { EventClient } from './event-client'
 import { requireAuth, serverRequest, settleServerRequest, type ApiResponse } from '@/lib/server-api'
 import { isAdmin } from '@shared-schemas'
 
-type GroupOption = { id: string; name: string; is_main: boolean }
+type GroupOption = { id: string; name: string; main_index: number | null }
 
 export default async function EventPage() {
   const user = await requireAuth()

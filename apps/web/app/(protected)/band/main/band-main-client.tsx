@@ -10,6 +10,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Group, Instrument, instrumentColors, instrumentNames, instrumentOrder } from '@/app/types'
 import { apiClient } from '@/lib/api'
 import { formatGroups } from '@/lib/utils'
+import { useAuth } from '@/app/context/AuthContext'
+import { isAdmin } from '@shared-schemas'
+import { toast } from 'sonner'
+import { translateError } from '@/lib/error-label'
 
 type MemberOption = {
   id: string
@@ -177,10 +181,13 @@ function downloadRowsAsPng(rows: MainBandRow[]) {
 }
 
 export function BandMainClient({ initialGroups, initialMembers }: { initialGroups?: unknown[] | null; initialMembers?: MemberOption[] | null }) {
-  const [bands, setBands] = useState<Group[]>(initialGroups ? formatGroups(initialGroups).filter(group => group.isMain && group.isActive) : [])
+  const { user } = useAuth()
+  const canReorder = Boolean(user && isAdmin(user.role))
+  const [bands, setBands] = useState<Group[]>(initialGroups ? formatGroups(initialGroups).filter(group => group.mainIndex !== null && group.isActive) : [])
   const [memberOptions, setMemberOptions] = useState<MemberOption[]>(initialMembers ?? [])
   const [loading, setLoading] = useState(initialGroups === undefined || initialGroups === null || initialMembers === undefined || initialMembers === null)
   const [draggingBandId, setDraggingBandId] = useState<string | null>(null)
+  const [isSavingOrder, setIsSavingOrder] = useState(false)
 
   useEffect(() => {
     if (initialGroups !== undefined && initialGroups !== null && initialMembers !== undefined && initialMembers !== null) return
@@ -197,7 +204,7 @@ export function BandMainClient({ initialGroups, initialMembers }: { initialGroup
         if (cancelled) return
 
         if (groupsRes.success) {
-          setBands(formatGroups(groupsRes.data || []).filter(group => group.isMain && group.isActive))
+          setBands(formatGroups(groupsRes.data || []).filter(group => group.mainIndex !== null && group.isActive))
         }
         if (membersRes.success) {
           setMemberOptions(membersRes.data || [])
@@ -240,16 +247,40 @@ export function BandMainClient({ initialGroups, initialMembers }: { initialGroup
     }))
   }, [bands, memberNameById])
 
-  const handleRowDrop = (targetBandId: string) => {
-    if (!draggingBandId || draggingBandId === targetBandId) return
+  const handleRowDrop = async (targetBandId: string) => {
+    if (!canReorder || isSavingOrder || !draggingBandId || draggingBandId === targetBandId) return
 
-    setBands(currentBands => {
-      const fromIndex = currentBands.findIndex(band => band.id === draggingBandId)
-      const toIndex = currentBands.findIndex(band => band.id === targetBandId)
-      if (fromIndex === -1 || toIndex === -1) return currentBands
-      return moveItem(currentBands, fromIndex, toIndex)
-    })
+    const previousBands = bands
+    const fromIndex = previousBands.findIndex(band => band.id === draggingBandId)
+    const toIndex = previousBands.findIndex(band => band.id === targetBandId)
+    if (fromIndex === -1 || toIndex === -1) return
+
+    const nextBands = moveItem(previousBands, fromIndex, toIndex).map((band, index) => ({
+      ...band,
+      mainIndex: index,
+    }))
+    setBands(nextBands)
     setDraggingBandId(null)
+
+    try {
+      setIsSavingOrder(true)
+      const response = await apiClient.reorderMainGroups({ ids: nextBands.map(band => band.id) })
+      if (!response.success) {
+        setBands(previousBands)
+        toast.error('本バンドの順番を更新できませんでした', {
+          description: translateError(response.error || 'UNKNOWN_ERROR'),
+        })
+        return
+      }
+      toast.success('本バンドの順番を更新しました')
+    } catch (error) {
+      setBands(previousBands)
+      toast.error('本バンドの順番を更新できませんでした', {
+        description: translateError((error as Error).message),
+      })
+    } finally {
+      setIsSavingOrder(false)
+    }
   }
 
   return (
@@ -293,26 +324,33 @@ export function BandMainClient({ initialGroups, initialMembers }: { initialGroup
                 {rows.map(({ band, cells }) => (
                   <TableRow
                     key={band.id}
-                    draggable
+                    draggable={canReorder && !isSavingOrder}
                     onDragStart={(event) => {
+                      if (!canReorder || isSavingOrder) return
                       setDraggingBandId(band.id)
                       event.dataTransfer.effectAllowed = 'move'
                       event.dataTransfer.setData('text/plain', band.id)
                     }}
                     onDragOver={(event) => {
+                      if (!canReorder || isSavingOrder) return
                       event.preventDefault()
                       event.dataTransfer.dropEffect = 'move'
                     }}
                     onDrop={(event) => {
                       event.preventDefault()
-                      handleRowDrop(band.id)
+                      void handleRowDrop(band.id)
                     }}
                     onDragEnd={() => setDraggingBandId(null)}
                     className={draggingBandId === band.id ? 'opacity-50' : undefined}
                   >
                     <TableCell className="whitespace-nowrap font-medium">
                       <div className="flex items-center gap-2">
-                        <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden="true" />
+                        {canReorder && (
+                          <GripVertical
+                            className={`h-4 w-4 shrink-0 text-muted-foreground ${isSavingOrder ? 'cursor-wait' : 'cursor-grab'}`}
+                            aria-label="ドラッグして本バンドの順番を変更"
+                          />
+                        )}
                         <span>{band.name}</span>
                       </div>
                     </TableCell>

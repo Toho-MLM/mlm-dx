@@ -2,7 +2,7 @@ import type { External, ExternalLotteryApplication, ExternalReservation, Reserva
 import { ExternalLotteryClient, type ExternalLotteryInitialData } from './external-lottery-client'
 import { serverRequest, settleServerRequest, type ApiResponse } from '@/lib/server-api'
 
-type GroupOption = { id: string; name: string; is_main: boolean }
+type GroupOption = { id: string; name: string; main_index: number | null }
 
 export default async function ExternalLotteryPage() {
   const [studios, applications, reservations, hallReservations, unavailablePeriods, groups] = await Promise.all([

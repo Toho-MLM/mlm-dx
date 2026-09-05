@@ -90,7 +90,7 @@ export function createD1EventRepository(db: D1Database): EventRepository {
         const entries = await db.prepare('SELECT DISTINCT group_id FROM entries WHERE event_id = ?')
           .bind(event.id).all<{ group_id: string }>();
         const statements = entries.results.map((entry) =>
-          db.prepare('UPDATE groups SET is_active = 0 WHERE id = ? AND is_main = FALSE').bind(entry.group_id));
+          db.prepare('UPDATE groups SET is_active = 0 WHERE id = ? AND main_index IS NULL').bind(entry.group_id));
         statements.push(db.prepare('DELETE FROM events WHERE id = ?').bind(event.id));
         await db.batch(statements);
       }

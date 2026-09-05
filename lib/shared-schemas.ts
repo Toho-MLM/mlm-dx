@@ -60,7 +60,7 @@ export const GroupSchema = z.object({
   id: UuidSchema,
   name: z.string(),
   assignments: z.array(GroupMemberSchema),
-  is_main: z.boolean(),
+  main_index: z.number().int().nonnegative().nullable(),
   is_active: z.boolean(),
 });
 
@@ -281,14 +281,21 @@ export const AssignmentMapSchema = z.record(z.string(), z.array(UuidSchema));
 export const CreateGroupRequestSchema = z.object({
   name: z.string().min(1),
   assignments: z.union([z.string(), AssignmentMapSchema]),
-  is_main: z.boolean(),
+  main_index: z.number().int().nonnegative().nullable(),
 });
 
 export const UpdateGroupRequestSchema = z.object({
   name: z.string().min(1),
   assignments: z.union([z.string(), AssignmentMapSchema]).optional(),
-  is_main: z.boolean(),
+  main_index: z.number().int().nonnegative().nullable(),
   is_active: z.boolean(),
+});
+
+export const ReorderMainGroupsRequestSchema = z.object({
+  ids: z.array(UuidSchema).min(1).max(100).refine(
+    (ids) => new Set(ids).size === ids.length,
+    { message: 'Group IDs must be unique' },
+  ),
 });
 
 export const DeleteGroupsRequestSchema = z.object({
@@ -463,7 +470,7 @@ export const ExternalLotteryApplicationSchema = z.object({
   group_id: UuidSchema.nullable(),
   user_name: z.string().nullable(),
   group_name: z.string().nullable(),
-  is_main: z.boolean().nullable(),
+  main_index: z.number().int().nonnegative().nullable(),
   preferred_start_datetime: z.string().nullable(),
   preferred_end_datetime: z.string().nullable(),
   requested_duration_minutes: z.number().int().nullable(),
@@ -878,6 +885,7 @@ export type SessionResponse = z.infer<typeof SessionResponseSchema>;
 export type UserHolderResponse = z.infer<typeof UserHolderResponseSchema>;
 export type CreateGroupRequest = z.infer<typeof CreateGroupRequestSchema>;
 export type UpdateGroupRequest = z.infer<typeof UpdateGroupRequestSchema>;
+export type ReorderMainGroupsRequest = z.infer<typeof ReorderMainGroupsRequestSchema>;
 export type DeleteGroupsRequest = z.infer<typeof DeleteGroupsRequestSchema>;
 export type SetGroupsActiveRequest = z.infer<typeof SetGroupsActiveRequestSchema>;
 export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;

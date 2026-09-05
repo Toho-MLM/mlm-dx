@@ -34,7 +34,7 @@ import {
   type UnavailablePeriod,
 } from '@shared-schemas'
 
-type GroupOption = { id: string; name: string; is_main: boolean }
+type GroupOption = { id: string; name: string; main_index: number | null }
 
 const stateLabel = { PENDING: '抽選前', WON: '当選', LOST: '落選', CANCELLED: '取消' } as const
 const getJSTDateString = (value: Date | string) => {
@@ -101,7 +101,7 @@ type LotteryRoomOption = {
 }
 
 const getApplicationPriority = (application: ExternalLotteryApplication) => (
-  application.group_id ? (application.is_main ? 0 : 1) : 2
+  application.group_id ? (application.main_index !== null ? 0 : 1) : 2
 )
 
 const getSchedulingSlackMinutes = (candidate: LotteryCandidate) => (
@@ -547,7 +547,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                                 <div className="min-w-0">
                                   <div className="truncate font-medium">{application.group_name || application.user_name || '個人'}</div>
                                   <div className="text-[11px] text-muted-foreground">
-                                    {application.group_id ? (application.is_main ? '本バンド' : '自由バンド') : '個人'}
+                                    {application.group_id ? (application.main_index !== null ? '本バンド' : '自由バンド') : '個人'}
                                   </div>
                                 </div>
                                 <div className="shrink-0">
@@ -618,7 +618,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                 <SelectTrigger id="external-lottery-identity"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__personal__">個人（{user?.nickname || user?.name}）</SelectItem>
-                  {groups.map((group) => <SelectItem key={group.id} value={group.id}>{group.name}（{group.is_main ? '本バンド' : '自由バンド'}）</SelectItem>)}
+                  {groups.map((group) => <SelectItem key={group.id} value={group.id}>{group.name}（{group.main_index !== null ? '本バンド' : '自由バンド'}）</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

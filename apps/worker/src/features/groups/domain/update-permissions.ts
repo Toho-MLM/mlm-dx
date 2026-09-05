@@ -1,5 +1,5 @@
 export type GroupUpdateState = {
-  isMain: boolean;
+  mainIndex: number | null;
   isActive: boolean;
 };
 
@@ -11,9 +11,9 @@ export function canMemberUpdateGroup(
   current: GroupUpdateState,
   requested: RequestedGroupUpdate,
 ): boolean {
-  if (requested.isMain !== current.isMain || requested.isActive !== current.isActive) {
+  if (requested.mainIndex !== current.mainIndex || requested.isActive !== current.isActive) {
     return false;
   }
 
-  return !current.isMain || !requested.includesAssignments;
+  return current.mainIndex === null || !requested.includesAssignments;
 }
