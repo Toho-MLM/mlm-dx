@@ -60,6 +60,7 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
   const [externals, setExternals] = useState<External[]>(initialExternals ?? [])
   const [loading, setLoading] = useState(initialExternals === undefined || initialExternals === null)
   const [isFormOpen, setIsFormOpen] = useState(false)
+  const [isHallFormOpen, setIsHallFormOpen] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [names, setNames] = useState<string[]>([''])
@@ -169,7 +170,7 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
   if (authLoading || loading) {
     return (
       <>
-        <PageHeader rightActions={<Button disabled>外部を追加</Button>} />
+        <PageHeader rightActions={<><Button size="sm" disabled>外部抽選を追加</Button><Button size="sm" disabled>ホール抽選を追加</Button></>} />
         <div className="p-4 pt-0">
           <Skeleton className="h-24 w-full" />
         </div>
@@ -179,8 +180,13 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
 
   return (
     <>
-      <PageHeader rightActions={<Button onClick={() => setIsFormOpen(true)}>外部を追加</Button>} />
-      <div className="px-5 pt-4"><HallLotteries mode="admin" /></div>
+      <PageHeader rightActions={
+        <>
+          <Button size="sm" onClick={() => setIsFormOpen(true)}>外部抽選を追加</Button>
+          <Button size="sm" onClick={() => setIsHallFormOpen(true)}>ホール抽選を追加</Button>
+        </>
+      } />
+      <div className="px-5 pt-4"><HallLotteries mode="admin" createOpen={isHallFormOpen} onCreateOpenChange={setIsHallFormOpen} /></div>
       <div className="mx-auto space-y-4 p-4 pt-0">
         <Card>
           <CardContent className="p-4">

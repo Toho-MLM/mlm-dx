@@ -62,8 +62,12 @@ const endAt = (start: string, minutes: number) =>
 
 export function HallLotteries({
   mode = 'apply',
+  createOpen = false,
+  onCreateOpenChange,
 }: {
   mode?: 'admin' | 'apply' | 'calendar'
+  createOpen?: boolean
+  onCreateOpenChange?: (open: boolean) => void
 }) {
   const { user } = useAuth()
   const canApplyForAllBands = !!user && isAdmin(user.role)
@@ -81,7 +85,6 @@ export function HallLotteries({
   const [error, setError] = useState('')
   const [applicationError, setApplicationError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [open, setOpen] = useState(false)
   const [now, setNow] = useState(Date.now())
   const [draft, setDraft] = useState({
     name: '',
@@ -91,6 +94,18 @@ export function HallLotteries({
     deadline_date: '',
     duration_minutes: 120,
   })
+  useEffect(() => {
+    if (createOpen) {
+      setDraft({
+        name: '',
+        target_band_type: '',
+        start_date: '',
+        end_date: '',
+        deadline_date: '',
+        duration_minutes: 120,
+      })
+    }
+  }, [createOpen])
   const selected = lotteries.find((l) => l.id === selectedId)
   const eligibleGroups = groups.filter(
     (g) =>
@@ -173,7 +188,7 @@ export function HallLotteries({
       if (!result.success)
         throw new Error(result.error || 'INTERNAL_SERVER_ERROR')
       toast.success(message)
-      setOpen(false)
+      onCreateOpenChange?.(false)
       await load()
       await loadApplications()
       setPreferences(['', '', ''])
@@ -239,13 +254,13 @@ export function HallLotteries({
     }
     void mutate(
       () => apiClient.createHallLottery(input.data),
-      'ホール募集を作成しました',
+      'ホール抽選を作成しました',
     )
   }
   if (loading)
     return (
       <p className="p-3 text-sm text-muted-foreground">
-        ホール募集を読み込み中…
+        ホール抽選を読み込み中…
       </p>
     )
   if (error)
@@ -278,30 +293,10 @@ export function HallLotteries({
   }
   return (
     <section className="mb-5 space-y-3" aria-label="期間単位のホール抽選">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">ホール募集</h2>
-        {mode === 'admin' && (
-          <Button
-            disabled={busy}
-            onClick={() => {
-              setDraft({
-                name: '',
-                target_band_type: '',
-                start_date: '',
-                end_date: '',
-                deadline_date: '',
-                duration_minutes: 120,
-              })
-              setOpen(true)
-            }}
-          >
-            ホール募集を追加
-          </Button>
-        )}
-      </div>
+      <h2 className="text-lg font-semibold">ホール抽選</h2>
       {lotteries.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          ホールの募集はありません
+          ホールの抽選はありません
         </p>
       ) : (
         <>
@@ -310,7 +305,7 @@ export function HallLotteries({
             onValueChange={setSelectedId}
             disabled={busy}
           >
-            <SelectTrigger aria-label="ホール募集">
+            <SelectTrigger aria-label="ホール抽選">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -365,11 +360,11 @@ export function HallLotteries({
                     onClick={() =>
                       void mutate(
                         () => apiClient.cancelHallLottery(selected.id),
-                        '募集を中止しました',
+                        '抽選を中止しました',
                       )
                     }
                   >
-                    募集を中止
+                    抽選を中止
                   </Button>
                 )}
                 {mode === 'apply' && accepting && (
@@ -538,21 +533,21 @@ export function HallLotteries({
         </>
       )}
       <Dialog
-        open={open}
+        open={mode === 'admin' && createOpen}
         onOpenChange={(value) => {
-          if (!busy) setOpen(value)
+          if (!busy) onCreateOpenChange?.(value)
         }}
       >
         <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>ホール募集を追加</DialogTitle>
+            <DialogTitle>ホール抽選を追加</DialogTitle>
             <DialogDescription>
               締切日の翌日0:00（JST）に抽選します。
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={create} className="space-y-3">
             <div>
-              <Label htmlFor="hall-name">募集名</Label>
+              <Label htmlFor="hall-name">抽選名</Label>
               <Input
                 id="hall-name"
                 required
@@ -618,7 +613,7 @@ export function HallLotteries({
               />
             </div>
             <Button type="submit" disabled={busy}>
-              {busy ? '作成中…' : '募集を開始'}
+              {busy ? '作成中…' : '抽選を作成'}
             </Button>
           </form>
         </DialogContent>

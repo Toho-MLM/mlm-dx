@@ -1,12 +1,12 @@
 export const ERROR_MESSAGES: Record<string, string> = {
-  'LOTTERY_CLOSED': 'この募集の受付は終了しました。',
-  'LOTTERY_NOT_FOUND': '募集が見つかりません。',
+  'LOTTERY_CLOSED': 'この抽選の受付は終了しました。',
+  'LOTTERY_NOT_FOUND': '抽選が見つかりません。',
   'LOTTERY_PERIOD_OVERLAP': '既存のホール抽選の対象期間と重複しています。',
-  'HALL_LOTTERY_BAND_TYPE_MISMATCH': 'このバンドは募集の対象区分（本バンド・自由バンド）に一致しません。',
+  'HALL_LOTTERY_BAND_TYPE_MISMATCH': 'このバンドは抽選の対象区分（本バンド・自由バンド）に一致しません。',
   'HALL_LOTTERY_APPLICATION_CONFLICT': 'このバンドは申込済みか、受付が終了しています。',
   'LOTTERY_CANNOT_CANCEL': '抽選開始済み、締切後、または取消権限がありません。',
   'LOTTERY_RESERVATION_CANNOT_BE_EDITED': '抽選の当選予約は日時を変更できません。取消後に通常予約してください。',
-  'USE_HALL_LOTTERIES': 'ホールは期間単位の募集フォームから作成してください。',
+  'USE_HALL_LOTTERIES': 'ホールは期間単位の抽選フォームから作成してください。',
   // 予約関連エラー
   'INVALID_RESERVATION_TIME': '予約時間が無効です。',
   'RESERVATION_DATE_IN_PAST': '過去の日付は予約できません。',
