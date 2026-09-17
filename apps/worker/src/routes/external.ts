@@ -30,7 +30,7 @@ import { createReservationLimitService } from '../features/reservations/applicat
 import { createD1ReservationLimitRepository } from '../features/reservations/infrastructure/d1-limit-repository';
 import { createD1GroupMembershipReader } from '../features/reservations/infrastructure/d1-membership-reader';
 import { checkActiveGroupAccess } from '../features/reservations/application/membership';
-import { isValidHallLotteryTarget, parseRoomNames } from '../features/reservations/domain/external-lottery';
+import { parseRoomNames } from '../features/reservations/domain/external-lottery';
 import { createD1ExternalReservationRepository } from '../features/reservations/infrastructure/d1-external-repository';
 import type { ExternalStudioRecord as StudioRow } from '../features/reservations/application/external-repository';
 
@@ -173,27 +173,13 @@ externalStudioRoutes.post('/studios/bulk', async (c) => {
   try {
     requireAdmin(c.get('user').role);
     const data = CreateExternalRequestSchema.parse(await c.req.json());
-    const roomNames = data.target_type === 'HALL'
-      ? ['ホール']
-      : data.names.map((name) => name.trim());
+    if (data.target_type === 'HALL') return c.json({ success: false, error: 'USE_HALL_LOTTERIES' }, 400);
+    const roomNames = data.names.map((name) => name.trim());
     if (roomNames.some((name) => !name) || new Set(roomNames).size !== roomNames.length) {
       return c.json({ success: false, error: 'INVALID_ROOM_NAMES' }, 400);
     }
     const externalRepository = createD1ExternalReservationRepository(c.env.DB);
-    const drawTime = data.target_type === 'HALL' && data.draw_date
-      ? new Date(`${data.draw_date}T21:00:00+09:00`).toISOString()
-      : null;
-    if (data.target_type === 'HALL') {
-      if (!isValidHallLotteryTarget(data.start_datetime, data.end_datetime)) {
-        return c.json({ success: false, error: 'INVALID_HALL_LOTTERY_TARGET' }, 400);
-      }
-      if (!drawTime || new Date(drawTime) <= new Date()) {
-        return c.json({ success: false, error: 'INVALID_HALL_LOTTERY_DRAW_TIME' }, 400);
-      }
-      if (await externalRepository.hasHallTargetOverlap(data.start_datetime, data.end_datetime)) {
-        return c.json({ success: false, error: 'HALL_LOTTERY_TARGET_CONFLICT' }, 409);
-      }
-    }
+    const drawTime = null;
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const created = await externalRepository.createStudio({

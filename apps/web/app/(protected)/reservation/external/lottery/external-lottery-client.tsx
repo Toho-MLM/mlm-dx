@@ -7,6 +7,7 @@ import { CalendarPlus, Loader2 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/app/context/AuthContext'
+import { HallLotteries } from '@/components/hall-lotteries'
 import { PageHeader } from '@/components/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -482,10 +483,11 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
     <>
       <PageHeader rightActions={(
         <Button size="sm" onClick={() => setOpen(true)} disabled={Boolean(loadError) || eligibleSlots.length === 0}>
-          <CalendarPlus className="h-4 w-4" />申込
+          <CalendarPlus className="h-4 w-4" />外部等の申込
         </Button>
       )} />
       <main className="w-full p-5">
+        <HallLotteries />
         {loadError ? (
           <div className="flex flex-col items-center gap-3 rounded-md border p-8 text-center text-sm text-muted-foreground">
             <p>抽選情報を読み込めませんでした</p>
@@ -493,7 +495,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
             <Button type="button" variant="outline" onClick={() => void fetchData()}>再試行</Button>
           </div>
         ) : targetStudios.length === 0 ? (
-          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">抽選対象はありません</div>
+          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">外部・従来方式の抽選対象はありません</div>
         ) : (
             <div className="overflow-x-auto [transform:rotateX(180deg)]">
               <div className="grid min-w-max grid-flow-col auto-cols-[17rem] items-start gap-3 py-3 [transform:rotateX(180deg)]">
