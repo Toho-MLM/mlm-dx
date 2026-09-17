@@ -346,7 +346,7 @@ export function HallLotteries({
                   </div>
                   <div>
                     <dt className="text-muted-foreground">申込締切</dt>
-                    <dd>{jst(selected.draw_at)}（JST）</dd>
+                    <dd>{selected.deadline_date} 23:59まで（JST）</dd>
                   </div>
                   <div>
                     <dt className="text-muted-foreground">抽選</dt>
