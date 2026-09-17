@@ -21,6 +21,7 @@ async function listBookedIntervals(db: D1Database, query: UsageQuery): Promise<S
     db.prepare(`
       SELECT start_time, end_time FROM reservations
       WHERE ${targetColumn}
+        AND hall_lottery_application_id IS NULL
         AND state IN ('PENDING', 'CONFIRMED')
         AND start_time < ? AND end_time > ?
         ${excludeHall ? 'AND id != ?' : ''}

@@ -83,6 +83,7 @@ export const ReservationSchema = z.object({
   end_time: z.string(),
   state: ReservationStateSchema,
   cancellable: z.boolean(),
+  is_lottery: z.boolean().default(false),
 });
 
 export const LotteryTargetTypeSchema = z.enum(['HALL', 'EXTERNAL']);
@@ -943,3 +944,39 @@ export interface ApiResponse<T = unknown> {
 export interface CreateEntriesResponse extends ApiResponse<void> {
   members?: string[];
 }
+
+
+// 期間単位のホール抽選（日時は UTC ISO、日付は JST）。
+export const HallLotteryBandTypeSchema = z.enum(['MAIN', 'FREE']);
+export type HallLotteryBandType = z.infer<typeof HallLotteryBandTypeSchema>;
+export const CreateHallLotteryRequestSchema = z.object({
+  target_band_type: HallLotteryBandTypeSchema,
+  name: z.string().trim().min(1).max(100),
+  start_date: z.iso.date(),
+  end_date: z.iso.date(),
+  deadline_date: z.iso.date(),
+  duration_minutes: z.number().int().min(10).max(240).default(120),
+}).refine(v => v.start_date <= v.end_date && v.deadline_date < v.start_date, {
+  message: '締切日は対象開始日より前にしてください',
+});
+export const HallLotterySchema = z.object({
+  target_band_type: HallLotteryBandTypeSchema,
+  id: z.string().uuid(), name: z.string(), start_date: z.iso.date(), end_date: z.iso.date(),
+  deadline_date: z.iso.date(), duration_minutes: z.number().int(), draw_at: z.string().datetime(),
+  state: z.enum(['OPEN', 'DRAWING', 'COMPLETED', 'CANCELLED']),
+});
+export const CreateHallLotteryApplicationRequestSchema = z.object({
+  group_id: z.string().uuid(),
+  preferences: z.array(z.string().datetime({ offset: true }).transform(v => new Date(v).toISOString())).min(1).max(3),
+}).refine(v => new Set(v.preferences).size === v.preferences.length, { message: '希望日時が重複しています' });
+export const HallLotteryApplicationSchema = z.object({
+  id: z.string().uuid(), lottery_id: z.string().uuid(), group_id: z.string().uuid(), group_name: z.string(),
+  user_id: z.string().uuid(), state: z.enum(['PENDING', 'WON', 'LOST', 'CANCELLED']),
+  preferences: z.array(z.string().datetime()),
+  winning_rank: z.number().int().nullable(), reservation_id: z.string().uuid().nullable(),
+  assigned_start: z.string().datetime().nullable(), assigned_end: z.string().datetime().nullable(),
+});
+export type CreateHallLotteryRequest = z.infer<typeof CreateHallLotteryRequestSchema>;
+export type HallLottery = z.infer<typeof HallLotterySchema>;
+export type CreateHallLotteryApplicationRequest = z.infer<typeof CreateHallLotteryApplicationRequestSchema>;
+export type HallLotteryApplication = z.infer<typeof HallLotteryApplicationSchema>;

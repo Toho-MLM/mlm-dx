@@ -177,6 +177,7 @@ reservationRoutes.get('/', async (c) => {
       data: reservations.map((reservation) => ReservationSchema.parse({
         ...reservation,
         cancellable: Boolean(reservation.cancellable),
+        is_lottery: Boolean(reservation.is_lottery),
       })),
     });
   } catch (error) {
@@ -274,10 +275,11 @@ reservationRoutes.post('/', async (c) => {
       startTime: start_time,
       endTime: end_time,
       createdAt: now,
+      enforceProtection: !isAdminMode,
     };
     const created = lotteryWindow.afterDraw
       ? await hallRepository.createReservationIfAvailable(reservationInput)
-      : (await hallRepository.createReservation(reservationInput), true);
+      : await hallRepository.createReservation(reservationInput);
     if (!created) {
       return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
     }
@@ -393,6 +395,9 @@ reservationRoutes.put('/:id', async (c) => {
     if (!reservation) {
       return c.json({ success: false, error: 'RESERVATION_NOT_FOUND' }, 404);
     }
+    if (!isAdminMode && reservation.hall_lottery_application_id) {
+      return c.json({ success: false, error: 'LOTTERY_RESERVATION_CANNOT_BE_EDITED' }, 400);
+    }
     if (!['PENDING', 'CONFIRMED'].includes(reservation.state)) {
       return c.json({ success: false, error: 'RESERVATION_CANNOT_BE_EDITED' }, 400);
     }
@@ -478,6 +483,7 @@ reservationRoutes.put('/:id', async (c) => {
       state: processResult.state,
       updatedAt: updateTime,
       enforceAvailability: lotteryWindow.afterDraw,
+      enforceProtection: !isAdminMode,
     });
     if (!updated) {
       return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);

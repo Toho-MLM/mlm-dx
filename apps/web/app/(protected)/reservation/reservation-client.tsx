@@ -1,5 +1,7 @@
 'use client'
 
+import { HallLotteries } from '@/components/hall-lotteries'
+
 import React, { Suspense, useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, View, Navigate, DateLocalizer, type SlotInfo } from 'react-big-calendar'
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"
@@ -804,6 +806,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
         <div className="flex-1 mx-auto px-5 w-full max-w-none">
         <Card className="bg-white shadow-lg rounded-lg overflow-hidden h-full flex flex-col">
           <CardDescription className="flex-shrink-0">
+            <HallLotteries mode="calendar" />
             {loading ? (
               <div className={"p-2 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
                 <Skeleton className="h-9 w-10" />
@@ -1004,7 +1007,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
                       <p><strong>ステータス</strong> {eventStateNames[selectedReservation.resource.state]}</p>
                     )}
                   </div>
-                  {selectedReservation.resource.cancellable && selectedReservation.resource.end_time && new Date(selectedReservation.resource.end_time) > new Date() && (
+                  {selectedReservation.resource.cancellable && (isAdminMode || !selectedReservation.resource.is_lottery) && selectedReservation.resource.end_time && new Date(selectedReservation.resource.end_time) > new Date() && (
                     <Button
                       type="button"
                       variant="outline"

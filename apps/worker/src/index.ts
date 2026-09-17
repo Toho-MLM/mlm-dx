@@ -1,3 +1,5 @@
+import { hallLotteryRoutes } from './routes/hall-lotteries';
+import { hallLotteryService } from './utils/hall-lottery';
 import { Hono } from 'hono';
 import type { D1Database, DurableObjectNamespace, ExecutionContext, ScheduledEvent } from '@cloudflare/workers-types';
 import type { Context } from 'hono';
@@ -699,6 +701,7 @@ app.post('/auth/create-first-user', async (c) => {
 app.route('/me', userRoutes);
 app.route('/groups', groupRoutes);
 app.route('/members', memberRoutes);
+app.route('/hall-lotteries', hallLotteryRoutes);
 app.route('/reservations', reservationRoutes);
 app.route('/reservation/external', externalStudioRoutes);
 app.route('/reservations/external', externalReservationRoutes);
@@ -723,6 +726,7 @@ export const apiWorker = {
         await processExternalLotteryForNextDay(env);
         break;
       case "0 15 * * *":
+        await hallLotteryService(env).processDue();
         await createD1AuthRepository(env.DB).deleteExpiredSessions(new Date().toISOString());
         await processPastReservations(env);
         await processPastExternalReservations(env);

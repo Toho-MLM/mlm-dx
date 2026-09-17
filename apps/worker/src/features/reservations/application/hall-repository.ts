@@ -7,6 +7,7 @@ export type HallReservationRecord = {
   end_time: string;
   state: ReservationState;
   updated_at: string;
+  hall_lottery_application_id?: string | null;
 };
 
 export type AffectedHallReservation = Pick<HallReservationRecord, 'start_time' | 'end_time'> & { id: string };
@@ -31,11 +32,11 @@ export interface HallReservationRepository {
   hasUnavailableOverlap(startTime: string, endTime: string): Promise<boolean>;
   listOverlappingLotteryTargets(startTime: string, endTime: string): Promise<HallLotteryTargetRecord[]>;
   createReservationIfAvailable(input: {
-    id: string; userId: string; groupId: string | null; startTime: string; endTime: string; createdAt: string;
+    id: string; userId: string; groupId: string | null; startTime: string; endTime: string; createdAt: string; enforceProtection?: boolean;
   }): Promise<boolean>;
   createReservation(input: {
-    id: string; userId: string; groupId: string | null; startTime: string; endTime: string; createdAt: string;
-  }): Promise<void>;
+    id: string; userId: string; groupId: string | null; startTime: string; endTime: string; createdAt: string; enforceProtection?: boolean;
+  }): Promise<boolean>;
   findReservation(id: string): Promise<HallReservationRecord | null>;
   existsReservation(id: string): Promise<boolean>;
   deleteReservation(id: string): Promise<void>;
@@ -48,6 +49,7 @@ export interface HallReservationRepository {
     state: string;
     updatedAt: string;
     enforceAvailability?: boolean;
+    enforceProtection?: boolean;
   }): Promise<boolean>;
   restoreReservation(input: {
     id: string;

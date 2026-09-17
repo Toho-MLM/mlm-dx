@@ -6,12 +6,16 @@ import type {
   HallReservationRepository,
 } from '../application/hall-repository';
 
+// The same guard is evaluated inside writes to close create/draw races.
+const protectionGuard = `NOT EXISTS (SELECT 1 FROM hall_lotteries l WHERE l.state IN ('OPEN','DRAWING')
+  AND l.start_date <= date(?, '+9 hours') AND l.end_date >= date(?, '+9 hours'))`;
+
 export function createD1HallReservationRepository(db: D1Database): HallReservationRepository {
   return {
     async listVisibleReservations({ userId, admin, since }) {
       if (admin) {
         const rows = await db.prepare(`
-          SELECT r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
+          SELECT (r.hall_lottery_application_id IS NOT NULL) AS is_lottery, r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
                  COALESCE(u.nickname, u.name) AS user_name, ug.name AS group_name,
                  CASE WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0 ELSE 1 END AS cancellable
           FROM reservations r
@@ -22,7 +26,7 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
         return rows.results ?? [];
       }
       const rows = await db.prepare(`
-        SELECT r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
+        SELECT (r.hall_lottery_application_id IS NOT NULL) AS is_lottery, r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
                COALESCE(u.nickname, u.name) AS user_name, ug.name AS group_name,
                CASE
                  WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0
@@ -66,39 +70,45 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
         draw_datetime: string;
         has_pending_applications: number;
       }>();
-      return (rows.results ?? []).map((row) => ({
-        ...row,
-        has_pending_applications: Boolean(row.has_pending_applications),
-      }));
+      const periods = await db.prepare(`SELECT id,
+        strftime('%Y-%m-%dT%H:%M:%fZ',start_date || 'T06:00:00+09:00') start_datetime,
+        strftime('%Y-%m-%dT%H:%M:%fZ',end_date || 'T23:00:00+09:00') end_datetime,
+        draw_at draw_datetime, CASE WHEN state IN ('OPEN','DRAWING') THEN 1 ELSE 0 END has_pending_applications
+        FROM hall_lotteries WHERE state != 'CANCELLED'
+          AND start_date <= date(?, '+9 hours') AND end_date >= date(?, '+9 hours')`)
+        .bind(endTime,startTime).all<typeof rows.results[number]>();
+      return [...(rows.results ?? []), ...(periods.results ?? [])].map(row => ({ ...row, has_pending_applications: Boolean(row.has_pending_applications) }));
     },
 
     async createReservationIfAvailable(input) {
       const result = await db.prepare(`
         INSERT INTO reservations (id, user_id, group_id, start_time, end_time, state, created_at, updated_at)
         SELECT ?, ?, ?, ?, ?, 'PENDING', ?, ?
-        WHERE NOT EXISTS (
+        WHERE (? = 0 OR ${protectionGuard}) AND NOT EXISTS (
           SELECT 1 FROM reservations
           WHERE state IN ('PENDING','CONFIRMED') AND start_time < ? AND end_time > ?
         )
       `).bind(
         input.id, input.userId, input.groupId, input.startTime, input.endTime, input.createdAt, input.createdAt,
-        input.endTime, input.startTime
+        input.enforceProtection ? 1 : 0, input.endTime, input.startTime, input.endTime, input.startTime
       ).run();
       return Number(result.meta.changes ?? 0) > 0;
     },
 
     async createReservation(input) {
-      await db.prepare(`
+      const result = await db.prepare(`
         INSERT INTO reservations (id, user_id, group_id, start_time, end_time, state, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)
+        SELECT ?, ?, ?, ?, ?, 'PENDING', ?, ? WHERE (? = 0 OR ${protectionGuard})
       `).bind(
-        input.id, input.userId, input.groupId, input.startTime, input.endTime, input.createdAt, input.createdAt
+        input.id, input.userId, input.groupId, input.startTime, input.endTime, input.createdAt, input.createdAt,
+        input.enforceProtection ? 1 : 0, input.endTime, input.startTime
       ).run();
+      return result.meta.changes > 0;
     },
 
     async findReservation(id) {
       const row = await db.prepare(`
-        SELECT user_id, group_id, start_time, end_time, state, updated_at FROM reservations WHERE id = ?
+        SELECT user_id, group_id, start_time, end_time, state, updated_at, hall_lottery_application_id FROM reservations WHERE id = ?
       `).bind(id).first<HallReservationRecord>();
       return row ?? null;
     },
@@ -123,6 +133,7 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
       const result = await db.prepare(`
         UPDATE reservations SET start_time = ?, end_time = ?, state = ?, updated_at = ?
         WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
+          AND (? = 0 OR ${protectionGuard})
           AND (
             (? = 0 AND ? != 'CONFIRMED')
             OR NOT EXISTS (
@@ -135,6 +146,7 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
       `).bind(
         input.startTime, input.endTime, input.state, input.updatedAt,
         input.id, input.previous.start_time, input.previous.end_time, input.previous.state, input.previous.updated_at,
+        input.enforceProtection ? 1 : 0, input.endTime, input.startTime,
         input.enforceAvailability ? 1 : 0, input.state, input.id,
         input.enforceAvailability ? 1 : 0, input.enforceAvailability ? 1 : 0,
         input.endTime, input.startTime
