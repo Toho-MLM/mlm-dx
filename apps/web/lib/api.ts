@@ -75,6 +75,27 @@ type PasskeyRegistrationStartResponse = { challengeId: string; options: PublicKe
 type PasskeyLoginStartResponse = { success: true; challengeId: string; options: PublicKeyCredentialRequestOptionsJSON } | { success: false }
 
 class ApiClient {
+  async getHallLotteries(): Promise<ApiResponse<SharedSchemas.HallLottery[]>> {
+    return httpClient.get('/hall-lotteries')
+  }
+  async createHallLottery(data: SharedSchemas.CreateHallLotteryRequest): Promise<ApiResponse<SharedSchemas.HallLottery>> {
+    SharedSchemas.CreateHallLotteryRequestSchema.parse(data)
+    return httpClient.post('/hall-lotteries', data)
+  }
+  async cancelHallLottery(id: string): Promise<ApiResponse<void>> {
+    return httpClient.post(`/hall-lotteries/${id}/cancel`)
+  }
+  async getHallLotteryApplications(id: string): Promise<ApiResponse<SharedSchemas.HallLotteryApplication[]>> {
+    return httpClient.get(`/hall-lotteries/${id}/applications`)
+  }
+  async createHallLotteryApplication(id: string, data: SharedSchemas.CreateHallLotteryApplicationRequest): Promise<ApiResponse<{ id: string }>> {
+    SharedSchemas.CreateHallLotteryApplicationRequestSchema.parse(data)
+    return httpClient.post(`/hall-lotteries/${id}/applications`, data)
+  }
+  async cancelHallLotteryApplication(lotteryId: string, id: string): Promise<ApiResponse<void>> {
+    return httpClient.post(`/hall-lotteries/${lotteryId}/applications/${id}/cancel`)
+  }
+
   private getBaseUrl(): string {
     const configuredOrigin = process.env.NODE_ENV === 'development'
       ? process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '')
