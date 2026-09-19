@@ -495,7 +495,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
             <Button type="button" variant="outline" onClick={() => void fetchData()}>再試行</Button>
           </div>
         ) : targetStudios.length === 0 ? (
-          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">外部・従来方式の抽選対象はありません</div>
+          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">外部抽選対象はありません</div>
         ) : (
             <div className="overflow-x-auto [transform:rotateX(180deg)]">
               <div className="grid min-w-max grid-flow-col auto-cols-[17rem] items-start gap-3 py-3 [transform:rotateX(180deg)]">
