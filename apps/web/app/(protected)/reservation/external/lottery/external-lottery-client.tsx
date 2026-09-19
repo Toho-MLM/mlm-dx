@@ -12,7 +12,7 @@ import { PageHeader } from '@/components/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
@@ -659,9 +659,11 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                 required
               />
             </div>
-            <LoadingButton type="submit" className="w-full" isLoading={submitting} disabled={!studioId || !duration}>
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}申し込む
-            </LoadingButton>
+            <DialogFooter>
+              <LoadingButton type="submit" isLoading={submitting} disabled={!studioId || !duration}>
+                {submitting && <Loader2 className="h-4 w-4 animate-spin" />}申し込む
+              </LoadingButton>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

@@ -10,7 +10,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
@@ -1012,9 +1012,11 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
               </Alert>
             )}
 
-            <LoadingButton type="submit" isLoading={isSending} disabled={isReservationButtonDisabled} className={cn('w-full', isReservationButtonDisabled && 'opacity-50')}>
-              予約
-            </LoadingButton>
+            <DialogFooter>
+              <LoadingButton type="submit" isLoading={isSending} disabled={isReservationButtonDisabled} className={cn(isReservationButtonDisabled && 'opacity-50')}>
+                予約
+              </LoadingButton>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { apiClient } from '@/lib/api'
 import { showSuccessToast } from '@/lib/utils'
@@ -412,9 +412,11 @@ function ReservationLimitsContent({ initialLimits }: { initialLimits?: Reservati
                 />
               </div>
 
-              <LoadingButton type="submit" isLoading={isSubmitting} className="w-full">
-                保存
-              </LoadingButton>
+              <DialogFooter>
+                <LoadingButton type="submit" isLoading={isSubmitting}>
+                  保存
+                </LoadingButton>
+              </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
