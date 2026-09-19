@@ -37,8 +37,7 @@ export default function LotterySupportPage() {
             <p>管理者は抽選作成時に対象を「本バンド」「自由バンド」から選択します。抽選開始前に抽選を中止できます。中止すると申込も取消になり、通常予約への制限を解除します。</p>
           </CardContent>
         </Card>
-        <h2 className="pt-4 text-lg font-semibold">外部抽選・移行前のホール抽選</h2>
-        <p className="text-sm text-muted-foreground">以下は従来方式の説明です。移行前に作成されたホール抽選は従来方式のまま完了します。</p>
+        <h2 className="pt-4 text-lg font-semibold">外部抽選</h2>
         <Card>
           <CardHeader>
             <CardTitle>申し込み方法</CardTitle>

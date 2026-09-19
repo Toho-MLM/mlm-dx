@@ -262,7 +262,7 @@ export function ReservationEditDialog({
               </div>
             </>
           )}
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               戻る
             </Button>

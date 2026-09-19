@@ -29,6 +29,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -612,9 +613,11 @@ export function HallLotteries({
                 }
               />
             </div>
-            <Button type="submit" disabled={busy}>
-              {busy ? '作成中…' : '抽選を作成'}
-            </Button>
+            <DialogFooter>
+              <Button type="submit" disabled={busy}>
+                {busy ? '作成中…' : '抽選を作成'}
+              </Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

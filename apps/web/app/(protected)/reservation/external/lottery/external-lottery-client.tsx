@@ -12,7 +12,7 @@ import { PageHeader } from '@/components/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
@@ -495,7 +495,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
             <Button type="button" variant="outline" onClick={() => void fetchData()}>再試行</Button>
           </div>
         ) : targetStudios.length === 0 ? (
-          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">外部・従来方式の抽選対象はありません</div>
+          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">外部抽選対象はありません</div>
         ) : (
             <div className="overflow-x-auto [transform:rotateX(180deg)]">
               <div className="grid min-w-max grid-flow-col auto-cols-[17rem] items-start gap-3 py-3 [transform:rotateX(180deg)]">
@@ -659,9 +659,11 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                 required
               />
             </div>
-            <LoadingButton type="submit" className="w-full" isLoading={submitting} disabled={!studioId || !duration}>
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}申し込む
-            </LoadingButton>
+            <DialogFooter>
+              <LoadingButton type="submit" isLoading={submitting} disabled={!studioId || !duration}>
+                {submitting && <Loader2 className="h-4 w-4 animate-spin" />}申し込む
+              </LoadingButton>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

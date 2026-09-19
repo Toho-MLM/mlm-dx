@@ -20,6 +20,7 @@ import { translateError } from '@/lib/error-label'
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -1244,17 +1245,18 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
                   />
                 </div>
               </div>
-              <LoadingButton
-                type="submit"
-                isLoading={isSending}
-                disabled={isReservationButtonDisabled()}
-                className={cn(
-                  "w-full",
-                  isReservationButtonDisabled() && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                予約
-              </LoadingButton>
+              <DialogFooter>
+                <LoadingButton
+                  type="submit"
+                  isLoading={isSending}
+                  disabled={isReservationButtonDisabled()}
+                  className={cn(
+                    isReservationButtonDisabled() && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  予約
+                </LoadingButton>
+              </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
