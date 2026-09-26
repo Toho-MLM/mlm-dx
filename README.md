@@ -15,6 +15,18 @@ mlm-dx/
 └── README.md
 ```
 
+## デザインを適用する開発フロー
+
+[デザインルール](docs/design-rules.md) を承認済みの基準として、新規画面と変更対象に適用します。エラー・成功・警告・案内は toast に統一し、inline メッセージを禁止します。
+
+| 工程 | 使うスキル | 確認すること |
+| --- | --- | --- |
+| 実装前・実装 | [web-feature](.agents/skills/web-feature/SKILL.md) | 該当するルール、共通部品、主要操作、通知と復帰方法 |
+| 実装後 | [verify](.agents/skills/verify/SKILL.md) | type-check、対象の画面・通知・モバイル・キーボード操作 |
+| コミット依頼時 | [commit](.agents/skills/commit/SKILL.md) | 対象差分の検証結果、未実施項目、既存の差分 |
+
+受け入れ条件と適用順はデザインルールの「検証・完了」を参照してください。ルール変更は同文書に集約し、工程が変わる場合は [AGENTS.md](AGENTS.md) と該当スキルも揃えます。
+
 ## 主な機能
 
 - **予約管理**: バンドまたは個人名義でスタジオ予約を作成・閲覧・キャンセル。予約日の午前0時（JST）に自動判定を行い、同日予約は即時に確定/却下を決定します。
@@ -162,6 +174,7 @@ AUTH_URL=http://localhost:8787
 AUTH_SECRET=your-auth-secret-min-32-chars-long
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
+INITIAL_ADMIN_EMAIL=first-admin@example.com
 
 # CORS設定
 CORS_ORIGIN=http://localhost:3000
@@ -224,7 +237,7 @@ SMTP_FROM_NAME = "MLM-DX"
 
 ```
 
-統合previewで必要な `AUTH_SECRET`、Google OAuth、SMTPの秘密値は `apps/web/.dev.vars` に設定します。`pnpm dev` の分離開発では従来どおり `apps/worker/.dev.vars` を使用します。
+統合previewで必要な `AUTH_SECRET`、Google OAuth、`INITIAL_ADMIN_EMAIL`、SMTPの秘密値は `apps/web/.dev.vars` に設定します。`pnpm dev` の分離開発では従来どおり `apps/worker/.dev.vars` を使用します。
 
 #### 4.5 環境変数の詳細説明
 
@@ -245,6 +258,7 @@ SMTP_FROM_NAME = "MLM-DX"
 | `AUTH_SECRET` | JWTトークンの署名用秘密鍵 | `.dev.vars`ファイル | `wrangler secret put` |
 | `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | `.dev.vars`ファイル | `wrangler secret put` |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | `.dev.vars`ファイル | `wrangler secret put` |
+| `INITIAL_ADMIN_EMAIL` | 初回登録を許可する管理者の Google メールアドレス。未設定時は初回登録不可 | `.dev.vars`ファイル | 統合 Worker の GitHub Repository Secret |
 | `CORS_ORIGIN` | CORS許可オリジン | `http://localhost:3000` | `https://your-frontend-domain.com` |
 | `FRONTEND_URL` | フロントエンドのURL | `http://localhost:3000` | `https://your-frontend-domain.com` |
 | `SMTP_HOST` | SMTPサーバーのホスト名 | `.dev.vars`ファイル | GitHub Repository Variable |
@@ -265,6 +279,7 @@ SMTP_FROM_NAME = "MLM-DX"
 wrangler secret put AUTH_SECRET --env production
 wrangler secret put GOOGLE_CLIENT_ID --env production
 wrangler secret put GOOGLE_CLIENT_SECRET --env production
+wrangler secret put INITIAL_ADMIN_EMAIL --env production
 wrangler secret put SMTP_USER --env production
 wrangler secret put SMTP_PASSWORD --env production
 ```

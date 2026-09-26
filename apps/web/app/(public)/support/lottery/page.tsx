@@ -148,12 +148,11 @@ export default function LotterySupportPage() {
             <p>「抽選」では、外部と移行前のホールの抽選対象が横方向に並び、その下に各時間枠への申込がすべて表示されます。</p>
             <ul className="list-disc space-y-1 pl-5">
               <li>自分または所属バンドに関係する申込は、濃い枠線で表示されます。</li>
-              <li>抽選前は、既存予約と予約不可期間を除いた空きを競合申込へ公平配分し、優先区分ごとに時間の余裕と公平性から計算したウェイトで処理順を複数回抽選した、おおよその当選確率が表示されます。希望時間より短い割当でも、10分以上なら当選として数えます。</li>
-              <li>当選確率は目安です。予約上限、メンバーの予約重複、表示後の利用実績の変化などにより、実際の結果とは異なる場合があります。</li>
+              <li>抽選前の申込は「抽選前」と表示されます。結果は抽選処理後に確認できます。</li>
               <li>抽選後は、公平性スコア、割り当てられた部屋と利用時間を確認できます。</li>
             </ul>
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">当選確率 約○%</Badge>
+              <Badge variant="outline">抽選前</Badge>
               <Badge>当選</Badge>
               <Badge variant="destructive">落選</Badge>
             </div>

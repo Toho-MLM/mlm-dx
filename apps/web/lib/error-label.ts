@@ -36,6 +36,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'INVALID_HALL_LOTTERY_DRAW_TIME': '抽選実行日の21:00は、現在より後かつ利用開始日時より前にしてください。',
   'HALL_LOTTERY_TARGET_CONFLICT': 'この時間帯にはホールの抽選対象がすでに登録されています。',
   'LOTTERY_APPLICATION_CONFLICT': '同じ名義の希望可能時間帯と重なる申込があります。',
+  'RESERVATION_BUSY': '同じ名義の申込を処理中です。少し待ってから再試行してください。',
   'LOTTERY_APPLICATION_NOT_FOUND': '抽選申込が見つかりません。',
   'LOTTERY_APPLICATION_CANNOT_BE_CANCELLED': 'この抽選申込は取り消せません。',
   'MEMBER_RESERVATION_CONFLICT_WARNING': '同じ時間帯に予約済みのメンバーがいます。',
@@ -45,6 +46,8 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'INVALID_TOKEN': '無効なトークンです。',
   'USER_NOT_FOUND': 'ユーザーが見つかりません。',
   'AUTHENTICATION_FAILED': '認証に失敗しました。',
+  'SETUP_NOT_CONFIGURED': '初期管理者のメールアドレスがサーバーに設定されていません。',
+  'INITIAL_ADMIN_EMAIL_MISMATCH': '設定された初期管理者のメールアドレスと一致しません。',
   'SIGNOUT_FAILED': 'ログアウトに失敗しました。',
   
   // グループ・メンバー関連エラー

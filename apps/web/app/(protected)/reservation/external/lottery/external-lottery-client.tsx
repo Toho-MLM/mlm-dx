@@ -26,13 +26,8 @@ import { toJSTWallClockDate } from '../../reservation-calendar'
 import {
   EXTERNAL_LOTTERY_MAX_DURATION_MINUTES,
   EXTERNAL_LOTTERY_MIN_DURATION_MINUTES,
-  calculateExternalLotteryWeights,
-  getExternalLotteryWeightedOrderKey,
   type External,
   type ExternalLotteryApplication,
-  type ExternalReservation,
-  type Reservation,
-  type UnavailablePeriod,
 } from '@shared-schemas'
 
 type GroupOption = { id: string; name: string; main_index: number | null }
@@ -92,210 +87,9 @@ const getLotterySlots = (studio: External): LotterySlot[] => {
 
 const getLotteryDrawTimes = (studio: External) => getLotterySlots(studio).map((slot) => slot.drawAt)
 
-type LotteryRange = { start: Date; end: Date; requestedMinutes: number }
-type LotteryCandidate = ExternalLotteryApplication & LotteryRange
-type OccupiedInterval = { start: Date; end: Date }
-type LotteryRoomOption = {
-  roomNumber: number
-  intervals: OccupiedInterval[]
-  longestMinutes: number
-}
-
-const getApplicationPriority = (application: ExternalLotteryApplication) => (
-  application.group_id ? (application.main_index !== null ? 0 : 1) : 2
-)
-
-const getSchedulingSlackMinutes = (candidate: LotteryCandidate) => (
-  Math.round((candidate.end.getTime() - candidate.start.getTime()) / 60_000) - candidate.requestedMinutes
-)
-
-const getApplicationRange = (application: ExternalLotteryApplication, studio: External): LotteryRange | null => {
-  const studioStart = new Date(studio.start_datetime)
-  const studioEnd = new Date(studio.end_datetime)
-  const start = application.preferred_start_datetime
-    ? new Date(application.preferred_start_datetime)
-    : studioStart
-  const end = application.preferred_end_datetime
-    ? new Date(application.preferred_end_datetime)
-    : studioEnd
-  if (end <= start) return null
-  return {
-    start,
-    end,
-    requestedMinutes: application.requested_duration_minutes
-      ?? Math.round((end.getTime() - start.getTime()) / 60_000),
-  }
-}
-
-const overlaps = (left: { start: Date; end: Date }, right: { start: Date; end: Date }) => (
-  left.start < right.end && left.end > right.start
-)
-
-const subtractOccupiedIntervals = (
-  range: { start: Date; end: Date },
-  occupied: OccupiedInterval[]
-): OccupiedInterval[] => {
-  let available = [range]
-  occupied
-    .filter((interval) => overlaps(range, interval))
-    .sort((left, right) => left.start.getTime() - right.start.getTime())
-    .forEach((interval) => {
-      available = available.flatMap((current) => {
-        if (!overlaps(current, interval)) return [current]
-        const parts: OccupiedInterval[] = []
-        if (interval.start > current.start) parts.push({ start: current.start, end: interval.start })
-        if (interval.end < current.end) parts.push({ start: interval.end, end: current.end })
-        return parts
-      })
-    })
-  return available
-}
-
-const enumerateStarts = (interval: OccupiedInterval, durationMinutes: number) => {
-  const stepMs = 60_000
-  const first = Math.ceil(interval.start.getTime() / stepMs) * stepMs
-  const latest = interval.end.getTime() - durationMinutes * 60_000
-  const starts: Date[] = []
-  for (let value = first; value <= latest; value += stepMs) starts.push(new Date(value))
-  return starts
-}
-
-const seededOrder = (value: string) => {
-  let hash = 2166136261
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-  return hash >>> 0
-}
-
-const getFairShareMinutes = (
-  candidate: LotteryCandidate,
-  remainingCandidates: LotteryCandidate[],
-  roomOptions: LotteryRoomOption[]
-) => {
-  const availableMinutes = roomOptions.reduce((total, room) => total + room.intervals.reduce((roomTotal, interval) => {
-    const minutes = Math.floor((interval.end.getTime() - interval.start.getTime()) / 60_000)
-    return roomTotal + (minutes >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES ? minutes : 0)
-  }, 0), 0)
-  const contenders = remainingCandidates.filter((remaining) => overlaps(candidate, remaining)).length
-  const possibleWinners = Math.min(
-    contenders,
-    Math.floor(availableMinutes / EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
-  )
-  if (possibleWinners === 0) return 0
-  const fairShare = Math.floor(availableMinutes / possibleWinners)
-  return Math.min(candidate.requestedMinutes, fairShare)
-}
-
-const estimateWinningProbabilities = (
-  studio: External,
-  studioApplications: ExternalLotteryApplication[],
-  externalReservations: ExternalReservation[],
-  hallReservations: Reservation[],
-  unavailablePeriods: UnavailablePeriod[]
-) => {
-  const candidates = studioApplications.flatMap((candidate): LotteryCandidate[] => {
-    if (candidate.state !== 'PENDING') return []
-    const range = getApplicationRange(candidate, studio)
-    if (
-      !range ||
-      range.requestedMinutes < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES ||
-      range.requestedMinutes > EXTERNAL_LOTTERY_MAX_DURATION_MINUTES
-    ) return []
-    return [{ ...candidate, ...range }]
-  })
-  const wins = new Map(candidates.map((candidate) => [candidate.id, 0]))
-  if (candidates.length === 0) return wins
-
-  const initialOccupied = new Map<number, OccupiedInterval[]>()
-  studio.room_names.forEach((_, index) => initialOccupied.set(index + 1, []))
-  if (studio.target_type === 'HALL') {
-    hallReservations.forEach((reservation) => {
-      if (!['PENDING', 'CONFIRMED'].includes(reservation.state)) return
-      initialOccupied.get(1)?.push({ start: new Date(reservation.start_time), end: new Date(reservation.end_time) })
-    })
-    unavailablePeriods.forEach((period) => {
-      initialOccupied.get(1)?.push({ start: new Date(period.start_datetime), end: new Date(period.end_datetime) })
-    })
-  } else {
-    externalReservations.forEach((reservation) => {
-      if (reservation.external_studio_id !== studio.id || reservation.state !== 'CONFIRMED') return
-      initialOccupied.get(reservation.room_number)?.push({
-        start: new Date(reservation.start_time),
-        end: new Date(reservation.end_time),
-      })
-    })
-  }
-
-  const trialCount = 240
-  for (let trial = 0; trial < trialCount; trial += 1) {
-    const weights = new Map<string, number>()
-    for (const priority of [0, 1, 2]) {
-      const cohort = candidates.filter((candidate) => getApplicationPriority(candidate) === priority)
-      calculateExternalLotteryWeights(cohort.map((candidate) => ({
-        id: candidate.id,
-        schedulingSlackMinutes: getSchedulingSlackMinutes(candidate),
-        fairnessScore: candidate.fairness_score ?? 0,
-      }))).forEach((weight, id) => weights.set(id, weight))
-    }
-    const ordered = [...candidates].sort((left, right) => (
-      getApplicationPriority(left) - getApplicationPriority(right)
-      || getExternalLotteryWeightedOrderKey(
-        weights.get(left.id) ?? 1,
-        (seededOrder(`${studio.id}:${trial}:${left.id}`) + 1) / (0x1_0000_0000 + 1)
-      ) - getExternalLotteryWeightedOrderKey(
-        weights.get(right.id) ?? 1,
-        (seededOrder(`${studio.id}:${trial}:${right.id}`) + 1) / (0x1_0000_0000 + 1)
-      )
-    ))
-    const occupied = new Map([...initialOccupied].map(([room, intervals]) => [room, [...intervals]]))
-
-    ordered.forEach((candidate, candidateIndex) => {
-      const roomOptions: LotteryRoomOption[] = studio.room_names.map((_, roomIndex) => {
-        const roomNumber = roomIndex + 1
-        const intervals = subtractOccupiedIntervals(candidate, occupied.get(roomNumber) || [])
-        const longestMinutes = intervals.reduce((longest, interval) => (
-          Math.max(longest, Math.floor((interval.end.getTime() - interval.start.getTime()) / 60_000))
-        ), 0)
-        return { roomNumber, intervals, longestMinutes }
-      })
-      const fairShareMinutes = getFairShareMinutes(candidate, ordered.slice(candidateIndex), roomOptions)
-      const hasFullRoom = roomOptions.some((room) => room.longestMinutes >= fairShareMinutes)
-      const rooms = roomOptions
-        .filter((room) => room.longestMinutes >= (hasFullRoom ? fairShareMinutes : EXTERNAL_LOTTERY_MIN_DURATION_MINUTES))
-        .sort((left, right) => right.longestMinutes - left.longestMinutes || left.roomNumber - right.roomNumber)
-
-      for (const room of rooms) {
-        const duration = hasFullRoom
-          ? fairShareMinutes
-          : room.longestMinutes
-        if (duration < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES) continue
-        const starts = room.intervals.flatMap((interval) => enumerateStarts(interval, duration))
-          .map((start) => {
-            const end = new Date(start.getTime() + duration * 60_000)
-            const contention = ordered.slice(candidateIndex + 1)
-              .filter((remaining) => overlaps({ start, end }, remaining)).length
-            return { start, end, contention }
-          })
-          .sort((left, right) => left.contention - right.contention || left.start.getTime() - right.start.getTime())
-        const assignment = starts[0]
-        if (!assignment) continue
-        occupied.get(room.roomNumber)?.push({ start: assignment.start, end: assignment.end })
-        wins.set(candidate.id, (wins.get(candidate.id) || 0) + 1)
-        break
-      }
-    })
-  }
-  return new Map([...wins].map(([id, count]) => [id, Math.round(count / trialCount * 100)]))
-}
-
 export type ExternalLotteryInitialData = {
   studios: External[] | null
   applications: ExternalLotteryApplication[] | null
-  reservations: ExternalReservation[] | null
-  hallReservations: Reservation[] | null
-  unavailablePeriods: UnavailablePeriod[] | null
   groups: GroupOption[] | null
 }
 
@@ -307,9 +101,6 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
   const hasCompleteInitialData = initialData !== undefined
     && initialData.studios !== null
     && initialData.applications !== null
-    && initialData.reservations !== null
-    && initialData.hallReservations !== null
-    && initialData.unavailablePeriods !== null
     && initialData.groups !== null
   const router = useRouter()
   const pathname = usePathname()
@@ -322,9 +113,6 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
   const [open, setOpen] = useState(false)
   const [studios, setStudios] = useState<External[]>(initialData?.studios ?? [])
   const [applications, setApplications] = useState<ExternalLotteryApplication[]>(initialData?.applications ?? [])
-  const [reservations, setReservations] = useState<ExternalReservation[]>(initialData?.reservations ?? [])
-  const [hallReservations, setHallReservations] = useState<Reservation[]>(initialData?.hallReservations ?? [])
-  const [unavailablePeriods, setUnavailablePeriods] = useState<UnavailablePeriod[]>(initialData?.unavailablePeriods ?? [])
   const [groups, setGroups] = useState<GroupOption[]>(initialData?.groups ?? [])
   const [identity, setIdentity] = useState('__personal__')
   const [studioId, setStudioId] = useState('')
@@ -335,23 +123,17 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
   const fetchData = useCallback(async () => {
     setLoadError(null)
     try {
-      const [studioResponse, applicationResponse, groupResponse, reservationResponse, hallResponse, unavailableResponse] = await Promise.all([
+      const [studioResponse, applicationResponse, groupResponse] = await Promise.all([
         apiClient.getExternals(),
         apiClient.getExternalLotteryApplications(),
         apiClient.getGroupOptions(false),
-        apiClient.getExternalReservations(),
-        apiClient.getReservations(),
-        apiClient.getUnavailablePeriods(),
       ])
-      const failedResponse = [studioResponse, applicationResponse, groupResponse, reservationResponse, hallResponse, unavailableResponse]
+      const failedResponse = [studioResponse, applicationResponse, groupResponse]
         .find((response) => !response.success || !response.data)
       if (failedResponse) throw new Error(failedResponse.error || 'EXTERNAL_LOTTERY_FETCH_FAILED')
       setStudios(studioResponse.data || [])
       setApplications(applicationResponse.data || [])
       setGroups(groupResponse.data || [])
-      setReservations(reservationResponse.data || [])
-      setHallReservations(hallResponse.data || [])
-      setUnavailablePeriods(unavailableResponse.data || [])
     } catch (error) {
       console.error('Failed to fetch external lottery data:', error)
       setLoadError(translateError((error as Error).message))
@@ -397,17 +179,6 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
     })
     return grouped
   }, [applications])
-
-  const winningProbabilitiesByStudio = useMemo(() => new Map(targetStudios.map((studio) => [
-    studio.id,
-    estimateWinningProbabilities(
-      studio,
-      applicationsByStudio.get(studio.id) || [],
-      reservations,
-      hallReservations,
-      unavailablePeriods
-    ),
-  ])), [applicationsByStudio, hallReservations, reservations, targetStudios, unavailablePeriods])
 
   const myGroupIds = useMemo(() => new Set(groups.map((group) => group.id)), [groups])
 
@@ -539,9 +310,6 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                           application.user_id === user?.id || (application.group_id !== null && myGroupIds.has(application.group_id))
                         )
                         const canCancel = application.state === 'PENDING' && isRelated
-                        const winningProbability = application.state === 'PENDING'
-                          ? winningProbabilitiesByStudio.get(studio.id)?.get(application.id) ?? 0
-                          : null
                         return (
                           <Card key={application.id} className={isRelated ? 'border-2 border-black' : undefined}>
                             <CardContent className="space-y-1.5 p-2.5 text-xs">
@@ -556,11 +324,8 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                                   <Badge
                                     variant={application.state === 'WON' ? 'default' : application.state === 'LOST' ? 'destructive' : 'outline'}
                                     className="px-1.5 text-[10px]"
-                                    title={application.state === 'PENDING'
-                                      ? '確定済み予約を除いた空きを競合申込へ公平配分し、優先区分ごとに時間の余裕と公平性から計算したウェイトで処理順を複数回抽選した推定値です。予約上限などにより実際の結果は変わります。'
-                                      : undefined}
                                   >
-                                    {application.state === 'PENDING' ? `当選確率 約${winningProbability}%` : stateLabel[application.state]}
+                                    {stateLabel[application.state]}
                                   </Badge>
                                 </div>
                               </div>

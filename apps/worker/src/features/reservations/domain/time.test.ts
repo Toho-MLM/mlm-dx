@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { validateReservationTime } from '@shared-schemas';
 import {
   calculateOverlapMinutes,
   determineHallReservationState,
@@ -25,6 +26,14 @@ describe('reservation time domain', () => {
       isValid: false,
       error: 'RESERVATION_DATE_TOO_FAR',
     });
+  });
+
+  it('終了時刻がJST 23:00を秒単位で超える予約を拒否する', () => {
+    const now = new Date('2026-08-10T00:00:00.000Z');
+    expect(validateReservationTime('2026-08-11T13:00:00.000Z', '2026-08-11T14:00:00.000Z', now).isValid)
+      .toBe(true);
+    expect(validateReservationTime('2026-08-11T13:00:00.000Z', '2026-08-11T14:00:00.001Z', now).isValid)
+      .toBe(false);
   });
 
   it('占有時間を差し引いて空き時間を返す', () => {
@@ -57,6 +66,15 @@ describe('reservation time domain', () => {
       adjustedStartTime: '2026-08-10T21:00:00.000Z',
       adjustedEndTime: '2026-08-10T22:00:00.000Z',
     });
+  });
+
+  it('前日に処理できなかった予約も再判定する', () => {
+    expect(determineHallReservationState(
+      '2026-08-10T21:00:00.000Z',
+      '2026-08-10T22:00:00.000Z',
+      [],
+      new Date('2026-08-11T15:30:00.000Z')
+    )).toEqual({ state: 'CONFIRMED' });
   });
 
   it('利用不可期間の前後から長い方を選び、10分未満は破棄する', () => {

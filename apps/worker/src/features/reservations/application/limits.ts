@@ -2,6 +2,7 @@ import { ReservationLimitRemainingSchema } from '@shared-schemas';
 import {
   calculateOverlapMinutes,
   getReferenceDayRange,
+  getRollingConflictWindows,
   getRollingWindow,
   type StoredTimeInterval,
 } from '../domain/time';
@@ -55,56 +56,70 @@ export function createReservationLimitService(repository: ReservationLimitReposi
     ), 0);
   }
 
-  async function hasConflict(input: {
+  type ConflictInput = {
     userId: string;
     groupId: string | null;
     startTime: string;
     endTime: string;
     exclude?: { kind: ReservationKind; id: string };
-  }): Promise<boolean> {
+  };
+
+  async function prepareConflictChecker(input: ConflictInput): Promise<(startTime: string, endTime: string) => boolean> {
     const scope: ReservationLimitScope = input.groupId ? 'GROUP' : 'PERSONAL';
     const targetId = input.groupId ?? input.userId;
     const limits = await repository.listLimits(scope);
-    const requestedMinutes = calculateOverlapMinutes(
-      input.startTime,
-      input.endTime,
-      input.startTime,
-      input.endTime
-    );
-
-    for (const limit of limits) {
-      let rangeStartTime: string;
-      let rangeEndTime: string;
-      let minutesInRange = requestedMinutes;
-
+    const applicable = limits.filter((limit) => {
       if (limit.limit_type === 'FIXED') {
-        if (!limit.start_datetime || !limit.end_datetime) continue;
-        rangeStartTime = limit.start_datetime;
-        rangeEndTime = limit.end_datetime;
-        minutesInRange = calculateOverlapMinutes(
-          input.startTime,
-          input.endTime,
-          rangeStartTime,
-          rangeEndTime
-        );
-      } else {
-        if (!limit.window_days) continue;
-        const window = getRollingWindow(input.startTime, Number(limit.window_days));
-        rangeStartTime = window.startTime;
-        rangeEndTime = window.endTime;
+        return limit.start_datetime && limit.end_datetime
+          && calculateOverlapMinutes(input.startTime, input.endTime, limit.start_datetime, limit.end_datetime) > 0;
       }
+      return Boolean(limit.window_days);
+    });
+    if (applicable.length === 0) return () => false;
 
-      if (minutesInRange === 0) continue;
-      const usedMinutes = await getUsedMinutes({
-        scope,
-        targetId,
-        rangeStartTime,
-        rangeEndTime,
-        exclude: input.exclude,
+    const ranges = applicable.map((limit) => {
+      if (limit.limit_type === 'FIXED') {
+        return { start: new Date(limit.start_datetime!).getTime(), end: new Date(limit.end_datetime!).getTime() };
+      }
+      const duration = Number(limit.window_days) * 24 * 60 * 60 * 1000;
+      return {
+        start: new Date(input.startTime).getTime() - duration,
+        end: new Date(input.endTime).getTime() + duration,
+      };
+    });
+    const usage = await repository.listUsageIntervals({
+      scope, targetId,
+      rangeStartTime: new Date(Math.min(...ranges.map((range) => range.start))).toISOString(),
+      rangeEndTime: new Date(Math.max(...ranges.map((range) => range.end))).toISOString(),
+      exclude: input.exclude,
+    });
+
+    return (startTime, endTime) => applicable.some((limit) => {
+      if (limit.limit_type === 'FIXED') {
+        const requested = calculateOverlapMinutes(
+          startTime, endTime, limit.start_datetime!, limit.end_datetime!
+        );
+        if (requested === 0) return false;
+        const used = usage.reduce((total, interval) => total + calculateOverlapMinutes(
+          interval.start_time, interval.end_time, limit.start_datetime!, limit.end_datetime!
+        ), 0);
+        return used + requested > Number(limit.max_minutes);
+      }
+      const windows = getRollingConflictWindows(startTime, endTime, Number(limit.window_days), usage);
+      return windows.some((window) => {
+        const requested = calculateOverlapMinutes(startTime, endTime, window.startTime, window.endTime);
+        if (requested === 0) return false;
+        const used = usage.reduce((total, interval) => total + calculateOverlapMinutes(
+          interval.start_time, interval.end_time, window.startTime, window.endTime
+        ), 0);
+        return used + requested > Number(limit.max_minutes);
       });
-      if (usedMinutes + minutesInRange > Number(limit.max_minutes)) return true;
-    }
-    return false;
+    });
+  }
+
+  async function hasConflict(input: ConflictInput): Promise<boolean> {
+    const check = await prepareConflictChecker(input);
+    return check(input.startTime, input.endTime);
   }
 
   async function getRemaining(input: {
@@ -146,5 +161,5 @@ export function createReservationLimitService(repository: ReservationLimitReposi
     return remaining;
   }
 
-  return { getUsedMinutes, hasConflict, getRemaining };
+  return { getUsedMinutes, hasConflict, prepareConflictChecker, getRemaining };
 }

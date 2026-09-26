@@ -22,6 +22,8 @@ export type HallLotteryTargetRecord = {
 
 export type UnavailableAdjustment = {
   reservationId: string;
+  previousStartTime: string;
+  previousEndTime: string;
   startTime?: string;
   endTime?: string;
   decline: boolean;
@@ -79,7 +81,7 @@ export interface HallReservationRepository {
     reason: string | null;
     createdAt: string;
     adjustments: UnavailableAdjustment[];
-  }): Promise<void>;
+  }): Promise<{ created: boolean; adjustedReservationIds: string[] }>;
   existsUnavailablePeriod(id: string): Promise<boolean>;
   deleteUnavailablePeriod(id: string): Promise<void>;
 }

@@ -154,13 +154,23 @@ function countTemporalStarts(
   const stepMs = 60000;
   const firstStart = Math.ceil(application.rangeStart.getTime() / stepMs) * stepMs;
   const lastStart = application.rangeEnd.getTime() - durationMs;
-  let count = 0;
-  for (let startMs = firstStart; startMs <= lastStart; startMs += stepMs) {
-    const endMs = startMs + durationMs;
-    if (blockedStart && blockedEnd && startMs < blockedEnd.getTime() && endMs > blockedStart.getTime()) continue;
-    count += 1;
-  }
-  return count;
+  if (lastStart < firstStart) return 0;
+  const total = Math.floor((lastStart - firstStart) / stepMs) + 1;
+  if (!blockedStart || !blockedEnd) return total;
+
+  // Overlap is strict at both ends: start < blockedEnd and start + duration > blockedStart.
+  const blockedFirst = Math.max(
+    firstStart,
+    (Math.floor((blockedStart.getTime() - durationMs) / stepMs) + 1) * stepMs,
+  );
+  const blockedLast = Math.min(
+    lastStart,
+    (Math.ceil(blockedEnd.getTime() / stepMs) - 1) * stepMs,
+  );
+  const blockedCount = blockedLast < blockedFirst
+    ? 0
+    : Math.floor((blockedLast - blockedFirst) / stepMs) + 1;
+  return total - blockedCount;
 }
 
 export function getMemberSchedulingImpact(
@@ -182,20 +192,26 @@ export function getMemberSchedulingImpact(
   return { madeUnschedulable, lostOptions };
 }
 
-export function enumerateStarts(
+export function* iterateStarts(
   interval: TimeInterval,
   durationMinutes: number,
   latestStartExclusive: Date
-): Date[] {
+): Generator<Date> {
   const step = 60000;
   const first = Math.ceil(interval.start.getTime() / step) * step;
   const latest = Math.min(
     interval.end.getTime() - durationMinutes * 60000,
     latestStartExclusive.getTime() - 1
   );
-  const starts: Date[] = [];
-  for (let value = first; value <= latest; value += step) starts.push(new Date(value));
-  return starts;
+  for (let value = first; value <= latest; value += step) yield new Date(value);
+}
+
+export function enumerateStarts(
+  interval: TimeInterval,
+  durationMinutes: number,
+  latestStartExclusive: Date
+): Date[] {
+  return [...iterateStarts(interval, durationMinutes, latestStartExclusive)];
 }
 
 export function getFairShareMinutes(

@@ -9,21 +9,9 @@ export async function validateGroupLimit(repository: EntryRepository, eventId: s
 
   const existing = new Set(await repository.existingGroupIds(eventId));
   const newGroups = [...new Set(groupIds)].filter((groupId) => !existing.has(groupId));
-  const additions = new Map<string, number>();
-  for (const groupId of newGroups) {
-    for (const memberId of await repository.groupMemberIds(groupId)) {
-      additions.set(memberId, (additions.get(memberId) ?? 0) + 1);
-    }
-  }
-
-  const exceeded: string[] = [];
-  for (const [memberId, count] of additions) {
-    if (await repository.memberEntryCount(eventId, memberId) + count > event.groupLimit) {
-      exceeded.push(await repository.memberDisplayName(memberId));
-    }
-  }
+  if (newGroups.length === 0) return { isValid: true };
+  const exceeded = await repository.exceededMemberNames(eventId, newGroups, event.groupLimit);
   return exceeded.length
     ? { isValid: false, error: 'GROUP_LIMIT_EXCEEDED', members: exceeded }
     : { isValid: true };
 }
-

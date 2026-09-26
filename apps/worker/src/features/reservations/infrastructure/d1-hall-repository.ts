@@ -9,6 +9,8 @@ import type {
 // The same guard is evaluated inside writes to close create/draw races.
 const protectionGuard = `NOT EXISTS (SELECT 1 FROM hall_lotteries l WHERE l.state IN ('OPEN','DRAWING')
   AND l.start_date <= date(?, '+9 hours') AND l.end_date >= date(?, '+9 hours'))`;
+const unavailableGuard = `NOT EXISTS (SELECT 1 FROM unavailable_periods p
+  WHERE p.start_datetime < ? AND p.end_datetime > ?)`;
 
 export function createD1HallReservationRepository(db: D1Database): HallReservationRepository {
   return {
@@ -86,11 +88,12 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
         SELECT ?, ?, ?, ?, ?, 'PENDING', ?, ?
         WHERE (? = 0 OR ${protectionGuard}) AND NOT EXISTS (
           SELECT 1 FROM reservations
-          WHERE state IN ('PENDING','CONFIRMED') AND start_time < ? AND end_time > ?
-        )
+          WHERE state = 'CONFIRMED' AND start_time < ? AND end_time > ?
+        ) AND ${unavailableGuard}
       `).bind(
         input.id, input.userId, input.groupId, input.startTime, input.endTime, input.createdAt, input.createdAt,
-        input.enforceProtection ? 1 : 0, input.endTime, input.startTime, input.endTime, input.startTime
+        input.enforceProtection ? 1 : 0, input.endTime, input.startTime, input.endTime, input.startTime,
+        input.endTime, input.startTime
       ).run();
       return Number(result.meta.changes ?? 0) > 0;
     },
@@ -98,10 +101,10 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
     async createReservation(input) {
       const result = await db.prepare(`
         INSERT INTO reservations (id, user_id, group_id, start_time, end_time, state, created_at, updated_at)
-        SELECT ?, ?, ?, ?, ?, 'PENDING', ?, ? WHERE (? = 0 OR ${protectionGuard})
+        SELECT ?, ?, ?, ?, ?, 'PENDING', ?, ? WHERE (? = 0 OR ${protectionGuard}) AND ${unavailableGuard}
       `).bind(
         input.id, input.userId, input.groupId, input.startTime, input.endTime, input.createdAt, input.createdAt,
-        input.enforceProtection ? 1 : 0, input.endTime, input.startTime
+        input.enforceProtection ? 1 : 0, input.endTime, input.startTime, input.endTime, input.startTime
       ).run();
       return result.meta.changes > 0;
     },
@@ -134,12 +137,13 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
         UPDATE reservations SET start_time = ?, end_time = ?, state = ?, updated_at = ?
         WHERE id = ? AND start_time = ? AND end_time = ? AND state = ? AND updated_at = ?
           AND (? = 0 OR ${protectionGuard})
+          AND ${unavailableGuard}
           AND (
             (? = 0 AND ? != 'CONFIRMED')
             OR NOT EXISTS (
               SELECT 1 FROM reservations other
               WHERE other.id != ?
-                AND ((? = 1 AND other.state IN ('PENDING','CONFIRMED')) OR (? = 0 AND other.state = 'CONFIRMED'))
+                AND other.state = 'CONFIRMED'
                 AND other.start_time < ? AND other.end_time > ?
             )
           )
@@ -147,8 +151,8 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
         input.startTime, input.endTime, input.state, input.updatedAt,
         input.id, input.previous.start_time, input.previous.end_time, input.previous.state, input.previous.updated_at,
         input.enforceProtection ? 1 : 0, input.endTime, input.startTime,
+        input.endTime, input.startTime,
         input.enforceAvailability ? 1 : 0, input.state, input.id,
-        input.enforceAvailability ? 1 : 0, input.enforceAvailability ? 1 : 0,
         input.endTime, input.startTime
       ).run();
       return Number(result.meta.changes ?? 0) > 0;
@@ -168,6 +172,7 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
       const result = await db.prepare(`
         UPDATE reservations SET state = ?, updated_at = ?
         WHERE id = ? AND state = ? AND updated_at = ?
+          AND (? != 'CONFIRMED' OR ${unavailableGuard})
           AND (
             ? != 'CONFIRMED'
             OR NOT EXISTS (
@@ -178,6 +183,7 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
           )
       `).bind(
         input.nextState, input.updatedAt, input.id, input.previousState, input.previousUpdatedAt,
+        input.nextState, input.endTime, input.startTime,
         input.nextState, input.id, input.endTime, input.startTime
       ).run();
       return Number(result.meta.changes ?? 0) > 0;
@@ -204,22 +210,48 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
     },
 
     async createUnavailablePeriodWithAdjustments(input) {
+      const knownReservations = input.adjustments.length === 0
+        ? '0'
+        : input.adjustments.map(() => '(id = ? AND start_time = ? AND end_time = ?)').join(' OR ');
       const statements = [db.prepare(`
         INSERT INTO unavailable_periods (id, start_datetime, end_datetime, reason, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(input.id, input.startTime, input.endTime, input.reason, input.createdAt, input.createdAt)];
+        SELECT ?, ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM reservations
+          WHERE state IN ('PENDING', 'CONFIRMED') AND start_time < ? AND end_time > ?
+            AND NOT (${knownReservations})
+        )
+      `).bind(
+        input.id, input.startTime, input.endTime, input.reason, input.createdAt, input.createdAt,
+        input.endTime, input.startTime,
+        ...input.adjustments.flatMap((adjustment) => [
+          adjustment.reservationId, adjustment.previousStartTime, adjustment.previousEndTime,
+        ])
+      )];
       for (const adjustment of input.adjustments) {
         statements.push(adjustment.decline
           ? db.prepare(`
               UPDATE reservations SET state = 'DECLINED', updated_at = ?
               WHERE id = ? AND state IN ('PENDING', 'CONFIRMED')
-            `).bind(input.createdAt, adjustment.reservationId)
+                AND start_time = ? AND end_time = ?
+                AND EXISTS (SELECT 1 FROM unavailable_periods WHERE id = ?)
+            `).bind(input.createdAt, adjustment.reservationId,
+              adjustment.previousStartTime, adjustment.previousEndTime, input.id)
           : db.prepare(`
               UPDATE reservations SET start_time = ?, end_time = ?, updated_at = ?
               WHERE id = ? AND state IN ('PENDING', 'CONFIRMED')
-            `).bind(adjustment.startTime, adjustment.endTime, input.createdAt, adjustment.reservationId));
+                AND start_time = ? AND end_time = ?
+                AND EXISTS (SELECT 1 FROM unavailable_periods WHERE id = ?)
+            `).bind(adjustment.startTime, adjustment.endTime, input.createdAt,
+              adjustment.reservationId, adjustment.previousStartTime, adjustment.previousEndTime, input.id));
       }
-      await db.batch(statements);
+      const results = await db.batch(statements);
+      return {
+        created: Number(results[0].meta.changes ?? 0) > 0,
+        adjustedReservationIds: input.adjustments
+          .filter((_, index) => Number(results[index + 1].meta.changes ?? 0) > 0)
+          .map((adjustment) => adjustment.reservationId),
+      };
     },
 
     async existsUnavailablePeriod(id) {

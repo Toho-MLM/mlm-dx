@@ -40,6 +40,8 @@ import { webCryptoSessionTokenProvider } from './features/auth/infrastructure/se
 import { clearSessionCookies, getSessionCookie, hasLegacySessionCookie, isSecureRequest, setSessionCookie } from './middleware/session-cookie';
 import { signOut } from './routes/auth-signout';
 import { createUnifiedWorker } from './api-dispatch';
+import { runScheduledTasks } from './features/scheduler/application/run-tasks';
+import { initialAdminRegistrationError } from './features/auth/domain/initial-admin';
 
 const UuidSchema = z.string().uuid();
 
@@ -47,6 +49,7 @@ export type Bindings = {
   DB: D1Database;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
+  INITIAL_ADMIN_EMAIL?: string;
   CORS_ORIGIN: string;
   FRONTEND_URL: string;
   NODE_ENV: string;
@@ -112,7 +115,7 @@ function formatGoogleName(user: { family_name?: string; given_name?: string; nam
 }
 
 async function signInGoogleUser(c: Context<{ Bindings: Bindings; Variables: Variables }>, googleUser: AuthUser): Promise<{ success: true } | { success: false; error: string }> {
-  if (googleUser.emailVerified === false) {
+  if (googleUser.emailVerified !== true) {
     return { success: false, error: 'EMAIL_NOT_VERIFIED' };
   }
 
@@ -338,7 +341,7 @@ app.post('/auth/signin/google/onetap', async (c) => {
       given_name: payload.given_name,
       family_name: payload.family_name,
       image: payload.picture,
-      emailVerified: payload.email_verified !== false,
+      emailVerified: payload.email_verified === true,
     });
 
     if (!signInResult.success) {
@@ -409,7 +412,7 @@ app.get('/auth/session', async (c) => {
     });
   } catch (error) {
     console.error('Session check error:', error);
-    return c.json({ user: null });
+    return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });
 
@@ -666,6 +669,10 @@ app.post('/auth/create-first-user', async (c) => {
     }).parse(await c.req.json());
 
     const normalizedEmail = requestData.email.trim().toLowerCase();
+    const registrationError = initialAdminRegistrationError(normalizedEmail, c.env.INITIAL_ADMIN_EMAIL);
+    if (registrationError) {
+      return c.json({ success: false, error: registrationError }, registrationError === 'SETUP_NOT_CONFIGURED' ? 503 : 403);
+    }
 
     const repository = createD1AuthRepository(c.env.DB);
     if (await repository.emailExists(normalizedEmail)) {
@@ -720,22 +727,27 @@ export const apiWorker = {
   
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     void ctx;
+    const reportError = (name: string, error: unknown) => console.error(`Scheduled task ${name} failed:`, error);
     switch (event.cron) {
       case "0 12 * * *":
-        await processDueHallLotteries(env);
-        await processExternalLotteryForNextDay(env);
+        await runScheduledTasks([
+          { name: 'hall lotteries', run: () => processDueHallLotteries(env) },
+          { name: 'external lotteries', run: () => processExternalLotteryForNextDay(env) },
+        ], reportError);
         break;
       case "0 15 * * *":
-        await hallLotteryService(env).processDue();
-        await createD1AuthRepository(env.DB).deleteExpiredSessions(new Date().toISOString());
-        await processPastReservations(env);
-        await processPastExternalReservations(env);
-        await processTodayReservations(env);
-        await processTodayExternalReservations(env);
-        await deleteExpiredEvents(env);
-        await deleteOldReservations(env);
-        await deleteExpiredExternals(env);
-        await deleteOldMainBandDrafts(env);
+        await runScheduledTasks([
+          { name: 'due hall lotteries', run: () => hallLotteryService(env).processDue() },
+          { name: 'expired sessions', run: () => createD1AuthRepository(env.DB).deleteExpiredSessions(new Date().toISOString()) },
+          { name: 'due hall reservations', run: () => processTodayReservations(env) },
+          { name: 'past hall reservations', run: () => processPastReservations(env) },
+          { name: 'past external reservations', run: () => processPastExternalReservations(env) },
+          { name: 'today external reservations', run: () => processTodayExternalReservations(env) },
+          { name: 'expired events', run: () => deleteExpiredEvents(env) },
+          { name: 'old hall reservations', run: () => deleteOldReservations(env) },
+          { name: 'expired external targets', run: () => deleteExpiredExternals(env) },
+          { name: 'old main band drafts', run: () => deleteOldMainBandDrafts(env) },
+        ], reportError);
         break;
     }
   }

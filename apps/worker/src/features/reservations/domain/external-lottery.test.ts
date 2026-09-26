@@ -45,17 +45,16 @@ describe('external lottery domain', () => {
     expect(getHallLotteryBookingState([], now)).toEqual({ protected: false, afterDraw: false });
   });
 
-  it('ホール抽選対象は実行日のみを受け付け、21:00を利用開始前に制限する', () => {
+  it('旧抽選対象作成 API ではホールを拒否する', () => {
     const base = {
       target_type: 'HALL' as const,
       names: ['ホール'],
       start_datetime: '2026-08-14T09:00:00+09:00',
       end_datetime: '2026-08-14T12:00:00+09:00',
     };
-    expect(CreateExternalRequestSchema.safeParse({ ...base, draw_date: '2026-08-10' }).success).toBe(true);
-    expect(CreateExternalRequestSchema.safeParse({ ...base, draw_date: '2026-08-14' }).success).toBe(false);
-    expect(CreateExternalRequestSchema.safeParse({ ...base, draw_date: '2026-02-30' }).success).toBe(false);
-    expect(CreateExternalRequestSchema.safeParse({ ...base, draw_date: '2026-13-01' }).success).toBe(false);
+    expect(CreateExternalRequestSchema.safeParse({ ...base, draw_date: '2026-08-10' }).success).toBe(false);
+    expect(CreateExternalRequestSchema.safeParse({ ...base, target_type: 'EXTERNAL', draw_date: null }).success).toBe(true);
+    expect(CreateExternalRequestSchema.safeParse({ ...base, target_type: 'EXTERNAL', draw_date: '2026-08-10' }).success).toBe(false);
   });
 
   it('10の倍数でない希望利用時間を受け付ける', () => {
@@ -146,5 +145,20 @@ describe('external lottery domain', () => {
       base.rangeEnd,
       [base]
     )).toEqual({ madeUnschedulable: 1, lostOptions: 1 });
+  });
+
+  it('候補区間の端点が接するだけなら失われた候補に数えない', () => {
+    const application = {
+      memberIds: ['member-a'],
+      rangeStart: new Date('2026-08-11T00:00:00.000Z'),
+      rangeEnd: new Date('2026-08-11T00:31:00.000Z'),
+      requestedMinutes: 30,
+    };
+    expect(getMemberSchedulingImpact(
+      application,
+      new Date('2026-08-11T00:30:00.000Z'),
+      new Date('2026-08-11T01:00:00.000Z'),
+      [application]
+    )).toEqual({ madeUnschedulable: 0, lostOptions: 1 });
   });
 });

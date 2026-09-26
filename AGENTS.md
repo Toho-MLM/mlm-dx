@@ -30,6 +30,13 @@
 - 画面タイトルやセクション見出しから内容が明らかな場合、同じ意味の説明文や案内文を重ねない。ユーザーの判断や操作に必要な文言だけを表示する。
 - ユーザー向け文言は日本語を基本とし、API の機械可読エラーコードは既存の大文字スネークケースに合わせる。
 
+## デザインルール
+
+- UI・操作・通知の変更前に [docs/design-rules.md](docs/design-rules.md) を読む。承認済み基準の一次情報として、新規画面と変更対象に適用する。
+- **通知は既存の Sonner / Toaster に統一し、inline メッセージは禁止。** この制約を画面固有の例外で緩めない。
+- 実装は `$web-feature`、検証は `$verify`、コミット依頼時は `$commit` に従う。未実施項目と範囲外の既存差分を報告し、未確認を合格扱いにしない。
+- ルール変更は `docs/design-rules.md` に集約する。工程が変わる場合は該当スキル・READMEも更新する。
+
 ## Worker の責務境界
 
 - 新規または移行済み機能は `apps/worker/src/features/<feature>` に置き、`domain`、`application`、`infrastructure` の責務を分ける。HTTP adapter は現行 mount と互換性を保つため `apps/worker/src/routes` に置く。

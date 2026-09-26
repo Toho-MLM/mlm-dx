@@ -24,10 +24,6 @@ async function fetchLatestDraft(env: Bindings): Promise<DraftRow | null> {
   return createD1BandDraftRepository(env.DB).findLatest();
 }
 
-async function deleteDraftsExcept(env: Bindings, draftId: string): Promise<void> {
-  await createD1BandDraftRepository(env.DB).deleteExcept(draftId);
-}
-
 function canManageDraft(user: Variables['user'], draft: DraftRow): boolean {
   return user.role !== 'MBR' && draft.created_by === user.id;
 }
@@ -43,7 +39,6 @@ bandMainDraftRoutes.post('/', async (c) => {
 
     const latestDraft = await fetchLatestDraft(c.env);
     if (latestDraft) {
-      await deleteDraftsExcept(c.env, latestDraft.id);
       return c.json({ success: true, data: { shareToken: latestDraft.share_token } });
     }
 
@@ -52,9 +47,15 @@ bandMainDraftRoutes.post('/', async (c) => {
     const id = crypto.randomUUID();
     const shareToken = createShareToken();
     const state = createInitialDraftState(members.map((member) => member.id), () => crypto.randomUUID());
-    await createD1BandDraftRepository(c.env.DB).create({
+    const created = await createD1BandDraftRepository(c.env.DB).create({
       id, share_token: shareToken, state_json: JSON.stringify(state), created_by: user.id,
     }, now);
+
+    if (!created) {
+      const existing = await fetchLatestDraft(c.env);
+      if (!existing) return c.json({ success: false, error: 'DRAFT_CREATE_CONFLICT' }, 409);
+      return c.json({ success: true, data: { shareToken: existing.share_token } });
+    }
 
     return c.json({ success: true, data: { shareToken } });
   } catch (error) {

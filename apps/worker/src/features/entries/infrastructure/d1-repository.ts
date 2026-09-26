@@ -27,45 +27,34 @@ export function createD1EntryRepository(db: D1Database): EntryRepository {
         .bind(eventId).all<{ group_id: string }>();
       return rows.results.map((row) => row.group_id);
     },
-    async groupMemberIds(groupId) {
-      const rows = await db.prepare('SELECT DISTINCT user_id FROM group_member_instruments WHERE group_id = ?')
-        .bind(groupId).all<{ user_id: string }>();
-      return rows.results.map((row) => row.user_id);
-    },
-    async memberEntryCount(eventId, memberId) {
-      const row = await db.prepare(`
-        SELECT COUNT(DISTINCT e.group_id) AS count FROM entries e
-        WHERE e.event_id = ? AND e.group_id IN (
-          SELECT DISTINCT group_id FROM group_member_instruments WHERE user_id = ?
-        )
-      `).bind(eventId, memberId).first<{ count: number }>();
-      return Number(row?.count ?? 0);
-    },
-    async memberDisplayName(memberId) {
-      const row = await db.prepare('SELECT nickname, name FROM users WHERE id = ?')
-        .bind(memberId).first<{ nickname: string | null; name: string }>();
-      return row ? row.nickname || row.name : '不明';
+    async exceededMemberNames(eventId, groupIds, groupLimit) {
+      if (groupIds.length === 0) return [];
+      const placeholders = groupIds.map(() => '?').join(',');
+      const rows = await db.prepare(`
+        SELECT COALESCE(u.nickname, u.name) AS name
+        FROM users u
+        INNER JOIN (
+          SELECT user_id, COUNT(DISTINCT group_id) AS additions
+          FROM group_member_instruments
+          WHERE group_id IN (${placeholders})
+          GROUP BY user_id
+        ) added ON added.user_id = u.id
+        WHERE added.additions + (
+          SELECT COUNT(DISTINCT entry.group_id)
+          FROM entries entry
+          INNER JOIN group_member_instruments member ON member.group_id = entry.group_id
+          WHERE entry.event_id = ? AND member.user_id = u.id
+        ) > ?
+        ORDER BY u.id
+      `).bind(...groupIds, eventId, groupLimit).all<{ name: string }>();
+      return rows.results.map((row) => row.name);
     },
     async create(eventId, groupIds, entryIds, now) {
       await db.batch(groupIds.map((groupId, index) => db.prepare(`
         INSERT OR IGNORE INTO entries (id, event_id, group_id, position, created_at, updated_at)
-        SELECT ?, ?, ?, COALESCE(MAX(position), 0) + 1, ?, ? FROM entries WHERE event_id = ?
-      `).bind(entryIds[index], eventId, groupId, now, now, eventId)));
-    },
-    async hasLimitViolation(eventId) {
-      return Boolean(await db.prepare(`
-        SELECT gmi.user_id FROM entries entry
-        INNER JOIN events event ON event.id = entry.event_id
-        INNER JOIN group_member_instruments gmi ON gmi.group_id = entry.group_id
-        WHERE entry.event_id = ? AND event.group_limit > 0
-        GROUP BY gmi.user_id, event.group_limit
-        HAVING COUNT(DISTINCT entry.group_id) > event.group_limit LIMIT 1
-      `).bind(eventId).first());
-    },
-    async deleteMany(ids) {
-      if (!ids.length) return;
-      const placeholders = ids.map(() => '?').join(',');
-      await db.prepare(`DELETE FROM entries WHERE id IN (${placeholders})`).bind(...ids).run();
+        SELECT ?, ?, ?, COALESCE((SELECT MAX(position) FROM entries WHERE event_id = ?), 0) + 1, ?, ?
+        WHERE NOT EXISTS (SELECT 1 FROM entries WHERE event_id = ? AND group_id = ?)
+      `).bind(entryIds[index], eventId, groupId, eventId, now, now, eventId, groupId)));
     },
     async list(groupIds, eventId) {
       if (!groupIds.length) return [];
@@ -91,4 +80,3 @@ export function createD1EntryRepository(db: D1Database): EntryRepository {
     },
   };
 }
-
