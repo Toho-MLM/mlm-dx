@@ -174,6 +174,7 @@ AUTH_URL=http://localhost:8787
 AUTH_SECRET=your-auth-secret-min-32-chars-long
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
+INITIAL_ADMIN_EMAIL=first-admin@example.com
 
 # CORS設定
 CORS_ORIGIN=http://localhost:3000
@@ -236,7 +237,7 @@ SMTP_FROM_NAME = "MLM-DX"
 
 ```
 
-統合previewで必要な `AUTH_SECRET`、Google OAuth、SMTPの秘密値は `apps/web/.dev.vars` に設定します。`pnpm dev` の分離開発では従来どおり `apps/worker/.dev.vars` を使用します。
+統合previewで必要な `AUTH_SECRET`、Google OAuth、`INITIAL_ADMIN_EMAIL`、SMTPの秘密値は `apps/web/.dev.vars` に設定します。`pnpm dev` の分離開発では従来どおり `apps/worker/.dev.vars` を使用します。
 
 #### 4.5 環境変数の詳細説明
 
@@ -257,6 +258,7 @@ SMTP_FROM_NAME = "MLM-DX"
 | `AUTH_SECRET` | JWTトークンの署名用秘密鍵 | `.dev.vars`ファイル | `wrangler secret put` |
 | `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | `.dev.vars`ファイル | `wrangler secret put` |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | `.dev.vars`ファイル | `wrangler secret put` |
+| `INITIAL_ADMIN_EMAIL` | 初回登録を許可する管理者の Google メールアドレス。未設定時は初回登録不可 | `.dev.vars`ファイル | 統合 Worker の GitHub Repository Secret |
 | `CORS_ORIGIN` | CORS許可オリジン | `http://localhost:3000` | `https://your-frontend-domain.com` |
 | `FRONTEND_URL` | フロントエンドのURL | `http://localhost:3000` | `https://your-frontend-domain.com` |
 | `SMTP_HOST` | SMTPサーバーのホスト名 | `.dev.vars`ファイル | GitHub Repository Variable |
@@ -277,6 +279,7 @@ SMTP_FROM_NAME = "MLM-DX"
 wrangler secret put AUTH_SECRET --env production
 wrangler secret put GOOGLE_CLIENT_ID --env production
 wrangler secret put GOOGLE_CLIENT_SECRET --env production
+wrangler secret put INITIAL_ADMIN_EMAIL --env production
 wrangler secret put SMTP_USER --env production
 wrangler secret put SMTP_PASSWORD --env production
 ```

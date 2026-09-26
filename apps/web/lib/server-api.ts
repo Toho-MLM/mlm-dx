@@ -72,12 +72,8 @@ export async function settleServerRequest<T>(request: Promise<T>): Promise<T | n
 }
 
 export const getServerUser = cache(async (): Promise<SessionResponse['user']> => {
-  try {
-    const session = await serverRequest<SessionResponse>('/auth/session')
-    return session.user
-  } catch {
-    return null
-  }
+  const session = await serverRequest<SessionResponse>('/auth/session')
+  return session.user
 })
 
 export const requireAuth = cache(async (requestedPath?: string): Promise<NonNullable<SessionResponse['user']>> => {

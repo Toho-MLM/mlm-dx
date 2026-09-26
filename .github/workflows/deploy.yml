@@ -94,11 +94,13 @@ jobs:
             AUTH_SECRET
             GOOGLE_CLIENT_ID
             GOOGLE_CLIENT_SECRET
+            INITIAL_ADMIN_EMAIL
             SMTP_USER
             SMTP_PASSWORD
         env:
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          INITIAL_ADMIN_EMAIL: ${{ secrets.INITIAL_ADMIN_EMAIL }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}

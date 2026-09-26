@@ -47,12 +47,12 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
     };
 
     c.set('user', userWithStudentNumber);
-    await next();
-    return c.res;
   } catch (error) {
     console.error('Authentication error:', error);
-    return c.json({ success: false, error: 'AUTHENTICATION_FAILED' }, 401);
+    return c.json({ success: false, error: 'AUTHENTICATION_FAILED' }, 500);
   }
+  await next();
+  return c.res;
 };
 
 function safeJsonParse<T>(json: string, fallback: T): T {
