@@ -24,14 +24,12 @@ export function LoadingButton({
       variant={variant}
       size={size}
       disabled={disabled || isLoading}
-      className={cn(className)}
+      className={cn('relative', className)}
+      aria-busy={isLoading}
       {...props}
     >
-      {isLoading ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        children
-      )}
+      <span className={cn('inline-flex items-center justify-center gap-2', isLoading && 'opacity-0')}>{children}</span>
+      {isLoading && <Loader2 aria-hidden="true" className="absolute h-4 w-4 animate-spin motion-reduce:animate-none" />}
     </Button>
   )
 }

@@ -1,23 +1,24 @@
 'use client'
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar'
 import { format, getDay, parse, startOfWeek } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
-import { AlertCircle, ChevronLeftIcon, ChevronRightIcon, Loader2, Trash2 } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, Loader2 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent, CardDescription } from '@/components/ui/card'
 import { cn, showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
@@ -27,7 +28,9 @@ import { useAuth } from '@/app/context/AuthContext'
 import { eventStateNames, ReservationState } from '@/app/types'
 import { isAdmin, isExternalLotteryReservationProtected, validateExternalReservationTime, type External, type ExternalReservation, type ExternalReservationConflict } from '@shared-schemas'
 import { useAdminMode } from '@/hooks/use-admin-mode'
-import { ReservationEditDialog } from '@/components/reservation-edit-dialog'
+import { DraftDialog } from '@/components/draft-dialog'
+import { ReservationDetailsDialog } from '@/components/reservation-details-dialog'
+import { ReservationStatusSelect } from '@/components/reservation-status-select'
 import { toJSTWallClockDate } from '../reservation-calendar'
 
 type GroupOption = {
@@ -219,12 +222,9 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   const [isReservationFormOpen, setIsReservationFormOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<CalendarEvent | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
-  const [isEditOpen, setIsEditOpen] = useState(false)
   const [isStatusUpdating, setIsStatusUpdating] = useState(false)
-  const [selectedStatus, setSelectedStatus] = useState<ReservationState>(ReservationState.PENDING)
   const [isSending, setIsSending] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false)
   const [conflicts, setConflicts] = useState<ExternalReservationConflict[]>([])
   const [pendingDraft, setPendingDraft] = useState<ExternalDraft | null>(null)
   const [pendingEdit, setPendingEdit] = useState<{ startTime: string; endTime: string } | null>(null)
@@ -378,6 +378,10 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
     }))
   ), [reservations])
 
+  useEffect(() => {
+    setSelectedReservation((current) => current ? calendarEvents.find((event) => event.id === current.id) ?? current : current)
+  }, [calendarEvents])
+
   const selectedCalendarEvents = useMemo(() => (
     selectedExternal ? calendarEvents.filter((event) => event.resourceId.startsWith(`${selectedExternal.id}:`)) : []
   ), [calendarEvents, selectedExternal])
@@ -504,6 +508,8 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
           description: translateError(response.error || 'UNKNOWN_ERROR'),
         })
       }
+    } catch (error) {
+      toast.error('外部予約のキャンセル結果を確認できません。再読み込みしてください。', { description: translateError((error as Error).message) })
     } finally {
       setIsSending(false)
     }
@@ -516,7 +522,6 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
       if (response.success) {
         setIsDetailOpen(false)
         setSelectedReservation(null)
-        setIsDeleteConfirming(false)
         await fetchData()
         showSuccessToast({ message: '外部予約を完全に削除しました' })
       } else {
@@ -556,7 +561,6 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
       )
       if (response.success) {
         showSuccessToast({ message: '外部予約を変更しました' })
-        setIsEditOpen(false)
         setIsConflictDialogOpen(false)
         setIsDetailOpen(false)
         setSelectedReservation(null)
@@ -584,41 +588,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
     }
   }
 
-  const handleUpdateExternalStatus = async () => {
-    if (!selectedReservation) return
-    try {
-      setIsStatusUpdating(true)
-      const response = await apiClient.updateExternalReservationStatus(
-        selectedReservation.meta.reservationId,
-        { state: selectedStatus }
-      )
-      if (!response.success) {
-        toast.error('ステータスの変更中にエラーが発生しました', {
-          description: translateError(response.error || 'UNKNOWN_ERROR'),
-        })
-        return
-      }
-      showSuccessToast({ message: 'ステータスを変更しました' })
-      setIsDetailOpen(false)
-      setSelectedReservation(null)
-      await fetchData()
-    } catch (error) {
-      toast.error('ステータスの変更中にエラーが発生しました', {
-        description: translateError((error as Error).message),
-      })
-    } finally {
-      setIsStatusUpdating(false)
-    }
-  }
-
-  const currentDraftTimes = getDraftTimes(draft)
-  const isDraftInLotteryPeriod = Boolean(
-    !isAdminMode &&
-    currentDraftTimes &&
-    isExternalLotteryReservationProtected(currentDraftTimes.start, currentDraftTimes.end)
-  )
   const isReservationButtonDisabled = isSending ||
-    isDraftInLotteryPeriod ||
     !draft.externalId ||
     !draft.roomNumber ||
     !draft.groupId ||
@@ -628,6 +598,41 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   const selectedReservationExternal = selectedReservation
     ? externals.find((external) => selectedReservation.resourceId.startsWith(`${external.id}:`)) || null
     : null
+
+  const conflictConfirmation = (
+    <>
+          <div className="max-h-[320px] space-y-2 overflow-y-auto">
+            {conflicts.map((conflict) => (
+              <div key={`${conflict.member_id}-${conflict.reservation_type}-${conflict.reservation_id}`} className="rounded-md border p-3 text-sm">
+                <div><span className="font-medium">メンバー:</span> {conflict.member_name}</div>
+                <div className="text-gray-700"><span className="font-medium">重複予約:</span> {conflict.location_name} / {conflict.reservation_name}</div>
+                <div className="text-gray-600">
+                  <span className="font-medium">時間:</span> {format(toJSTWallClockDate(conflict.start_time), 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(
+                    toJSTWallClockDate(conflict.end_time),
+                    getJSTDateString(conflict.start_time) === getJSTDateString(conflict.end_time) ? 'H:mm' : 'M月d日 H:mm',
+                    { locale: jaLocale }
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={isSending} onClick={() => setIsConflictDialogOpen(false)}>戻る</Button>
+            <LoadingButton
+              isLoading={isSending}
+              onClick={() => {
+                if (pendingEdit) {
+                  void updateExternalReservation(pendingEdit.startTime, pendingEdit.endTime, true)
+                } else if (pendingDraft) {
+                  void submitReservation(pendingDraft, true)
+                }
+              }}
+            >
+              {pendingEdit ? '変更' : '予約'}
+            </LoadingButton>
+          </DialogFooter>
+    </>
+  )
 
   const defaultReservationExternal = selectedExternal && new Date(selectedExternal.end_datetime) > new Date()
     ? selectedExternal
@@ -693,16 +698,9 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
             </div>
           </CardDescription>
           <CardContent className="space-y-6">
-            {loadError ? (
-              <div className="flex h-72 flex-col items-center justify-center gap-3 rounded-md border text-center text-sm text-gray-600">
-                <p>外部予約を読み込めませんでした</p>
-                <p className="text-xs text-muted-foreground">{loadError}</p>
-                <Button type="button" variant="outline" onClick={() => void fetchData()}>再試行</Button>
-              </div>
-            ) : !selectedExternal ? (
-              <div className="flex h-72 items-center justify-center rounded-md border text-sm text-gray-600">
-                利用できる外部スタジオはありません
-              </div>
+            {loadError && <ToastNotice message={loadError} retry={() => void fetchData()} />}
+            {!selectedExternal ? (
+              !loadError && <ToastNotice variant="info" message="利用できる外部スタジオはありません" />
             ) : (
               calendarSegments.map((segment) => (
                 <section key={segment.dateKey} className="space-y-2">
@@ -722,10 +720,8 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
                       endAccessor={(event) => event.end}
                       allDayAccessor={(event) => event.allDay}
                       onSelectEvent={(event) => {
-                        setIsDeleteConfirming(false)
-                        setSelectedReservation(event)
-                        setSelectedStatus(event.meta.state)
-                        setIsDetailOpen(true)
+                                        setSelectedReservation(event)
+                            setIsDetailOpen(true)
                       }}
                       views={{ day: true }}
                       messages={messages}
@@ -759,153 +755,66 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
         </Card>
       </div>
 
-      <Dialog open={isDetailOpen && selectedReservation !== null} onOpenChange={(open) => {
-        setIsDetailOpen(open)
-        if (!open) {
-          setIsEditOpen(false)
-          setIsDeleteConfirming(false)
-          setSelectedReservation(null)
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>外部予約詳細</DialogTitle>
-          </DialogHeader>
-          {selectedReservation && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <p><strong>場所</strong> {selectedReservation.meta.externalName}</p>
-                <p>
-                  <strong>時間</strong> {format(selectedReservation.start, 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(
-                    selectedReservation.end,
-                    format(selectedReservation.start, 'yyyy-MM-dd') === format(selectedReservation.end, 'yyyy-MM-dd') ? 'H:mm' : 'M月d日 H:mm',
-                    { locale: jaLocale }
-                  )}
-                </p>
-                {selectedReservation.meta.groupName && <p><strong>グループ</strong> {selectedReservation.meta.groupName}</p>}
-                {selectedReservation.meta.userName && <p><strong>予約者</strong> {selectedReservation.meta.userName}</p>}
-                <p><strong>ステータス</strong> {eventStateNames[selectedReservation.meta.state]}</p>
-              </div>
-              {selectedReservation.meta.cancellable && new Date(selectedReservation.meta.endTime) > new Date() && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  disabled={isSending || isDeleting || isDeleteConfirming}
-                  onClick={() => setIsEditOpen(true)}
-                >
-                  変更
-                </Button>
-              )}
-              {selectedReservation.meta.cancellable && (
-                <LoadingButton
-                  variant="destructive"
-                  className="w-full"
-                  isLoading={isSending}
-                  disabled={isDeleting || isDeleteConfirming}
-                  onClick={() => handleCancelReservation(selectedReservation.meta.reservationId)}
-                >
-                  キャンセル
-                </LoadingButton>
-              )}
-              {isAdminMode && (
-                <div className="space-y-3">
-                  <div className="space-y-2 rounded-md border p-3">
-                    <Label htmlFor="external-reservation-status">ステータス</Label>
-                    <Select
-                      value={selectedStatus}
-                      onValueChange={(value) => setSelectedStatus(value as ReservationState)}
-                    >
-                      <SelectTrigger id="external-reservation-status">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.values(ReservationState).map((state) => (
-                          <SelectItem key={state} value={state}>
-                            {eventStateNames[state]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <LoadingButton
-                      type="button"
-                      className="w-full"
-                      isLoading={isStatusUpdating}
-                      disabled={isDeleting || isDeleteConfirming}
-                      onClick={handleUpdateExternalStatus}
-                    >
-                      ステータスを更新
-                    </LoadingButton>
-                  </div>
-                  {!isDeleteConfirming && (
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      className="w-full"
-                      onClick={() => setIsDeleteConfirming(true)}
-                      disabled={isSending || isDeleting || isStatusUpdating}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      完全に削除
-                    </Button>
-                  )}
-                  {isDeleteConfirming && (
-                    <Alert variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertTitle>この外部予約を完全に削除しますか？</AlertTitle>
-                      <AlertDescription className="mt-2 space-y-3">
-                        <p>この予約はキャンセルや拒否として残らず、利用実績を含む予約情報が完全に削除されます。削除後は元に戻せません。</p>
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setIsDeleteConfirming(false)}
-                            disabled={isDeleting}
-                          >
-                            戻る
-                          </Button>
-                          <LoadingButton
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => void handleDeleteReservation(selectedReservation.meta.reservationId)}
-                            isLoading={isDeleting}
-                          >
-                            DBから削除
-                          </LoadingButton>
-                        </div>
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
       {selectedReservation && (
-        <ReservationEditDialog
-          open={isEditOpen}
-          onOpenChange={setIsEditOpen}
-          start={new Date(selectedReservation.meta.startTime)}
-          end={new Date(selectedReservation.meta.endTime)}
-          isSaving={isSending}
-          onSave={(startTime, endTime) => updateExternalReservation(startTime, endTime, false)}
-          title="外部予約を変更"
-          allowCrossDay
-          rangeStart={selectedReservationExternal ? new Date(selectedReservationExternal.start_datetime) : undefined}
-          rangeEnd={selectedReservationExternal ? new Date(selectedReservationExternal.end_datetime) : undefined}
-        />
+        <ReservationDetailsDialog
+          key={selectedReservation.id}
+          open={isDetailOpen}
+          onClose={() => { setIsDetailOpen(false); setSelectedReservation(null); setIsConflictDialogOpen(false); setPendingEdit(null) }}
+          title="外部予約"
+          subject={`${selectedReservation.title} / ${selectedReservation.meta.externalName} / ${format(selectedReservation.start, 'yyyy年M月d日 H:mm')}〜${format(selectedReservation.end, 'M月d日 H:mm')}`}
+          busy={isSending || isDeleting || isStatusUpdating}
+          editor={selectedReservation.meta.cancellable && new Date(selectedReservation.meta.endTime) > new Date() ? {
+            start: new Date(selectedReservation.meta.startTime),
+            end: new Date(selectedReservation.meta.endTime),
+            onSave: (startTime, endTime) => updateExternalReservation(startTime, endTime, false),
+            allowCrossDay: true,
+            rangeStart: selectedReservationExternal ? new Date(selectedReservationExternal.start_datetime) : undefined,
+            rangeEnd: selectedReservationExternal ? new Date(selectedReservationExternal.end_datetime) : undefined,
+          } : undefined}
+          onCancel={selectedReservation.meta.cancellable ? () => void handleCancelReservation(selectedReservation.meta.reservationId) : undefined}
+          onDelete={isAdminMode ? () => void handleDeleteReservation(selectedReservation.meta.reservationId) : undefined}
+          confirmation={isConflictDialogOpen && pendingEdit ? conflictConfirmation : undefined}
+          onBack={() => setIsConflictDialogOpen(false)}
+        >
+          <p><strong>場所</strong> {selectedReservation.meta.externalName}</p>
+          {selectedReservation.meta.groupName && <p><strong>グループ</strong> {selectedReservation.meta.groupName}</p>}
+          {selectedReservation.meta.userName && <p><strong>予約者</strong> {selectedReservation.meta.userName}</p>}
+          {isAdminMode ? (
+            <ReservationStatusSelect
+              value={selectedReservation.meta.state}
+              onBusyChange={setIsStatusUpdating}
+              save={(state) => apiClient.updateExternalReservationStatus(selectedReservation.meta.reservationId, { state })}
+              read={async () => {
+                const response = await apiClient.getExternalReservations(true)
+                const actual = response.data?.find((item) => item.id === selectedReservation.meta.reservationId)
+                if (!response.success || !actual) throw new Error('EXTERNAL_RESERVATION_FETCH_FAILED')
+                setReservations(response.data!)
+                return actual.state as ReservationState
+              }}
+              onConfirmed={(state) => {
+                setSelectedReservation((current) => current ? { ...current, meta: { ...current.meta, state } } : current)
+                return fetchData()
+              }}
+            />
+          ) : <p><strong>ステータス</strong> {eventStateNames[selectedReservation.meta.state]}</p>}
+          {!(selectedReservation.meta.cancellable && new Date(selectedReservation.meta.endTime) > new Date()) && (
+            <p><strong>時間</strong> {format(selectedReservation.start, 'yyyy年M月d日 H:mm')}〜{format(selectedReservation.end, 'yyyy年M月d日 H:mm')}</p>
+          )}
+        </ReservationDetailsDialog>
       )}
 
-      <Dialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新規外部予約</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+      <DraftDialog
+        open={isReservationFormOpen}
+        onOpenChange={(open) => { setIsReservationFormOpen(open); if (!open) { setIsConflictDialogOpen(false); setPendingDraft(null) } }}
+        title={isConflictDialogOpen ? '重複予約の確認' : '新規外部予約'}
+        draft={draft}
+        onDiscard={setDraft}
+        busy={isSending}
+        confirmation={isConflictDialogOpen ? conflictConfirmation : undefined}
+        onBack={() => setIsConflictDialogOpen(false)}
+      >
+          <form onSubmit={handleSubmit} hidden={isConflictDialogOpen} className="space-y-4">
+            <fieldset disabled={isSending} className="space-y-4">
             <div>
               <Label htmlFor="external-reservation-identity">予約名義</Label>
               <Select
@@ -1004,61 +913,16 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
               </Select>
             </div>
 
-            {isDraftInLotteryPeriod && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>抽選対象の期間です</AlertTitle>
-                <AlertDescription>この期間は外部予約できません。抽選から申し込んでください。</AlertDescription>
-              </Alert>
-            )}
-
             <DialogFooter>
               <LoadingButton type="submit" isLoading={isSending} disabled={isReservationButtonDisabled} className={cn(isReservationButtonDisabled && 'opacity-50')}>
                 予約
               </LoadingButton>
             </DialogFooter>
+            </fieldset>
           </form>
-        </DialogContent>
-      </Dialog>
+      </DraftDialog>
 
-      <Dialog open={isConflictDialogOpen} onOpenChange={setIsConflictDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>同時間帯の予約があります</DialogTitle>
-            <DialogDescription>以下のメンバーは同じ時間帯に別の予約へ参加しています。確認して予約を続行できます。</DialogDescription>
-          </DialogHeader>
-          <div className="max-h-[320px] space-y-2 overflow-y-auto">
-            {conflicts.map((conflict) => (
-              <div key={`${conflict.member_id}-${conflict.reservation_type}-${conflict.reservation_id}`} className="rounded-md border p-3 text-sm">
-                <div><span className="font-medium">メンバー:</span> {conflict.member_name}</div>
-                <div className="text-gray-700"><span className="font-medium">重複予約:</span> {conflict.location_name} / {conflict.reservation_name}</div>
-                <div className="text-gray-600">
-                  <span className="font-medium">時間:</span> {format(toJSTWallClockDate(conflict.start_time), 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(
-                    toJSTWallClockDate(conflict.end_time),
-                    getJSTDateString(conflict.start_time) === getJSTDateString(conflict.end_time) ? 'H:mm' : 'M月d日 H:mm',
-                    { locale: jaLocale }
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsConflictDialogOpen(false)}>戻る</Button>
-            <LoadingButton
-              isLoading={isSending}
-              onClick={() => {
-                if (pendingEdit) {
-                  void updateExternalReservation(pendingEdit.startTime, pendingEdit.endTime, true)
-                } else if (pendingDraft) {
-                  void submitReservation(pendingDraft, true)
-                }
-              }}
-            >
-              {pendingEdit ? '変更' : '予約'}
-            </LoadingButton>
-          </div>
-        </DialogContent>
-      </Dialog>
+
 
     </>
   )

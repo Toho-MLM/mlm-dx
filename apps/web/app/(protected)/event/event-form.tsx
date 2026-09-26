@@ -1,17 +1,14 @@
+import { ToastNotice } from '@/components/toast-notice'
 import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DialogFooter } from '@/components/ui/dialog'
+import { DraftDialog } from '@/components/draft-dialog'
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
-import { Button } from "@/components/ui/button"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
 import { addDays, format } from 'date-fns'
-import { ja as jaLocale } from 'date-fns/locale'
-import { CalendarIcon } from 'lucide-react'
-import { cn, showSuccessToast } from "@/lib/utils"
+import { showSuccessToast } from "@/lib/utils"
 import { Event } from "@/app/types"
 import { apiClient } from '@/lib/api'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import {
   Select,
   SelectContent,
@@ -21,7 +18,6 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { translateError } from '@/lib/error-label'
 
 interface EventFormProps {
@@ -79,11 +75,20 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
   }, [event])
 
   const onDialogClose = () => {
+    if (isPending) return
     onClose()
   }
 
   const validateDates = (): string | null => {
     if (!entryDeadline || !setlistDeadline || !date) return null
+
+    const originalDates = [event?.event_date, event?.entry_deadline, event?.setlist_deadline]
+    const selectedDates = [date, entryDeadline, setlistDeadline]
+    if (selectedDates.some((value, index) => value < today && (
+      !originalDates[index] || format(value, 'yyyy-MM-dd') !== format(toJSTCalendarDate(originalDates[index]!, index > 0), 'yyyy-MM-dd')
+    ))) {
+      return '変更する日付は今日以降を指定してください'
+    }
 
     if (entryDeadline > setlistDeadline) {
       return '出演締切はセットリスト締切より後に設定できません'
@@ -187,83 +192,39 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
   const isFormValid = title.trim() !== '' && 
     date !== undefined && 
     entryDeadline !== undefined && 
-    setlistDeadline !== undefined &&
-    validateDates() === null
+    setlistDeadline !== undefined
 
   return (
-    <Dialog open={isOpen} onOpenChange={onDialogClose}>
-      <DialogContent className="p-5">
-        <DialogHeader>
-          <DialogTitle>{event ? 'イベントを更新' : 'イベントを作成'}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
+    <DraftDialog open={isOpen} onOpenChange={(open) => { if (!open) onDialogClose() }} title={event ? 'イベントを更新' : 'イベントを作成'} busy={isPending}
+      draft={{ title, date, entryDeadline, setlistDeadline, isFreeBand, freeBandLimit, songLimit, entryAccepting, setlistAccepting }}>
+        <fieldset disabled={isPending} className="space-y-4">
+          <Label htmlFor="event-title">イベント名</Label>
           <Input
-            placeholder="イベント名"
+            id="event-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
           <div>
-            <label className="text-sm font-medium mb-2 block">イベント日</label>
-            <Popover modal={true}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !date && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date ? format(date, "PPP", { locale: jaLocale }) : <span>日付を選択</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={setDate}
-                  initialFocus
-                  locale={jaLocale}
-                  disabled={(calendarDate) => {
-                    if (calendarDate < today) return true;
-                    if (setlistDeadline && calendarDate <= setlistDeadline) return true;
-                    return false;
-                  }}
-                />
-              </PopoverContent>
-            </Popover>
+            <label htmlFor="event-date" className="text-sm font-medium mb-2 block">イベント日</label>
+            <Input
+                id="event-date"
+                type="date"
+                value={date ? format(date, 'yyyy-MM-dd') : ''}
+                min={format(setlistDeadline && setlistDeadline >= today ? addDays(setlistDeadline, 1) : today, 'yyyy-MM-dd')}
+                onChange={(e) => setDate(e.target.value ? new Date(`${e.target.value}T00:00:00`) : undefined)}
+              />
           </div>
           <div>
-            <label className="text-sm font-medium mb-2 block">出演締切</label>
+            <label htmlFor="event-entryDeadline" className="text-sm font-medium mb-2 block">出演締切</label>
             <div className="flex items-center gap-3">
-              <Popover modal={true}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "flex-1 justify-start text-left font-normal",
-                      !entryDeadline && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {entryDeadline ? format(entryDeadline, "PPP", { locale: jaLocale }) : <span>日付を選択</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={entryDeadline}
-                    onSelect={setEntryDeadline}
-                    initialFocus
-                    locale={jaLocale}
-                    disabled={(calendarDate) => {
-                      if (calendarDate < today) return true;
-                      if (setlistDeadline && calendarDate > setlistDeadline) return true;
-                      return false;
-                    }}
-                  />
-                </PopoverContent>
-              </Popover>
+              <Input
+                id="event-entryDeadline"
+                type="date"
+                value={entryDeadline ? format(entryDeadline, 'yyyy-MM-dd') : ''}
+                min={format(today, 'yyyy-MM-dd')}
+                max={setlistDeadline ? format(setlistDeadline, 'yyyy-MM-dd') : undefined}
+                onChange={(e) => setEntryDeadline(e.target.value ? new Date(`${e.target.value}T00:00:00`) : undefined)}
+              />
               <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <Label htmlFor="accepting-entries" className="text-sm font-medium">受付中</Label>
                 <Switch
@@ -275,37 +236,16 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium mb-2 block">セットリスト締切</label>
+            <label htmlFor="event-setlistDeadline" className="text-sm font-medium mb-2 block">セットリスト締切</label>
             <div className="flex items-center gap-3">
-              <Popover modal={true}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "flex-1 justify-start text-left font-normal",
-                      !setlistDeadline && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {setlistDeadline ? format(setlistDeadline, "PPP", { locale: jaLocale }) : <span>日付を選択</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={setlistDeadline}
-                    onSelect={setSetlistDeadline}
-                    initialFocus
-                    locale={jaLocale}
-                    disabled={(calendarDate) => {
-                      if (calendarDate < today) return true;
-                      if (entryDeadline && calendarDate < entryDeadline) return true;
-                      if (date && calendarDate >= date) return true;
-                      return false;
-                    }}
-                  />
-                </PopoverContent>
-              </Popover>
+              <Input
+                id="event-setlistDeadline"
+                type="date"
+                value={setlistDeadline ? format(setlistDeadline, 'yyyy-MM-dd') : ''}
+                min={format(entryDeadline && entryDeadline > today ? entryDeadline : today, 'yyyy-MM-dd')}
+                max={date ? format(addDays(date, -1), 'yyyy-MM-dd') : undefined}
+                onChange={(e) => setSetlistDeadline(e.target.value ? new Date(`${e.target.value}T00:00:00`) : undefined)}
+              />
               <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <Label htmlFor="accepting-setlist" className="text-sm font-medium">受付中</Label>
                 <Switch
@@ -356,12 +296,7 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
                 const oldGroupLimit = event.group_limit;
                 if (newGroupLimit < oldGroupLimit && oldGroupLimit > 0) {
                   return (
-                    <Alert variant="destructive">
-                      <AlertTitle>登録状況の確認が必要です</AlertTitle>
-                      <AlertDescription>
-                        現在の出演登録が新しい上限を超える場合、この更新は保存できません。先に出演登録を整理してください。
-                      </AlertDescription>
-                    </Alert>
+                    <ToastNotice variant="warning" message="登録状況の確認が必要です" description={`現在の出演登録が新しい上限を超える場合、この更新は保存できません。先に出演登録を整理してください。`} />
                   );
                 }
                 return null;
@@ -371,25 +306,19 @@ export function EventForm({ event, isOpen, onClose, onSuccess }: EventFormProps)
                 const oldSongLimit = event.song_limit ?? 2;
                 if (newSongLimit < oldSongLimit) {
                   return (
-                    <Alert variant="destructive">
-                      <AlertTitle>セットリストの自動削除</AlertTitle>
-                      <AlertDescription>
-                        曲数上限が{oldSongLimit}から{newSongLimit}に減少したため、各バンドのセットリストの超過分が自動的に削除されます。
-                      </AlertDescription>
-                    </Alert>
+                    <ToastNotice variant="warning" message="セットリストの自動削除" description={`曲数上限が${oldSongLimit}から${newSongLimit}に減少したため、各バンドのセットリストの超過分が自動的に削除されます。`} />
                   );
                 }
                 return null;
               })()}
             </>
           )}
-          <div className="flex justify-end">
+          <DialogFooter>
             <LoadingButton onClick={handleSubmit} isLoading={isPending} disabled={!isFormValid}>
               {event ? '保存' : '作成'}
             </LoadingButton>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+          </DialogFooter>
+        </fieldset>
+    </DraftDialog>
   )
 }

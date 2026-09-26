@@ -1,5 +1,7 @@
 'use client'
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import { Suspense, useState, useCallback, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { LoadingButton } from '@/components/ui/loading-button'
@@ -19,7 +21,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { startRegistration } from '@simplewebauthn/browser'
 import type { AuthenticatorAttestationResponseJSON } from '@simplewebauthn/types'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { showSuccessToast } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { httpClient } from '@/lib/http-client'
@@ -338,19 +340,10 @@ function ProfileContent({ initialData }: { initialData?: ProfileInitialData }) {
   }, [isRefreshingAvatar])
 
   if (!userData && !loading) {
-    return (
-      <div className="p-5">
-        <Card className="mx-auto max-w-2xl">
-          <CardContent className="p-5 text-sm text-destructive">
-            {profileError ? 'プロフィールを読み込めませんでした。' : 'プロフィールが見つかりません。'}
-            <Button variant="link" className="ml-2 h-auto p-0" onClick={() => {
-              setLoading(true)
-              setProfileRetryKey((value) => value + 1)
-            }}>再読み込み</Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
+    return <ToastNotice message={profileError ? 'プロフィールを読み込めませんでした。' : 'プロフィールが見つかりません。'} retry={() => {
+      setLoading(true)
+      setProfileRetryKey((value) => value + 1)
+    }} />
   }
 
   if (isEditing && userData) {
@@ -482,10 +475,7 @@ function ProfileContent({ initialData }: { initialData?: ProfileInitialData }) {
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-md border border-destructive/50 p-3 text-sm text-destructive">
-                    {emailNotificationError ? 'メール通知設定を読み込めませんでした。' : 'メール通知設定がありません。'}
-                    <Button variant="link" className="ml-2 h-auto p-0" onClick={() => void fetchEmailNotificationPreferences()}>再読み込み</Button>
-                  </div>
+                  <ToastNotice message={emailNotificationError ? 'メール通知設定を読み込めませんでした。' : 'メール通知設定がありません。'} retry={() => void fetchEmailNotificationPreferences()} />
                 )}
                 <div className="mt-6 border-t border-gray-200 pt-4 text-xs leading-5 text-gray-600">
                   団体予約では、ほかのメンバーが通知を有効にしている場合、予約者の設定がOFFでも宛先（To）として通知メールが送信されます。予約者を含む全員がOFFの場合は送信されません。
@@ -504,7 +494,7 @@ function ProfileContent({ initialData }: { initialData?: ProfileInitialData }) {
                     <Skeleton className="h-16 w-full" />
                   </div>
                 ) : passkeys.length === 0 ? (
-                  <p className="text-sm text-gray-500">登録済みのPasskeyはありません</p>
+                  <p className="text-sm text-gray-500">登録済みPasskey 0件</p>
                 ) : (
                   <div className="space-y-3">
                     {passkeys.map((item) => (

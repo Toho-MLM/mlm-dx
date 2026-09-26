@@ -1,5 +1,7 @@
 'use client'
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import { HallLotteries } from '@/components/hall-lotteries'
 
 import React, { Suspense, useState, useRef, useMemo, useEffect, useCallback } from 'react'
@@ -14,19 +16,14 @@ import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ChevronLeftIcon, ChevronRightIcon, AlertCircle, Loader2, CalendarRangeIcon, Trash2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { ChevronLeftIcon, ChevronRightIcon, Loader2, CalendarRangeIcon } from 'lucide-react'
+import { toast } from '@/lib/toast'
 import { translateError } from '@/lib/error-label'
 import {
-  Dialog,
-  DialogContent,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn, showSuccessToast } from "@/lib/utils"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ReservationState, eventStateNames } from '../../types'
 import { validateReservationTime, isReservationDateValid, isReservationTimeValid, isAdmin, type Reservation, type Event, type UnavailablePeriod, type ReservationLimit, type ReservationLimitRemaining } from '@shared-schemas'
 import {
@@ -60,7 +57,9 @@ import { Badge } from '@/components/ui/badge'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 import { getLoginPath } from '@/lib/auth-redirect'
-import { ReservationEditDialog } from '@/components/reservation-edit-dialog'
+import { DraftDialog } from '@/components/draft-dialog'
+import { ReservationDetailsDialog } from '@/components/reservation-details-dialog'
+import { ReservationStatusSelect } from '@/components/reservation-status-select'
 
 
 const locales = {
@@ -180,10 +179,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false)
-  const [isEditOpen, setIsEditOpen] = useState(false)
   const [isStatusUpdating, setIsStatusUpdating] = useState(false)
-  const [selectedStatus, setSelectedStatus] = useState<ReservationState>(ReservationState.PENDING)
   const [currentView, setCurrentView] = useState<View>(Views.WEEK)
   const [isEventDetailOpen, setIsEventDetailOpen] = useState(false)
   const [reservationData, setReservationData] = useState<CalendarEvent[]>(initialData?.reservations ? toReservationCalendarEvents(initialData.reservations) : [])
@@ -234,6 +230,11 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
       }
     }
   }, [user, reservationDraft.group, reservationDraft.date])
+
+  useEffect(() => {
+    setSelectedReservation((current) => current?.resource.type === 'reservation'
+      ? reservationData.find((event) => event.id === current.id) ?? current : current)
+  }, [reservationData])
 
   const fetchReservations = useCallback(async () => {
     try {
@@ -408,7 +409,6 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
       if (response.success) {
         setIsEventDetailOpen(false)
         setSelectedReservation(null)
-        setIsDeleteConfirming(false)
         await fetchReservations()
         showSuccessToast({ message: '予約を完全に削除しました' })
       } else {
@@ -426,11 +426,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
   }
 
   const handleSelectEvent = (event: CalendarEvent) => {
-    setIsDeleteConfirming(false)
     setSelectedReservation(event)
-    if (event.resource.state) {
-      setSelectedStatus(event.resource.state)
-    }
     setIsEventDetailOpen(true)
   }
 
@@ -450,7 +446,6 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
         return
       }
       showSuccessToast({ message: '予約を変更しました' })
-      setIsEditOpen(false)
       setIsEventDetailOpen(false)
       setSelectedReservation(null)
       await fetchReservations()
@@ -460,33 +455,6 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
       })
     } finally {
       setIsSending(false)
-    }
-  }
-
-  const handleUpdateStatus = async () => {
-    if (!selectedReservation?.resource.reservationId) return
-    try {
-      setIsStatusUpdating(true)
-      const response = await apiClient.updateReservationStatus(
-        selectedReservation.resource.reservationId,
-        { state: selectedStatus }
-      )
-      if (!response.success) {
-        toast.error('ステータスの変更中にエラーが発生しました', {
-          description: translateError(response.error || 'UNKNOWN_ERROR'),
-        })
-        return
-      }
-      showSuccessToast({ message: 'ステータスを変更しました' })
-      setIsEventDetailOpen(false)
-      setSelectedReservation(null)
-      await fetchReservations()
-    } catch (error) {
-      toast.error('ステータスの変更中にエラーが発生しました', {
-        description: translateError((error as Error).message),
-      })
-    } finally {
-      setIsStatusUpdating(false)
     }
   }
 
@@ -814,7 +782,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
                 <Skeleton className="h-9 w-40" />
                 <Skeleton className="h-9 w-10" />
               </div>
-            ) : reservationError ? null : (
+            ) : (
               <div className="space-y-2">
                 <div className={"p-2 pb-0 flex flex-wrap gap-2 " + (isMobile ? "justify-center" : "justify-end")}>
                   <Button variant="outline" onClick={() => handleNavigate(subDays(currentDate, getRangeSkip()), currentView)}>
@@ -875,14 +843,9 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
               <div className="w-full h-[720px]">
                 <Skeleton className="w-full h-full" />
               </div>
-            ) : reservationError ? (
-              <div className="flex h-[720px] items-center justify-center rounded-md border bg-white p-6 text-sm text-destructive">
-                <div className="text-center">
-                  <p>{reservationError}</p>
-                  <Button variant="link" onClick={() => void handleRefresh()}>再読み込み</Button>
-                </div>
-              </div>
             ) : (
+              <>
+              {reservationError && <ToastNotice message={reservationError} retry={() => void handleRefresh()} />}
               <BigCalendar
                 className="reservation-calendar"
                 localizer={localizer}
@@ -964,181 +927,66 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
                 }}
                 onRangeChange={handleRangeChange}
               />
+              </>
             )}
           </CardContent>
         </Card>
       </div>
-      <Dialog open={isEventDetailOpen && selectedReservation !== null} onOpenChange={(open) => {
-        setIsEventDetailOpen(open)
-        if (!open) {
-          setIsEditOpen(false)
-          setSelectedReservation(null)
-          setIsDeleteConfirming(false)
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {selectedReservation?.resource.type === 'unavailable' ? '予約禁止詳細' :
-               selectedReservation?.resource.type === 'event' ? 'イベント詳細' :
-               '予約詳細'}
-            </DialogTitle>
-          </DialogHeader>
-          {selectedReservation && (
-            <div className="space-y-4">
-              {selectedReservation.resource.type === 'unavailable' ? (
-                <div className="space-y-2">
-                  <p><strong>時間</strong> {format(selectedReservation.start, 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'M月d日 H:mm', { locale: jaLocale })}</p>
-                  {selectedReservation.resource.reason && (
-                    <p><strong>理由</strong> {selectedReservation.resource.reason}</p>
-                  )}
-                </div>
-              ) : selectedReservation.resource.type === 'event' ? (
-                <div className="space-y-2">
-                  <p><strong>タイトル</strong> {selectedReservation.title}</p>
-                  <p><strong>日付</strong> {format(selectedReservation.start, 'yyyy年M月d日', { locale: jaLocale })}</p>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-2">
-            <p><strong>時間</strong> {format(selectedReservation.start, 'H:mm', { locale: jaLocale })} 〜 {format(selectedReservation.end, 'H:mm', { locale: jaLocale })}</p>
-                    <p><strong>予約者</strong> {selectedReservation.resource.user_name}</p>
-                    {selectedReservation.resource.group_name && <p><strong>グループ</strong> {selectedReservation.resource.group_name}</p>}
-                    {selectedReservation.resource.state && (
-                      <p><strong>ステータス</strong> {eventStateNames[selectedReservation.resource.state]}</p>
-                    )}
-                  </div>
-                  {selectedReservation.resource.cancellable && (isAdminMode || !selectedReservation.resource.is_lottery) && selectedReservation.resource.end_time && new Date(selectedReservation.resource.end_time) > new Date() && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => setIsEditOpen(true)}
-                      disabled={isSending || isDeleting || isDeleteConfirming}
-                    >
-                      変更
-                    </Button>
-                  )}
-                  {selectedReservation.resource.cancellable && (
-                    <LoadingButton
-                      onClick={() => {
-                        if (selectedReservation.resource.reservationId) {
-                          handleCancel(selectedReservation.resource.reservationId)
-                        }
-                      }}
-                      variant="destructive"
-                      className="w-full"
-                      isLoading={isSending}
-                      disabled={isDeleting || isDeleteConfirming}
-                    >
-                      キャンセル
-                    </LoadingButton>
-                  )}
-                  {isAdminMode && selectedReservation.resource.reservationId && (
-                    <div className="space-y-3">
-                      <div className="space-y-2 rounded-md border p-3">
-                        <Label htmlFor="reservation-status">ステータス</Label>
-                        <Select
-                          value={selectedStatus}
-                          onValueChange={(value) => setSelectedStatus(value as ReservationState)}
-                        >
-                          <SelectTrigger id="reservation-status">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Object.values(ReservationState).map((state) => (
-                              <SelectItem key={state} value={state}>
-                                {eventStateNames[state]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <LoadingButton
-                          type="button"
-                          className="w-full"
-                          isLoading={isStatusUpdating}
-                          onClick={handleUpdateStatus}
-                        >
-                          ステータスを更新
-                        </LoadingButton>
-                      </div>
-                      {!isDeleteConfirming && (
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          className="w-full"
-                          onClick={() => setIsDeleteConfirming(true)}
-                          disabled={isSending || isDeleting}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          完全に削除
-                        </Button>
-                      )}
-                      {isDeleteConfirming && (
-                        <Alert variant="destructive">
-                          <AlertCircle className="h-4 w-4" />
-                          <AlertTitle>この予約を完全に削除しますか？</AlertTitle>
-                          <AlertDescription className="mt-2 space-y-3">
-                            <p>この予約はキャンセルや拒否として残らず、予約情報そのものが完全に削除されます。削除後は元に戻せません。</p>
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setIsDeleteConfirming(false)}
-                                disabled={isDeleting}
-                              >
-                                戻る
-                              </Button>
-                              <LoadingButton
-                                type="button"
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleDelete(selectedReservation.resource.reservationId!)}
-                                isLoading={isDeleting}
-                              >
-                                DBから削除
-                              </LoadingButton>
-                            </div>
-                          </AlertDescription>
-                        </Alert>
-                      )}
-                    </div>
-                  )}
-                </>
+      {selectedReservation && (
+        <ReservationDetailsDialog
+          key={selectedReservation.id}
+          open={isEventDetailOpen}
+          onClose={() => { setIsEventDetailOpen(false); setSelectedReservation(null) }}
+          title={selectedReservation.resource.type === 'unavailable' ? '予約禁止詳細' : selectedReservation.resource.type === 'event' ? 'イベント詳細' : '予約'}
+          subject={`${selectedReservation.title} / ${format(selectedReservation.start, 'yyyy年M月d日 H:mm')}〜${format(selectedReservation.end, 'H:mm')}`}
+          busy={isSending || isDeleting || isStatusUpdating}
+          editor={selectedReservation.resource.type === 'reservation' && selectedReservation.resource.cancellable && (isAdminMode || !selectedReservation.resource.is_lottery) && selectedReservation.resource.end_time && new Date(selectedReservation.resource.end_time) > new Date() ? {
+            start: new Date(selectedReservation.resource.start_time!),
+            end: new Date(selectedReservation.resource.end_time),
+            onSave: handleUpdateReservation,
+          } : undefined}
+          onCancel={selectedReservation.resource.cancellable ? () => void handleCancel(selectedReservation.resource.reservationId!) : undefined}
+          onDelete={isAdminMode && selectedReservation.resource.reservationId ? () => void handleDelete(selectedReservation.resource.reservationId!) : undefined}
+        >
+          {selectedReservation.resource.type === 'reservation' ? (
+            <>
+              <p><strong>予約者</strong> {selectedReservation.resource.user_name}</p>
+              {selectedReservation.resource.group_name && <p><strong>グループ</strong> {selectedReservation.resource.group_name}</p>}
+              {isAdminMode && selectedReservation.resource.reservationId && selectedReservation.resource.state ? (
+                <ReservationStatusSelect
+                  value={selectedReservation.resource.state}
+                  onBusyChange={setIsStatusUpdating}
+                  save={(state) => apiClient.updateReservationStatus(selectedReservation.resource.reservationId!, { state })}
+                  read={async () => {
+                    const response = await apiClient.getReservations(true)
+                    const actual = response.data?.find((item) => item.id === selectedReservation.resource.reservationId)
+                    if (!response.success || !actual) throw new Error('RESERVATION_FETCH_FAILED')
+                    setReservationData(toReservationCalendarEvents(response.data!))
+                    return actual.state as ReservationState
+                  }}
+                  onConfirmed={(state) => {
+                    setSelectedReservation((current) => current ? { ...current, resource: { ...current.resource, state } } : current)
+                    return fetchReservations()
+                  }}
+                />
+              ) : selectedReservation.resource.state && <p><strong>ステータス</strong> {eventStateNames[selectedReservation.resource.state]}</p>}
+              {!(selectedReservation.resource.cancellable && (isAdminMode || !selectedReservation.resource.is_lottery) && selectedReservation.resource.end_time && new Date(selectedReservation.resource.end_time) > new Date()) && (
+                <p><strong>時間</strong> {format(selectedReservation.start, 'yyyy年M月d日 H:mm')}〜{format(selectedReservation.end, 'H:mm')}</p>
               )}
-        </div>
+            </>
+          ) : (
+            <>
+              <p>{selectedReservation.title}</p>
+              <p>{format(selectedReservation.start, 'yyyy年M月d日 H:mm')}〜{format(selectedReservation.end, 'M月d日 H:mm')}</p>
+              {selectedReservation.resource.reason && <p>{selectedReservation.resource.reason}</p>}
+            </>
+          )}
+        </ReservationDetailsDialog>
       )}
-        </DialogContent>
-      </Dialog>
-      {selectedReservation?.resource.type === 'reservation' && (
-        <ReservationEditDialog
-          open={isEditOpen}
-          onOpenChange={setIsEditOpen}
-          start={new Date(selectedReservation.resource.start_time || selectedReservation.start)}
-          end={new Date(selectedReservation.resource.end_time || selectedReservation.end)}
-          isSaving={isSending}
-          onSave={handleUpdateReservation}
-        />
-      )}
-      <Dialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen}>
-          <DialogContent>
-            <DialogTitle className="text-xl font-semibold">新規予約</DialogTitle>
-            <Alert className="p-1">
-              <div className="flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>注意事項</AlertTitle>
-              </div>
-              <AlertDescription>
-                <ul className="list-disc pl-6 text-sm">
-                  <li>二週間以上先の予約を取ることはできません。</li>
-                  <li>日をまたいで予約することはできません。</li>
-                  <li>利用時間は最短10分から最長4時間です。</li>
-                  <li>ホールは朝6時から夜11時まで利用できます。</li>
-                </ul>
-              </AlertDescription>
-            </Alert>
+
+      <DraftDialog open={isReservationFormOpen} onOpenChange={setIsReservationFormOpen} title="新規予約" draft={reservationDraft} onDiscard={setReservationDraft} busy={isSending}>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <fieldset disabled={isSending} className="space-y-4">
               <div>
                 <Label className="text-sm font-medium">予約名義</Label>
                 <Select
@@ -1189,15 +1037,9 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
                     ))}
                   </div>
                 )}
-                {reservationLimitLoading && (
-                  <p className="mt-2 text-xs text-muted-foreground">予約上限の残り時間を確認しています…</p>
-                )}
-                {reservationLimitError && (
-                  <div className="mt-2 rounded-md border border-destructive/50 p-2 text-xs text-destructive">
-                    予約上限の残り時間を確認できません。再読み込みしてから予約してください。
-                    <Button type="button" variant="link" className="ml-2 h-auto p-0 text-xs" onClick={() => void fetchReservationLimitRemaining()}>再読み込み</Button>
-                  </div>
-                )}
+                {reservationLimitLoading && <Skeleton className="mt-2 h-5 w-full" />}
+                {reservationLimitError && <ToastNotice message="予約上限の残り時間を確認できません。再読み込みしてください。" retry={() => void fetchReservationLimitRemaining()} />}
+
               </div>
               <div className="space-y-2">
                 <Label htmlFor="date" className="text-sm font-medium">予約日</Label>
@@ -1257,9 +1099,9 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
                   予約
                 </LoadingButton>
               </DialogFooter>
+              </fieldset>
             </form>
-          </DialogContent>
-        </Dialog>
+      </DraftDialog>
       </div>
     </>
   )

@@ -1,5 +1,7 @@
 'use client'
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
@@ -8,7 +10,7 @@ import { useAuth } from '@/app/context/AuthContext'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { httpClient } from '@/lib/http-client'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
 import { startAuthentication } from '@simplewebauthn/browser'
@@ -72,7 +74,6 @@ function LoginContent() {
       }
       const message = translateError(errorMessages[error] || 'ログイン中に問題が発生しました。もう一度お試しください。')
       setErrorMessage(message)
-      toast.error(message)
     } else {
       setErrorMessage(null)
     }
@@ -245,9 +246,7 @@ function LoginContent() {
         </CardHeader>
         <CardContent className="p-4">
           {errorMessage && (
-            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {errorMessage}
-            </div>
+            <ToastNotice message={errorMessage} />
           )}
           {isLoading ? (
             <div className="space-y-3">

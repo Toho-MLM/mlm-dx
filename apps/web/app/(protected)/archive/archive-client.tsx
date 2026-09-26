@@ -1,5 +1,7 @@
 "use client";
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import type { Archive } from '@/lib/schemas';
 import { LoadingButton } from '@/components/ui/loading-button'
@@ -9,7 +11,7 @@ import { useAuth } from '@/app/context/AuthContext';
 import { isAdmin } from '@shared-schemas';
 import { apiClient } from '@/lib/api'
 import { getYoutubeId, isYoutubePlaylist } from './youtube';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export function ArchiveClient({ initialArchives }: { initialArchives?: Archive[] | null }) {
@@ -98,13 +100,10 @@ export function ArchiveClient({ initialArchives }: { initialArchives?: Archive[]
             {[0, 1, 2].map((item) => <Skeleton key={item} className="aspect-video w-full" />)}
           </div>
         ) : error ? (
-          <div className="rounded-md border border-destructive/50 bg-white p-4 text-sm text-destructive">
-            {error}
-            <button className="ml-3 underline" onClick={() => void fetchArchives()}>再読み込み</button>
-          </div>
+          <ToastNotice message={error} retry={() => void fetchArchives()} />
         ) : grouped.length === 0 ? (
           <div className="rounded-md border bg-white p-6 text-center text-sm text-muted-foreground">
-            アーカイブはありません。
+            アーカイブ 0件
           </div>
         ) : grouped.map(({ year, list }, index) => (
           <div key={year} className={index > 0 ? "mt-4" : ""}>

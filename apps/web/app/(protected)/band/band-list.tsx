@@ -8,7 +8,7 @@ import { Group } from "@/app/types"
 import { apiClient } from '@/lib/api'
 import { BandPageHeader } from '@/components/band-page-header'
 import { formatGroups } from '@/lib/utils'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { translateError } from '@/lib/error-label'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext'
@@ -301,14 +301,14 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
             ))
           )}
         </div>
-        <BandForm
+        {isFormOpen && <BandForm
           band={editingBand}
           memberOptions={memberOptions}
           isOpen={isFormOpen}
           onClose={() => setIsFormOpen(false)}
           onSuccess={handleSuccess}
           isAdminMode={isAdminMode}
-        />
+        />}
         <Dialog open={deletingBand !== null || deletingBands.length > 0} onOpenChange={(open) => {
           if (!open && !isDeleting) {
             setDeletingBand(null)

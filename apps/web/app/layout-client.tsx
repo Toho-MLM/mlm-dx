@@ -7,7 +7,6 @@ import { AuthProvider, useAuth } from "./context/AuthContext"
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarFooter } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Toaster } from "@/components/ui/sonner"
 import { getLoginPath } from '@/lib/auth-redirect'
 
 function Content({ children }: { children: React.ReactNode }) {
@@ -78,7 +77,6 @@ function Content({ children }: { children: React.ReactNode }) {
       <div className="min-w-0 flex-1">
         {children}
       </div>
-      <Toaster />
     </>
   )
 }

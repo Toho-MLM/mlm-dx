@@ -7,7 +7,7 @@ import { forwardRef, useImperativeHandle } from 'react'
 import { Event, Entry, SetlistItem } from '@/app/types'
 import { apiClient } from '@/lib/api'
 import { HttpError } from '@/lib/http-client'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -157,7 +157,7 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
         ) : (
           <div className="space-y-3">
             {sectionEntriesWithSetlist.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">まだエントリーがありません</div>
+              <div className="text-center text-gray-500 py-8">エントリー 0件</div>
             ) : (
               sectionEntriesWithSetlist.map(item => {
                 return (

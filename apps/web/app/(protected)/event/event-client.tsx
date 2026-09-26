@@ -1,5 +1,7 @@
 'use client'
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import { useEffect, useState, useCallback } from 'react'
 import { EventCard } from "./event-card"
 import { EventForm } from "./event-form"
@@ -7,7 +9,7 @@ import { Event } from "@/app/types"
 import { EventPageHeader } from '@/components/event-page-header'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import {
   Dialog,
   DialogContent,
@@ -168,20 +170,14 @@ export function EventClient({ initialEvents, initialGroups, initialEntries }: { 
       />
       <div className="p-4 pt-0 mx-auto">
       {eventsError ? (
-        <div className="rounded-md border border-destructive/50 bg-white p-4 text-sm text-destructive">
-          {eventsError}
-          <button className="ml-3 underline" onClick={() => void fetchEvents()}>再読み込み</button>
-        </div>
+        <ToastNotice message={eventsError} retry={() => void fetchEvents()} />
       ) : aggregatesError ? (
-        <div className="mb-4 rounded-md border border-destructive/50 bg-white p-4 text-sm text-destructive">
-          参加状況を読み込めませんでした。
-          <button className="ml-3 underline" onClick={() => void fetchAggregates()}>再読み込み</button>
-        </div>
+        <ToastNotice message="参加状況を読み込めませんでした。" retry={() => void fetchAggregates()} />
       ) : null}
       <EventProvider value={{ groupOptions, userEntries: entries, loadingEntries, onEntriesChanged: handleEntriesChanged, onEdit: isUserAdmin ? handleEdit : undefined, onDelete: isUserAdmin ? handleDeleteClick : undefined }}>
         <div className="space-y-5">
           {!eventsError && events.length === 0 ? (
-            <div className="rounded-md border bg-white p-6 text-center text-sm text-muted-foreground">イベントはありません。</div>
+            <div className="rounded-md border bg-white p-6 text-center text-sm text-muted-foreground">イベント 0件</div>
           ) : events.map((event) => (
             <EventCard
               key={event.id}
@@ -190,7 +186,7 @@ export function EventClient({ initialEvents, initialGroups, initialEntries }: { 
           ))}
         </div>
       </EventProvider>
-      {isUserAdmin && (
+      {isUserAdmin && isFormOpen && (
         <EventForm
           event={editingEvent}
           isOpen={isFormOpen}

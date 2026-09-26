@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DraftDialog } from '@/components/draft-dialog'
+import { DialogFooter } from '@/components/ui/dialog'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { compareInstruments, Group, GroupMember, Instrument, instrumentColors, instrumentNames, instrumentOrder } from "@/app/types"
-import { X, Plus, ChevronDown, UserRoundMinus, CircleCheckBig, XCircle } from 'lucide-react'
+import { X, Plus, ChevronDown, UserRoundMinus } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { apiClient } from '@/lib/api'
 import { useAuth } from '../../context/AuthContext'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { translateError } from '@/lib/error-label'
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -53,7 +54,7 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
   const [isMain, setIsMain] = useState(band?.mainIndex !== null ? 'main' : 'free')
   const [isPending, setIsPending] = useState(false)
   const { user } = useAuth()
-  const isNameOnlyEdit = Boolean(band?.mainIndex !== null && !isAdminMode)
+  const isNameOnlyEdit = Boolean(band && band.mainIndex !== null && !isAdminMode)
 
   useEffect(() => {
     if (band) {
@@ -72,7 +73,12 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
   }
 
   const handleSubmit = async () => {
-    if (isPending || !isFormValid) return;
+    if (isPending) return
+    if (validationErrors.length) {
+      toast.error('バンドの入力内容を確認してください', { description: validationErrors.join('。'), id: 'band-validation' })
+      document.getElementById(name.trim() ? 'add-band-member' : 'band-name')?.focus()
+      return
+    }
 
     try {
       setIsPending(true)
@@ -175,35 +181,24 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
     return sortGroupMembersByName(bandMembers, memberOptions)
   }, [bandMembers, memberOptions])
 
-  const isFormValid = useMemo(() => {
-    if (name.trim() === '') return false;
-    if (isNameOnlyEdit) return true;
-    if (bandMembers.length === 0) return false;
-    if (bandMembers.length < 2) return false;
-    if (bandMembers.some(member => member.instruments.length === 0)) return false;
-    if (!isAdminMode && !bandMembers.some(member => member.id === user?.id)) return false;
-    return true;
-  }, [name, bandMembers, user?.id, isAdminMode, isNameOnlyEdit]);
-
-  const validationChecks = useMemo(() => {
-    return {
-      hasName: name.trim() !== '',
-      hasMembers: bandMembers.length > 0,
-      hasMultipleMembers: bandMembers.length >= 2,
-      allMembersHaveInstruments: bandMembers.length > 0 && !bandMembers.some(member => member.instruments.length === 0),
-      includesSelf: bandMembers.some(member => member.id === user?.id) || isMain === 'main'
-    };
-  }, [name, bandMembers, user?.id, isMain]);
+  const validationErrors = useMemo(() => {
+    const errors: string[] = []
+    if (!name.trim()) errors.push('バンド名を入力してください')
+    if (!isNameOnlyEdit) {
+      if (bandMembers.length < 2) errors.push('メンバーを2人以上追加してください')
+      if (bandMembers.some((member) => member.instruments.length === 0)) errors.push('全メンバーに楽器を割り当ててください')
+      if (!isAdminMode && !bandMembers.some((member) => member.id === user?.id)) errors.push('自分をメンバーに追加してください')
+    }
+    return errors
+  }, [name, bandMembers, user?.id, isAdminMode, isNameOnlyEdit])
 
   return (
-    <Dialog open={isOpen} onOpenChange={onDialogClose}>
-      <DialogContent className="p-5">
-        <DialogHeader>
-          <DialogTitle>{isNameOnlyEdit ? '本バンド名を変更' : band ? 'バンドを更新' : 'バンドを作成'}</DialogTitle>
-        </DialogHeader>
+    <DraftDialog open={isOpen} onOpenChange={(open) => { if (!open) onDialogClose() }} busy={isPending}
+      draft={{ name, bandMembers, isMain }} title={isNameOnlyEdit ? '本バンド名を変更' : band ? 'バンドを更新' : 'バンドを作成'}>
         <div className="space-y-4">
+          <Label htmlFor="band-name">バンド名</Label>
           <Input
-            placeholder="バンド名"
+            id="band-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -276,64 +271,10 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
                 </div>
               )
             })}
-            <div className="space-y-1 pl-2">
-              <div className="flex items-center space-x-2 text-sm">
-                {validationChecks.hasName ? (
-                  <CircleCheckBig className="h-4 w-4 text-green-600" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-red-600" />
-                )}
-                <span className={validationChecks.hasName ? "text-green-600" : "text-red-600"}>
-                  {validationChecks.hasName ? "バンド名が入力されています" : "バンド名を入力してください"}
-                </span>
-              </div>
-              <div className="flex items-center space-x-2 text-sm">
-                {validationChecks.hasMembers ? (
-                  <CircleCheckBig className="h-4 w-4 text-green-600" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-red-600" />
-                )}
-                <span className={validationChecks.hasMembers ? "text-green-600" : "text-red-600"}>
-                  {validationChecks.hasMembers ? "メンバーが追加されています" : "メンバーを1人以上追加してください"}
-                </span>
-              </div>
-              <div className="flex items-center space-x-2 text-sm">
-                {validationChecks.hasMultipleMembers ? (
-                  <CircleCheckBig className="h-4 w-4 text-green-600" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-red-600" />
-                )}
-                <span className={validationChecks.hasMultipleMembers ? "text-green-600" : "text-red-600"}>
-                  {validationChecks.hasMultipleMembers ? "メンバーが2人以上います" : "メンバーを2人以上追加してください"}
-                </span>
-              </div>
-              <div className="flex items-center space-x-2 text-sm">
-                {validationChecks.allMembersHaveInstruments ? (
-                  <CircleCheckBig className="h-4 w-4 text-green-600" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-red-600" />
-                )}
-                <span className={validationChecks.allMembersHaveInstruments ? "text-green-600" : "text-red-600"}>
-                  {validationChecks.allMembersHaveInstruments ? "全メンバーに楽器が割り当てられています" : "全メンバーに楽器を割り当ててください"}
-                </span>
-              </div>
-              {!isAdminMode && (
-                <div className="flex items-center space-x-2 text-sm">
-                  {validationChecks.includesSelf ? (
-                    <CircleCheckBig className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-red-600" />
-                  )}
-                  <span className={validationChecks.includesSelf ? "text-green-600" : "text-red-600"}>
-                    {validationChecks.includesSelf ? "自分がメンバーに含まれています" : "自分をメンバーに追加してください"}
-                  </span>
-                </div>
-              )}
-            </div>
             <div className="flex items-center justify-between">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
+                  <Button id="add-band-member" variant="outline">
                     メンバーを追加 <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -350,13 +291,12 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
               </DropdownMenu>
             </div>
           </div>}
-          <div className="flex justify-end">
-            <LoadingButton onClick={handleSubmit} isLoading={isPending} disabled={!isFormValid}>
+          <DialogFooter>
+            <LoadingButton onClick={handleSubmit} isLoading={isPending} >
               {band ? '保存' : '作成'}
             </LoadingButton>
-          </div>
+          </DialogFooter>
         </div>
-      </DialogContent>
-    </Dialog>
+    </DraftDialog>
   )
 }

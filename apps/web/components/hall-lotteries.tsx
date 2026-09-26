@@ -1,8 +1,10 @@
 'use client'
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import Link from 'next/link'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import {
   type HallLottery,
   type HallLotteryApplication,
@@ -266,12 +268,7 @@ export function HallLotteries({
     )
   if (error)
     return (
-      <div className="p-3 text-sm" role="alert">
-        {error}
-        <Button variant="outline" onClick={() => void load()}>
-          再試行
-        </Button>
-      </div>
+      <ToastNotice message={error} retry={() => void load()} />
     )
   if (mode === 'calendar') {
     const protectedPeriods = lotteries.filter(
@@ -297,7 +294,7 @@ export function HallLotteries({
       <h2 className="text-lg font-semibold">ホール抽選</h2>
       {lotteries.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          ホールの抽選はありません
+          ホール抽選 0件
         </p>
       ) : (
         <>
@@ -392,8 +389,8 @@ export function HallLotteries({
                     {eligibleGroups.length === 0 && (
                       <p className="text-sm text-muted-foreground">
                         {canApplyForAllBands
-                          ? '対象区分に一致する有効なバンドがありません'
-                          : '対象区分に一致する所属バンドがありません'}
+                          ? '対象の有効なバンド 0件'
+                          : '対象の所属バンド 0件'}
                       </p>
                     )}
                     <div className="grid gap-3 md:grid-cols-3">
@@ -456,18 +453,10 @@ export function HallLotteries({
                   {applicationLoading ? (
                     <p className="text-sm">読み込み中…</p>
                   ) : applicationError ? (
-                    <div role="alert">
-                      {applicationError}
-                      <Button
-                        variant="outline"
-                        onClick={() => void loadApplications()}
-                      >
-                        再試行
-                      </Button>
-                    </div>
+                    <ToastNotice message={applicationError} retry={() => void loadApplications()} />
                   ) : applications.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      申込はありません
+                      申込 0件
                     </p>
                   ) : (
                     applications.map((a) => (
