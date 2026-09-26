@@ -17,9 +17,6 @@ export function createD1BandDraftRepository(db: D1Database): BandDraftRepository
       return await db.prepare(`SELECT id, share_token, state_json, created_by FROM main_band_drafts ORDER BY created_at DESC LIMIT 1`)
         .first<DraftRow>();
     },
-    async deleteExcept(id) {
-      await db.prepare('DELETE FROM main_band_drafts WHERE id != ?').bind(id).run();
-    },
     async listMembers() {
       const rows = await db.prepare(`
         SELECT id, name, nickname, instruments, UPPER(SUBSTR(email, 1, 6)) AS student_number
@@ -30,10 +27,11 @@ export function createD1BandDraftRepository(db: D1Database): BandDraftRepository
       }));
     },
     async create(draft, now) {
-      await db.prepare(`
-        INSERT INTO main_band_drafts (id, share_token, state_json, created_by, created_at, updated_at)
+      const result = await db.prepare(`
+        INSERT OR IGNORE INTO main_band_drafts (id, share_token, state_json, created_by, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
       `).bind(draft.id, draft.share_token, draft.state_json, draft.created_by, now, now).run();
+      return Number(result.meta.changes ?? 0) > 0;
     },
     async membersExist(ids) {
       if (!ids.length) return true;

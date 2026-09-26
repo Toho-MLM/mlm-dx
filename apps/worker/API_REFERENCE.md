@@ -17,6 +17,7 @@ Worker は以下の `Bindings` を前提としています。
 | `DB` | Cloudflare D1 Database インスタンス |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth クライアント |
 | `CORS_ORIGIN` | 許可するオリジンのカンマ区切りリスト |
+| `INITIAL_ADMIN_EMAIL` | 初回登録を許可する管理者の Google メールアドレス。未設定時は登録不可 |
 | `FRONTEND_URL` | フロントエンドアプリのルート URL |
 | `NODE_ENV` | 実行環境の識別子 |
 | `AUTH_URL` | Worker 自身のパブリック URL (OAuth コールバックに利用) |
@@ -241,7 +242,8 @@ Worker は以下の `Bindings` を前提としています。
   - `INVALID_RESERVATION_TIME`: 時刻バリデーション違反
   - `GROUP_NOT_FOUND`: `group_id` が存在しない／非アクティブ
   - `NOT_GROUP_MEMBER`: グループ所属権限が無い
-  - `RESERVATION_CONFLICT`: ユニーク制約違反（既存レコードと完全重複）
+  - `RESERVATION_CONFLICT`: 確定済み予約との時間競合など、保存時の競合
+  - `RESERVATION_BUSY`: 同じ名義の申込を処理中。少し待ってから再試行する
 
 #### POST `/reservations/:id/cancel`
 - 認証必須。
@@ -261,10 +263,11 @@ Worker は以下の `Bindings` を前提としています。
 #### POST `/reservations/external` / PUT `/reservations/external/:id`
 - 外部予約は最短10分・最長4時間で、選択した外部スタジオの時間枠内に収まる必要があります。
 - 6:00〜23:00と同日内の制限は適用せず、スタジオの時間枠内であれば日付をまたいで予約できます。
+- 同じ名義の申込を処理中の場合、`POST` は `409 RESERVATION_BUSY` を返します。
 
 #### GET `/reservation/external/studios` / POST `/reservation/external/studios/bulk`
-- 認証必須。管理用の抽選対象を返します。`target_type` は `HALL` または `EXTERNAL` です。
-- 作成は管理者のみです。ホールは同一JST日内の6:00〜23:00に30分以上で設定し、`draw_date` で抽選実行日を指定します。抽選は指定日の21:00 JSTに実行され、既存のホール抽選対象と時間が重複する場合は拒否します。
+- 認証必須。取得結果の `target_type` は既存データに応じて `HALL` または `EXTERNAL` です。
+- 作成は管理者のみで、`target_type` は `EXTERNAL` のみ受け付けます。`HALL` の作成は `USE_HALL_LOTTERIES` で拒否し、ホール抽選 API を利用します。
 - 既存の外部スタジオ行は migration により `EXTERNAL` として保持されます。
 - ホール対象を削除すると、未処理申込を閉じ、当選済みで利用前のホール予約を `DECLINED` にして取消通知を送ります。
 
@@ -273,12 +276,13 @@ Worker は以下の `Bindings` を前提としています。
 
 #### POST `/reservations/external/lottery`
 - 認証必須。`requested_duration_minutes`（30〜120分の整数）は必須です。
+- 同じ名義の申込を処理中の場合、`409 RESERVATION_BUSY` を返します。
 - `preferred_start_datetime` と `preferred_end_datetime` は任意ですが、指定する場合は両方必要です。
 - 希望時間帯を指定しない場合、6:00〜23:00の制限は適用せず、外部スタジオの時間枠全体を抽選対象にします。
 
 #### ホール予約の抽選期間制限
 - `POST /reservations` と `PUT /reservations/:id` は、未抽選の `HALL` 対象時間と一部でも重なる場合、`LOTTERY_PERIOD_PROTECTED` で拒否します。管理者モードでは適用しません。
-- 抽選後は、同時間帯の `PENDING` / `CONFIRMED` ホール予約と競合しない空き時間のみ通常予約できます。
+- 抽選後は、同時間帯の `CONFIRMED` ホール予約と競合しない時間に通常予約できます。未来日の通常予約は `PENDING` 同士で重なっても受け付け、利用日の午前0時（JST）に確定・時間調整・辞退を判定します。
 - ホール当選は `reservations`、外部当選は `external_reservations` に `CONFIRMED` として保存されます。
 
 #### 外部予約の抽選期間制限

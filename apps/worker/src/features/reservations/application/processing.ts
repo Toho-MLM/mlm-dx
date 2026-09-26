@@ -11,17 +11,18 @@ export type ProcessableReservation = {
   start_time: string;
   end_time: string;
   state: string;
+  updated_at: string;
 };
 
 export interface ReservationProcessingRepository {
   listConfirmedHallOverlaps(startTime: string, endTime: string, excludeId?: string | number): Promise<StoredTimeInterval[]>;
-  listPendingHallReservations(startTime: string, endTime: string): Promise<ProcessableReservation[]>;
+  listDueHallReservations(endTime: string): Promise<ProcessableReservation[]>;
   applyHallProcessResult(
     reservation: ProcessableReservation,
     result: ReservationProcessResult,
     updatedAt: string
-  ): Promise<'UPDATED' | 'CONFLICT'>;
-  declineHallReservation(id: string | number, updatedAt: string): Promise<void>;
+  ): Promise<'UPDATED' | 'CONFLICT' | 'STALE'>;
+  declineHallReservation(reservation: ProcessableReservation, updatedAt: string): Promise<boolean>;
   completePastHallReservations(before: string, updatedAt: string): Promise<number>;
   deleteHallReservationsBefore(before: string): Promise<void>;
 }
@@ -57,11 +58,9 @@ export function createReservationProcessingService(deps: {
   async function processToday(): Promise<number> {
     const now = clock.now();
     const range = getJSTDayRange(getJSTDateString(now));
-    const pending = await deps.repository.listPendingHallReservations(
-      range.startUTC.toISOString(),
-      range.endUTC.toISOString()
-    );
+    const pending = await deps.repository.listDueHallReservations(range.endUTC.toISOString());
     let changedCount = 0;
+    let failures = 0;
 
     for (const reservation of pending) {
       try {
@@ -70,8 +69,9 @@ export function createReservationProcessingService(deps: {
 
         const updatedAt = clock.now().toISOString();
         const update = await deps.repository.applyHallProcessResult(reservation, result, updatedAt);
+        if (update === 'STALE') continue;
         if (update === 'CONFLICT') {
-          await deps.repository.declineHallReservation(reservation.id, updatedAt);
+          if (!await deps.repository.declineHallReservation(reservation, updatedAt)) continue;
           result.state = 'DECLINED';
           delete result.adjustedStartTime;
           delete result.adjustedEndTime;
@@ -88,11 +88,13 @@ export function createReservationProcessingService(deps: {
           requestedEndTime: result.adjustedEndTime ? reservation.end_time : undefined,
         });
       } catch (error) {
+        failures += 1;
         console.error(`Error processing reservation ${reservation.id}:`, error);
       }
     }
 
     if (changedCount > 0) await deps.effects.broadcastReservationsChanged();
+    if (failures > 0) throw new Error(`${failures} hall reservation(s) failed processing`);
     return changedCount;
   }
 

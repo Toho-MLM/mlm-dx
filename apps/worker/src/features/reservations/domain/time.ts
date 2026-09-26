@@ -109,7 +109,7 @@ export function determineHallReservationState(
 ): ReservationProcessResult {
   const start = new Date(startTime);
   const end = new Date(endTime);
-  if (!isTodayInJST(start, now)) return { state: 'PENDING' };
+  if (getJSTDateString(start) > getJSTDateString(now)) return { state: 'PENDING' };
 
   const businessHours = getJSTTimeRange(getJSTDateString(start), 6, 23);
   if (start < businessHours.startUTC || end > businessHours.endUTC) {
@@ -144,6 +144,35 @@ export function getRollingWindow(referenceTime: string, windowDays: number): { s
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - windowDays);
   return { startTime: start.toISOString(), endTime: end.toISOString() };
+}
+
+export function getRollingConflictWindows(
+  reservationStart: string,
+  reservationEnd: string,
+  windowDays: number,
+  existing: StoredTimeInterval[]
+): { startTime: string; endTime: string }[] {
+  const duration = windowDays * 24 * 60 * 60 * 1000;
+  const start = new Date(reservationStart).getTime();
+  const end = new Date(reservationEnd).getTime();
+  const earliestEnd = start;
+  const latestEnd = end + duration;
+  const boundaries = [start, end, ...existing.flatMap((item) => [
+    new Date(item.start_time).getTime(), new Date(item.end_time).getTime(),
+  ])];
+  const endpoints = new Set<number>();
+  for (const boundary of boundaries) {
+    for (const candidate of [boundary, boundary + duration]) {
+      for (const offset of [-1, 0, 1]) {
+        const point = candidate + offset;
+        if (point >= earliestEnd && point <= latestEnd) endpoints.add(point);
+      }
+    }
+  }
+  return [...endpoints].sort((a, b) => a - b).map((point) => ({
+    startTime: new Date(point - duration).toISOString(),
+    endTime: new Date(point).toISOString(),
+  }));
 }
 
 export function getReferenceDayRange(referenceTime: string): { startTime: string; endTime: string } {

@@ -16,6 +16,7 @@ import { createD1ReservationLimitRepository } from '../features/reservations/inf
 import { createD1GroupMembershipReader } from '../features/reservations/infrastructure/d1-membership-reader';
 import { createD1HallReservationRepository } from '../features/reservations/infrastructure/d1-hall-repository';
 import { createD1ReservationProcessingRepository } from '../features/reservations/infrastructure/d1-processing-repository';
+import { withReservationLimitLock } from '../utils/reservation-scope-lock';
 
 const reservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -277,24 +278,23 @@ reservationRoutes.post('/', async (c) => {
       createdAt: now,
       enforceProtection: !isAdminMode,
     };
-    const created = lotteryWindow.afterDraw
-      ? await hallRepository.createReservationIfAvailable(reservationInput)
-      : await hallRepository.createReservation(reservationInput);
-    if (!created) {
-      return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
-    }
-
-    if (!isAdminMode && await hasReservationLimitConflict(
-      c.env,
-      userId,
-      groupId,
-      start_time,
-      end_time,
-      { kind: 'HALL', id: reservationId }
-    )) {
-      await hallRepository.deleteReservation(reservationId);
-      return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
-    }
+    const creationError = await withReservationLimitLock(c.env, userId, groupId, async () => {
+      const created = lotteryWindow.afterDraw
+        ? await hallRepository.createReservationIfAvailable(reservationInput)
+        : await hallRepository.createReservation(reservationInput);
+      if (!created) {
+        return await hallRepository.hasUnavailableOverlap(start_time, end_time)
+          ? 'BLOCKED_PERIOD_CONFLICT' : 'RESERVATION_CONFLICT';
+      }
+      if (!isAdminMode && await hasReservationLimitConflict(
+        c.env, userId, groupId, start_time, end_time, { kind: 'HALL', id: reservationId }
+      )) {
+        await hallRepository.deleteReservation(reservationId);
+        return 'RESERVATION_LIMIT_EXCEEDED';
+      }
+      return null;
+    });
+    if (creationError) return c.json({ success: false, error: creationError }, 409);
 
     const isSameDay = isTodayInJST(new Date(start_time));
     let notificationType: EmailNotificationType | null = isSameDay ? null : 'RESERVATION_RECEIVED';
@@ -303,38 +303,28 @@ reservationRoutes.post('/', async (c) => {
 
     if (isSameDay) {
       const processResult = await processReservationState(c.env, reservationId, start_time, end_time);
-      
       if (processResult.state !== 'PENDING') {
         const updateTime = new Date().toISOString();
-        
-        if (processResult.adjustedStartTime && processResult.adjustedEndTime) {
-          notificationType = 'RESERVATION_ADJUSTED';
-          requestedStartTime = start_time;
-          requestedEndTime = end_time;
-          const processingRepository = createD1ReservationProcessingRepository(c.env.DB);
-          const updateResult = await processingRepository.applyHallProcessResult(
-            { id: reservationId, start_time, end_time, state: 'PENDING' },
-            processResult,
-            updateTime
-          );
-          if (updateResult === 'CONFLICT') {
-            await processingRepository.declineHallReservation(reservationId, updateTime);
-            notificationType = 'RESERVATION_DECLINED';
+        const processingRepository = createD1ReservationProcessingRepository(c.env.DB);
+        const reservationSnapshot = {
+          id: reservationId, start_time, end_time, state: 'PENDING', updated_at: now,
+        };
+        const updateResult = await processingRepository.applyHallProcessResult(
+          reservationSnapshot, processResult, updateTime
+        );
+        if (updateResult === 'UPDATED') {
+          notificationType = processResult.adjustedStartTime && processResult.adjustedEndTime
+            ? 'RESERVATION_ADJUSTED'
+            : processResult.state === 'CONFIRMED'
+              ? 'RESERVATION_CONFIRMED'
+              : 'RESERVATION_DECLINED';
+          if (notificationType === 'RESERVATION_ADJUSTED') {
+            requestedStartTime = start_time;
+            requestedEndTime = end_time;
           }
-        } else {
-          notificationType = processResult.state === 'CONFIRMED'
-            ? 'RESERVATION_CONFIRMED'
-            : 'RESERVATION_DECLINED';
-          const processingRepository = createD1ReservationProcessingRepository(c.env.DB);
-          const updateResult = await processingRepository.applyHallProcessResult(
-            { id: reservationId, start_time, end_time, state: 'PENDING' },
-            processResult,
-            updateTime
-          );
-          if (updateResult === 'CONFLICT') {
-            await processingRepository.declineHallReservation(reservationId, updateTime);
-            notificationType = 'RESERVATION_DECLINED';
-          }
+        } else if (updateResult === 'CONFLICT'
+          && await processingRepository.declineHallReservation(reservationSnapshot, updateTime)) {
+          notificationType = 'RESERVATION_DECLINED';
         }
       }
     }
@@ -354,6 +344,10 @@ reservationRoutes.post('/', async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.error('Error creating reservation:', error);
+
+    if (error instanceof Error && error.message === 'RESERVATION_BUSY') {
+      return c.json({ success: false, error: 'RESERVATION_BUSY' }, 409);
+    }
 
     if (error instanceof ZodError) {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
@@ -486,6 +480,9 @@ reservationRoutes.put('/:id', async (c) => {
       enforceProtection: !isAdminMode,
     });
     if (!updated) {
+      if (await hallRepository.hasUnavailableOverlap(finalStartTime, finalEndTime)) {
+        return c.json({ success: false, error: 'BLOCKED_PERIOD_CONFLICT' }, 409);
+      }
       return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
     }
     if (!isAdminMode && await hasReservationLimitConflict(
@@ -825,6 +822,8 @@ reservationRoutes.post('/unavailable', async (c) => {
       if (remainingInterval) {
         adjustments.push({
           reservationId: reservation.id,
+          previousStartTime: reservation.start_time,
+          previousEndTime: reservation.end_time,
           startTime: remainingInterval.startTime,
           endTime: remainingInterval.endTime,
           decline: false,
@@ -836,7 +835,12 @@ reservationRoutes.post('/unavailable', async (c) => {
           requestedEndTime: reservation.end_time,
         });
       } else {
-        adjustments.push({ reservationId: reservation.id, decline: true });
+        adjustments.push({
+          reservationId: reservation.id,
+          previousStartTime: reservation.start_time,
+          previousEndTime: reservation.end_time,
+          decline: true,
+        });
         notificationJobs.push({
           reservationId: reservation.id,
           notificationType: 'RESERVATION_REVOKED',
@@ -844,7 +848,7 @@ reservationRoutes.post('/unavailable', async (c) => {
       }
     }
 
-    await hallRepository.createUnavailablePeriodWithAdjustments({
+    const createdPeriod = await hallRepository.createUnavailablePeriodWithAdjustments({
       id: periodId,
       startTime: start_datetime,
       endTime: end_datetime,
@@ -852,9 +856,13 @@ reservationRoutes.post('/unavailable', async (c) => {
       createdAt: now,
       adjustments,
     });
+    if (!createdPeriod.created) {
+      return c.json({ success: false, error: 'STATE_VERSION_CONFLICT' }, 409);
+    }
 
     c.executionCtx.waitUntil((async () => {
       for (const job of notificationJobs) {
+        if (!createdPeriod.adjustedReservationIds.includes(job.reservationId)) continue;
         await prepareAndSendReservationEmail(c.env, {
           kind: 'HALL',
           ...job,

@@ -33,6 +33,7 @@ import { checkActiveGroupAccess } from '../features/reservations/application/mem
 import { parseRoomNames } from '../features/reservations/domain/external-lottery';
 import { createD1ExternalReservationRepository } from '../features/reservations/infrastructure/d1-external-repository';
 import type { ExternalStudioRecord as StudioRow } from '../features/reservations/application/external-repository';
+import { withReservationLimitLock } from '../utils/reservation-scope-lock';
 
 const externalStudioRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 const externalReservationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -172,8 +173,11 @@ externalStudioRoutes.get('/studios', async (c) => {
 externalStudioRoutes.post('/studios/bulk', async (c) => {
   try {
     requireAdmin(c.get('user').role);
-    const data = CreateExternalRequestSchema.parse(await c.req.json());
-    if (data.target_type === 'HALL') return c.json({ success: false, error: 'USE_HALL_LOTTERIES' }, 400);
+    const requestData = await c.req.json();
+    if (requestData?.target_type === 'HALL') {
+      return c.json({ success: false, error: 'USE_HALL_LOTTERIES' }, 400);
+    }
+    const data = CreateExternalRequestSchema.parse(requestData);
     const roomNames = data.names.map((name) => name.trim());
     if (roomNames.some((name) => !name) || new Set(roomNames).size !== roomNames.length) {
       return c.json({ success: false, error: 'INVALID_ROOM_NAMES' }, 400);
@@ -291,35 +295,30 @@ externalReservationRoutes.post('/', async (c) => {
     if (conflicts.length && !data.acknowledged_member_conflicts) return c.json({ success: false, error: 'MEMBER_RESERVATION_CONFLICT_WARNING', data: conflicts });
     const id = crypto.randomUUID(); const now = new Date().toISOString();
     const externalRepository = createD1ExternalReservationRepository(c.env.DB);
-    const inserted = await externalRepository.createReservationIfAvailable({
-      id,
-      studioId: data.external_studio_id,
-      roomNumber: data.room_number,
-      userId: user.id,
-      groupId,
-      startTime: data.start_time,
-      endTime: data.end_time,
-      createdAt: now,
+    const creationError = await withReservationLimitLock(c.env, user.id, groupId, async () => {
+      const inserted = await externalRepository.createReservationIfAvailable({
+        id, studioId: data.external_studio_id, roomNumber: data.room_number,
+        userId: user.id, groupId, startTime: data.start_time,
+        endTime: data.end_time, createdAt: now,
+      });
+      if (!inserted) return 'RESERVATION_CONFLICT';
+      if (!admin && await hasReservationLimitConflict(
+        c.env, user.id, groupId, data.start_time, data.end_time, { kind: 'EXTERNAL', id }
+      )) {
+        await externalRepository.deleteReservation(id);
+        return 'RESERVATION_LIMIT_EXCEEDED';
+      }
+      return null;
     });
-    if (!inserted) {
-      return c.json({ success: false, error: 'RESERVATION_CONFLICT' }, 409);
-    }
-    if (!admin && await hasReservationLimitConflict(
-      c.env,
-      user.id,
-      groupId,
-      data.start_time,
-      data.end_time,
-      { kind: 'EXTERNAL', id }
-    )) {
-      await externalRepository.deleteReservation(id);
-      return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
-    }
+    if (creationError) return c.json({ success: false, error: creationError }, 409);
     await broadcastReservationRealtimeEvent(c.env, 'reservations_changed');
     c.executionCtx.waitUntil(prepareAndSendReservationEmail(c.env, { kind: 'EXTERNAL', reservationId: id, notificationType: 'RESERVATION_CONFIRMED' }));
     return c.json({ success: true });
   } catch (error) {
     if (error instanceof ZodError) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    if (error instanceof Error && error.message === 'RESERVATION_BUSY') {
+      return c.json({ success: false, error: 'RESERVATION_BUSY' }, 409);
+    }
     console.error('Error creating external reservation:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
@@ -439,35 +438,31 @@ externalReservationRoutes.post('/lottery', async (c) => {
     }
 
     const id = crypto.randomUUID(); const now = new Date().toISOString();
-    const inserted = await externalRepository.createLotteryApplicationIfAvailable({
-      id,
-      studioId: studio.id,
-      userId: user.id,
-      groupId,
-      preferredStart: data.preferred_start_datetime,
-      preferredEnd: data.preferred_end_datetime,
-      requestedMinutes: data.requested_duration_minutes,
-      rangeStart,
-      rangeEnd,
-      createdAt: now,
+    const creationError = await withReservationLimitLock(c.env, user.id, groupId, async () => {
+      const inserted = await externalRepository.createLotteryApplicationIfAvailable({
+        id, studioId: studio.id, userId: user.id, groupId,
+        preferredStart: data.preferred_start_datetime,
+        preferredEnd: data.preferred_end_datetime,
+        requestedMinutes: data.requested_duration_minutes,
+        rangeStart, rangeEnd, createdAt: now,
+      });
+      if (!inserted) return 'LOTTERY_APPLICATION_CONFLICT';
+      if (await hasReservationLimitConflict(
+        c.env, user.id, groupId, holdStart.toISOString(), holdEnd.toISOString(),
+        { kind: 'LOTTERY', id }
+      )) {
+        await externalRepository.deleteLotteryApplication(id);
+        return 'RESERVATION_LIMIT_EXCEEDED';
+      }
+      return null;
     });
-    if (!inserted) {
-      return c.json({ success: false, error: 'LOTTERY_APPLICATION_CONFLICT' }, 409);
-    }
-    if (await hasReservationLimitConflict(
-      c.env,
-      user.id,
-      groupId,
-      holdStart.toISOString(),
-      holdEnd.toISOString(),
-      { kind: 'LOTTERY', id }
-    )) {
-      await externalRepository.deleteLotteryApplication(id);
-      return c.json({ success: false, error: 'RESERVATION_LIMIT_EXCEEDED' }, 409);
-    }
+    if (creationError) return c.json({ success: false, error: creationError }, 409);
     return c.json({ success: true, data: { id } });
   } catch (error) {
     if (error instanceof ZodError) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
+    if (error instanceof Error && error.message === 'RESERVATION_BUSY') {
+      return c.json({ success: false, error: 'RESERVATION_BUSY' }, 409);
+    }
     console.error('Error creating external lottery application:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }

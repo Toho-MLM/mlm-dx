@@ -4,6 +4,7 @@ import { broadcastReservationRealtimeEvent } from './reservation-realtime';
 import { prepareAndSendReservationEmail } from './reservation-email';
 import { createReservationLimitService } from '../features/reservations/application/limits';
 import { createD1ReservationLimitRepository } from '../features/reservations/infrastructure/d1-limit-repository';
+import { withReservationLimitLock } from './reservation-scope-lock';
 import { createD1GroupMembershipReader } from '../features/reservations/infrastructure/d1-membership-reader';
 import { createD1ExternalLotteryRepository } from '../features/reservations/infrastructure/d1-external-lottery-repository';
 import type {
@@ -17,7 +18,7 @@ import {
   getExternalLotteryWeightedOrderKey,
 } from '../../../../lib/shared-schemas';
 import {
-  enumerateStarts,
+  iterateStarts,
   getApplicationRange,
   getFairShareMinutes,
   getMemberSchedulingImpact,
@@ -39,23 +40,6 @@ type PreparedApplication = ApplicationRow & {
   requestedMinutes: number;
   weightedOrder: number;
 };
-
-function hasReservationLimitConflict(
-  env: Bindings,
-  userId: string,
-  groupId: string | null,
-  startTime: string,
-  endTime: string,
-  exclude?: { kind: 'HALL' | 'EXTERNAL' | 'LOTTERY'; id: string }
-): Promise<boolean> {
-  return createReservationLimitService(createD1ReservationLimitRepository(env.DB)).hasConflict({
-    userId,
-    groupId,
-    startTime,
-    endTime,
-    exclude,
-  });
-}
 
 async function getGroupMemberIds(env: Bindings, groupId: string): Promise<string[]> {
   return createD1GroupMembershipReader(env.DB).listGroupMemberIds(groupId);
@@ -239,63 +223,92 @@ async function processLotteryForTargetDate(
           : room.longestMinutes >= EXTERNAL_LOTTERY_MIN_DURATION_MINUTES)
         .sort((a, b) => b.longestMinutes - a.longestMinutes || a.roomNumber - b.roomNumber);
 
-      let assignment: { roomNumber: number; start: Date; end: Date } | null = null;
       const remainingApplications = prepared.slice(index + 1);
-      const candidates = rankedRooms.flatMap((room) => {
+      const candidates: Array<{
+        roomNumber: number;
+        start: Date;
+        end: Date;
+        contention: number;
+        madeUnschedulable: number;
+        lostOptions: number;
+      }> = [];
+      for (const room of rankedRooms) {
         const duration = hasFullRoom
           ? fairShareMinutes
           : room.longestMinutes;
-        if (duration < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES) return [];
-        return room.intervals.flatMap((interval) => enumerateStarts(interval, duration, dayRange.endUTC)).map((start) => {
-          const end = new Date(start.getTime() + duration * 60000);
-          const memberImpact = getMemberSchedulingImpact(application, start, end, remainingApplications);
-          const contention = remainingApplications.filter((remaining) => overlaps(start, end, remaining.rangeStart, remaining.rangeEnd)).length;
-          return { roomNumber: room.roomNumber, start, end, contention, ...memberImpact };
-        });
-      }).filter((candidate) => !hasMemberConflict(application.memberIds, candidate.start, candidate.end, allocated))
-        .sort((a, b) => (
-          a.madeUnschedulable - b.madeUnschedulable
-          || a.lostOptions - b.lostOptions
-          || a.contention - b.contention
-          || a.start.getTime() - b.start.getTime()
-          || a.roomNumber - b.roomNumber
-        ));
-      for (const candidate of candidates) {
-        const exceedsLimit = await hasReservationLimitConflict(
-          env,
-          application.user_id,
-          application.group_id,
-          candidate.start.toISOString(),
-          candidate.end.toISOString(),
-          { kind: 'LOTTERY', id: application.id }
-        );
-        if (!exceedsLimit) {
-          assignment = { roomNumber: candidate.roomNumber, start: candidate.start, end: candidate.end };
-          break;
+        if (duration < EXTERNAL_LOTTERY_MIN_DURATION_MINUTES) continue;
+        for (const interval of room.intervals) {
+          for (const start of iterateStarts(interval, duration, dayRange.endUTC)) {
+            const end = new Date(start.getTime() + duration * 60000);
+            if (hasMemberConflict(application.memberIds, start, end, allocated)) continue;
+            const memberImpact = getMemberSchedulingImpact(application, start, end, remainingApplications);
+            let contention = 0;
+            for (const remaining of remainingApplications) {
+              if (overlaps(start, end, remaining.rangeStart, remaining.rangeEnd)) contention += 1;
+            }
+            candidates.push({ roomNumber: room.roomNumber, start, end, contention, ...memberImpact });
+          }
         }
       }
+      candidates.sort((a, b) => (
+        a.madeUnschedulable - b.madeUnschedulable
+        || a.lostOptions - b.lostOptions
+        || a.contention - b.contention
+        || a.start.getTime() - b.start.getTime()
+        || a.roomNumber - b.roomNumber
+      ));
+      let allocation: {
+        assignment: { roomNumber: number; start: Date; end: Date };
+        result: boolean | 'WON' | 'LOST' | 'UNCHANGED';
+      } | null;
+      try {
+        allocation = await withReservationLimitLock(
+          env, application.user_id, application.group_id, async () => {
+            const exceedsLimit = await createReservationLimitService(
+              createD1ReservationLimitRepository(env.DB)
+            ).prepareConflictChecker({
+              userId: application.user_id,
+              groupId: application.group_id,
+              startTime: application.rangeStart.toISOString(),
+              endTime: application.rangeEnd.toISOString(),
+              exclude: { kind: 'LOTTERY', id: application.id },
+            });
+            const candidate = candidates.find((item) => !exceedsLimit(
+              item.start.toISOString(), item.end.toISOString()
+            ));
+            if (!candidate) return null;
+            const now = new Date().toISOString();
+            const allocationInput = {
+              application,
+              startTime: candidate.start.toISOString(),
+              endTime: candidate.end.toISOString(),
+              score: application.fairnessScore,
+              updatedAt: now,
+            };
+            const result = studio.target_type === 'HALL'
+              ? await lotteryRepository.allocateHallWon(allocationInput)
+              : await lotteryRepository.allocateWon({
+                  ...allocationInput,
+                  studioId: studio.id,
+                  roomNumber: candidate.roomNumber,
+                });
+            return { assignment: candidate, result };
+          }
+        );
+      } catch (error) {
+        if (error instanceof Error && error.message === 'RESERVATION_BUSY') {
+          console.error('Lottery application deferred while reservation scope is busy:', application.id);
+          continue;
+        }
+        throw error;
+      }
 
-      if (!assignment) {
+      if (!allocation) {
         await markLost(env, application.id, application.fairnessScore);
         processed += 1;
         continue;
       }
-
-      const now = new Date().toISOString();
-      const allocationInput = {
-        application,
-        startTime: assignment.start.toISOString(),
-        endTime: assignment.end.toISOString(),
-        score: application.fairnessScore,
-        updatedAt: now,
-      };
-      const allocationResult = studio.target_type === 'HALL'
-        ? await lotteryRepository.allocateHallWon(allocationInput)
-        : await lotteryRepository.allocateWon({
-            ...allocationInput,
-            studioId: studio.id,
-            roomNumber: assignment.roomNumber,
-          });
+      const { assignment, result: allocationResult } = allocation;
       const inserted = studio.target_type === 'HALL'
         ? allocationResult === 'WON'
         : allocationResult;

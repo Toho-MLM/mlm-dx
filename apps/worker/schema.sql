@@ -3,6 +3,7 @@
 
 -- Drop existing tables (for reset functionality)
 DROP TABLE IF EXISTS reservation_limits;
+DROP TABLE IF EXISTS reservation_scope_locks;
 DROP TABLE IF EXISTS unavailable_periods;
 DROP TABLE IF EXISTS external_reservation_usage;
 DROP TABLE IF EXISTS external_lottery_limit_holds;
@@ -112,6 +113,8 @@ CREATE TABLE IF NOT EXISTS main_band_drafts (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS main_band_drafts_singleton ON main_band_drafts ((1));
+
 CREATE TABLE IF NOT EXISTS reservations (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -123,6 +126,12 @@ CREATE TABLE IF NOT EXISTS reservations (
   updated_at DATETIME NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS reservation_scope_locks (
+  scope_key TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  expires_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS external_studios (
@@ -255,6 +264,24 @@ CREATE TABLE IF NOT EXISTS entries (
   UNIQUE(event_id, group_id)
 );
 
+CREATE TRIGGER IF NOT EXISTS entries_member_limit_before_insert
+BEFORE INSERT ON entries
+BEGIN
+  SELECT RAISE(ABORT, 'GROUP_LIMIT_EXCEEDED')
+  WHERE EXISTS (
+    SELECT 1 FROM group_member_instruments member
+    JOIN events event ON event.id = NEW.event_id
+    WHERE member.group_id = NEW.group_id AND event.group_limit > 0
+    GROUP BY member.user_id, event.group_limit
+    HAVING (
+      SELECT COUNT(DISTINCT entry.group_id)
+      FROM entries entry
+      JOIN group_member_instruments existing_member ON existing_member.group_id = entry.group_id
+      WHERE entry.event_id = NEW.event_id AND existing_member.user_id = member.user_id
+    ) >= event.group_limit
+  );
+END;
+
 CREATE TABLE IF NOT EXISTS setlist_items (
   id TEXT PRIMARY KEY,
   entry_id TEXT NOT NULL,
@@ -325,4 +352,26 @@ BEGIN
   SELECT RAISE(ABORT, 'HALL_LOTTERY_NOT_DRAWING') WHERE NOT EXISTS (
     SELECT 1 FROM hall_lotteries WHERE id = NEW.lottery_id AND state = 'DRAWING'
   );
+END;
+
+CREATE TRIGGER IF NOT EXISTS reservation_unavailable_insert
+BEFORE INSERT ON reservations
+WHEN NEW.state IN ('PENDING', 'CONFIRMED')
+  AND EXISTS (
+    SELECT 1 FROM unavailable_periods p
+    WHERE p.start_datetime < NEW.end_time AND p.end_datetime > NEW.start_time
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'BLOCKED_PERIOD_CONFLICT');
+END;
+
+CREATE TRIGGER IF NOT EXISTS reservation_unavailable_update
+BEFORE UPDATE OF start_time, end_time, state ON reservations
+WHEN NEW.state IN ('PENDING', 'CONFIRMED')
+  AND EXISTS (
+    SELECT 1 FROM unavailable_periods p
+    WHERE p.start_datetime < NEW.end_time AND p.end_datetime > NEW.start_time
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'BLOCKED_PERIOD_CONFLICT');
 END;

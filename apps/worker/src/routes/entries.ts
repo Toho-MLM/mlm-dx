@@ -84,14 +84,12 @@ entriesRoutes.post('/', async (c) => {
     const createdEntryIds = newGroupIds.map(() => crypto.randomUUID());
     await repository.create(requestData.event_id, newGroupIds, createdEntryIds, now);
 
-    if (await repository.hasLimitViolation(requestData.event_id)) {
-      await repository.deleteMany(createdEntryIds);
-      return c.json({ success: false, error: 'GROUP_LIMIT_EXCEEDED' }, 409);
-    }
-
     return c.json({ success: true });
   } catch (error) {
     console.error('Error creating entries:', error);
+    if (error instanceof Error && error.message.includes('GROUP_LIMIT_EXCEEDED')) {
+      return c.json({ success: false, error: 'GROUP_LIMIT_EXCEEDED' }, 409);
+    }
     if (error instanceof z.ZodError) {
       return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
     }

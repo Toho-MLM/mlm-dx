@@ -12,13 +12,6 @@ const getJSTHours = (date: Date): number => {
   return jstDate.getUTCHours();
 };
 
-const getJSTMinutes = (date: Date): number => {
-  const utcMs = date.getTime();
-  const jstMs = utcMs + JAPAN_TIME_OFFSET_MS;
-  const jstDate = new Date(jstMs);
-  return jstDate.getUTCMinutes();
-};
-
 const getJSTDateString = (date: Date): string => {
   const utcMs = date.getTime();
   const jstMs = utcMs + JAPAN_TIME_OFFSET_MS;
@@ -356,7 +349,7 @@ export const UpdateReservationStatusRequestSchema = z.object({
 });
 
 export const CreateExternalRequestSchema = z.object({
-  target_type: LotteryTargetTypeSchema.default('EXTERNAL'),
+  target_type: z.literal('EXTERNAL').default('EXTERNAL'),
   names: z.array(z.string().trim().min(1)).min(1),
   start_datetime: ValidDateTimeStringSchema,
   end_datetime: ValidDateTimeStringSchema,
@@ -371,29 +364,10 @@ export const CreateExternalRequestSchema = z.object({
   message: "部屋名は重複できません。",
   path: ['names'],
 }).superRefine((data, ctx) => {
-  if (data.target_type === 'EXTERNAL') {
-    if (data.draw_date != null) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '外部抽選の実行日は指定できません。',
-        path: ['draw_date'],
-      });
-    }
-    return;
-  }
-  if (!data.draw_date) {
+  if (data.draw_date != null) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'ホール抽選の実行日を指定してください。',
-      path: ['draw_date'],
-    });
-    return;
-  }
-  const drawAt = new Date(`${data.draw_date}T21:00:00+09:00`);
-  if (drawAt >= new Date(data.start_datetime)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: '抽選実行日の21:00は利用開始日時より前にしてください。',
+      message: '外部抽選の実行日は指定できません。',
       path: ['draw_date'],
     });
   }
@@ -605,12 +579,10 @@ export const validateReservationTime = (
     }
     
     const startHour = getJSTHours(start);
-    const endHour = getJSTHours(end);
-    const endMinute = getJSTMinutes(end);
     if (startHour < 6) {
       return { isValid: false, error: "利用時間は朝6時からです。" };
     }
-    if (endHour > 23 || (endHour === 23 && endMinute > 0)) {
+    if (end > new Date(`${startJSTDate}T23:00:00.000+09:00`)) {
       return { isValid: false, error: "利用時間は夜11時までです。" };
     }
     
