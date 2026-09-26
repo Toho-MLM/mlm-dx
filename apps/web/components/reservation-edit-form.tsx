@@ -2,18 +2,10 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { ToastNotice } from '@/components/toast-notice'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LoadingButton } from '@/components/ui/loading-button'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 
 type JstParts = {
   date: string
@@ -53,31 +45,29 @@ function roundUpToNextMinute(value: Date): Date {
   return rounded
 }
 
-type ReservationEditDialogProps = {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+export type ReservationEditFormProps = {
+  formId: string
+  onDirtyChange: (dirty: boolean) => void
   start: Date
   end: Date
   isSaving: boolean
   onSave: (startTime: string, endTime: string) => Promise<void>
-  title?: string
   allowCrossDay?: boolean
   rangeStart?: Date
   rangeEnd?: Date
 }
 
-export function ReservationEditDialog({
-  open,
-  onOpenChange,
+export function ReservationEditForm({
+  formId,
+  onDirtyChange,
   start,
   end,
   isSaving,
   onSave,
-  title = '予約を変更',
   allowCrossDay = false,
   rangeStart,
   rangeEnd,
-}: ReservationEditDialogProps) {
+}: ReservationEditFormProps) {
   const started = Date.now() >= start.getTime()
   const initialStart = useMemo(() => getJstParts(start), [start])
   const initialEnd = useMemo(() => getJstParts(end), [end])
@@ -87,12 +77,15 @@ export function ReservationEditDialog({
   const [endTime, setEndTime] = useState(initialEnd.time)
 
   useEffect(() => {
-    if (!open) return
     setDate(initialStart.date)
     setEndDate(initialEnd.date)
     setStartTime(initialStart.time)
     setEndTime(initialEnd.time)
-  }, [initialEnd.date, initialEnd.time, initialStart.date, initialStart.time, open])
+  }, [initialEnd.date, initialEnd.time, initialStart.date, initialStart.time])
+
+  useEffect(() => {
+    onDirtyChange(date !== initialStart.date || endDate !== initialEnd.date || startTime !== initialStart.time || endTime !== initialEnd.time)
+  }, [date, endDate, startTime, endTime, initialStart.date, initialStart.time, initialEnd.date, initialEnd.time, onDirtyChange])
 
   const today = getJstParts(new Date()).date
   const rangeStartParts = rangeStart ? getJstParts(rangeStart) : null
@@ -162,116 +155,105 @@ export function ReservationEditDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            {started
-              ? `開始済みの予約は終了${allowCrossDay ? '日時' : '時刻'}のみ変更できます。`
-              : allowCrossDay
-                ? '開始日時と終了日時を変更できます。'
-                : '予約日、開始時刻、終了時刻を変更できます。'}
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {allowCrossDay ? (
+    <form id={formId} onSubmit={handleSubmit} onInvalid={(event) => {
+      event.preventDefault()
+      const input = event.target as HTMLInputElement
+      const firstInvalid = event.currentTarget.querySelector('input:invalid, select:invalid, textarea:invalid')
+      if (input === firstInvalid) {
+        input.focus()
+        toast.error('日時を正しく入力してください', { id: formId, duration: Infinity })
+      }
+    }}>
+      {started && <ToastNotice variant="info" message={`開始済みの予約は終了${allowCrossDay ? '日時' : '時刻'}のみ変更できます。`} />}
+      <fieldset disabled={isSaving} className="space-y-4">
+        {allowCrossDay ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-reservation-start-datetime">開始日時</Label>
+              <Input
+                id="edit-reservation-start-datetime"
+                type="datetime-local"
+                min={rangeStartValue}
+                max={rangeEndValue}
+                step={60}
+                value={startDateTime}
+                readOnly={started}
+                aria-readonly={started}
+                onChange={(event) => {
+                  const [nextDate, nextTime] = event.target.value.split('T')
+                  setDate(nextDate)
+                  setStartTime(nextTime)
+                }}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-reservation-end-datetime">終了日時</Label>
+              <Input
+                id="edit-reservation-end-datetime"
+                type="datetime-local"
+                min={minimumCrossDayEndValue}
+                max={maximumCrossDayEndValue}
+                step={60}
+                value={endDateTime}
+                onChange={(event) => {
+                  const [nextDate, nextTime] = event.target.value.split('T')
+                  setEndDate(nextDate)
+                  setEndTime(nextTime)
+                }}
+                required
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="edit-reservation-date">予約日</Label>
+              <Input
+                id="edit-reservation-date"
+                type="date"
+                value={date}
+                min={minDate}
+                max={maxDate}
+                readOnly={started}
+                aria-readonly={started}
+                onChange={(event) => setDate(event.target.value)}
+                required
+              />
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="edit-reservation-start-datetime">開始日時</Label>
+                <Label htmlFor="edit-reservation-start">開始時刻</Label>
                 <Input
-                  id="edit-reservation-start-datetime"
-                  type="datetime-local"
-                  min={rangeStartValue}
-                  max={rangeEndValue}
+                  id="edit-reservation-start"
+                  type="time"
+                  min={startTimeMin}
+                  max={startTimeMax}
                   step={60}
-                  value={startDateTime}
+                  value={startTime}
                   readOnly={started}
                   aria-readonly={started}
-                  onChange={(event) => {
-                    const [nextDate, nextTime] = event.target.value.split('T')
-                    setDate(nextDate)
-                    setStartTime(nextTime)
-                  }}
+                  onChange={(event) => setStartTime(event.target.value)}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-reservation-end-datetime">終了日時</Label>
+                <Label htmlFor="edit-reservation-end">終了時刻</Label>
                 <Input
-                  id="edit-reservation-end-datetime"
-                  type="datetime-local"
-                  min={minimumCrossDayEndValue}
-                  max={maximumCrossDayEndValue}
+                  id="edit-reservation-end"
+                  type="time"
+                  min={endTimeMin}
+                  max={endTimeMax}
                   step={60}
-                  value={endDateTime}
-                  onChange={(event) => {
-                    const [nextDate, nextTime] = event.target.value.split('T')
-                    setEndDate(nextDate)
-                    setEndTime(nextTime)
-                  }}
+                  value={endTime}
+                  onChange={(event) => setEndTime(event.target.value)}
                   required
                 />
               </div>
             </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="edit-reservation-date">予約日</Label>
-                <Input
-                  id="edit-reservation-date"
-                  type="date"
-                  value={date}
-                  min={minDate}
-                  max={maxDate}
-                  readOnly={started}
-                  aria-readonly={started}
-                  onChange={(event) => setDate(event.target.value)}
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-reservation-start">開始時刻</Label>
-                  <Input
-                    id="edit-reservation-start"
-                    type="time"
-                    min={startTimeMin}
-                    max={startTimeMax}
-                    step={60}
-                    value={startTime}
-                    readOnly={started}
-                    aria-readonly={started}
-                    onChange={(event) => setStartTime(event.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-reservation-end">終了時刻</Label>
-                  <Input
-                    id="edit-reservation-end"
-                    type="time"
-                    min={endTimeMin}
-                    max={endTimeMax}
-                    step={60}
-                    value={endTime}
-                    onChange={(event) => setEndTime(event.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-            </>
-          )}
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              戻る
-            </Button>
-            <LoadingButton type="submit" isLoading={isSaving}>
-              変更
-            </LoadingButton>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </>
+        )}
+      </fieldset>
+    </form>
   )
 }

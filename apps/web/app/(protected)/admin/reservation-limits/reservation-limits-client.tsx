@@ -20,7 +20,7 @@ import { translateError } from '@/lib/error-label'
 import { useAuth } from '@/app/context/AuthContext'
 import { getLoginPath } from '@/lib/auth-redirect'
 import { isAdmin, type ReservationLimit, type ReservationLimitScope } from '@shared-schemas'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 
 type LimitFormState = {
   scope: ReservationLimitScope

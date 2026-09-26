@@ -1,5 +1,8 @@
 'use client'
 
+import { DraftDialog } from '@/components/draft-dialog'
+import { ToastNotice } from '@/components/toast-notice'
+
 import { useState, useMemo, useEffect } from 'react'
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -14,17 +17,17 @@ import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
 import { apiClient } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { showSuccessToast } from '@/lib/utils'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PlusIcon, EditIcon, TrashIcon, UploadIcon } from 'lucide-react'
@@ -460,20 +463,10 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
                       <div className="space-y-2">
                         <div className="text-sm text-gray-700">{csvMembers.length}件を読み込みました</div>
                         {duplicateEmailsInDb.length > 0 && (
-                          <Alert variant="destructive">
-                            <AlertTitle>重複ユーザーはスキップされます</AlertTitle>
-                            <AlertDescription>
-                              {duplicateEmailsInDb.length}件のメールアドレスが既存データと重複しています。{duplicateEmailsInDb.slice(0,5).join(', ')}{duplicateEmailsInDb.length > 5 ? ' 他' + (duplicateEmailsInDb.length-5) + '件' : ''}
-                            </AlertDescription>
-                          </Alert>
+                          <ToastNotice variant="warning" message="重複ユーザーはスキップされます" description={`${duplicateEmailsInDb.length}件のメールアドレスが既存データと重複しています。${duplicateEmailsInDb.slice(0,5).join(', ')}${duplicateEmailsInDb.length > 5 ? ' 他' + (duplicateEmailsInDb.length-5) + '件' : ''}`} />
                         )}
                         {(missingRequiredRows.length > 0 || invalidGradeRows.length > 0) && (
-                          <Alert className="border-amber-500/50 text-amber-800 bg-amber-50">
-                            <AlertTitle>必須不足の行はスキップされます</AlertTitle>
-                            <AlertDescription>
-                              必須列不足 {missingRequiredRows.length} 行{invalidGradeRows.length > 0 ? `、無効な学年 ${invalidGradeRows.length} 行` : ''}
-                            </AlertDescription>
-                          </Alert>
+                          <ToastNotice variant="warning" message="必須不足の行はスキップされます" description={`必須列不足 ${missingRequiredRows.length} 行${invalidGradeRows.length > 0 ? `、無効な学年 ${invalidGradeRows.length} 行` : ''}`} />
                         )}
                         <div className="max-h-64 overflow-auto border rounded">
                           <Table>
@@ -614,12 +607,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
                   <p className="text-sm text-gray-700">
                     削除対象以外のメンバーの学年を一括で1つ繰り上げます。
                   </p>
-                  <Alert variant="destructive">
-                    <AlertTitle>対象学年のメンバーは削除されます</AlertTitle>
-                    <AlertDescription>
-                      この操作を実行すると、学籍番号がnで始まる4年生とmで始まる6年生の計 {moveUpDeleteTargetCount}人は削除されます。取り消すことはできません。
-                    </AlertDescription>
-                  </Alert>
+                  <ToastNotice variant="warning" message="対象学年のメンバーは削除されます" description={`この操作を実行すると、学籍番号がnで始まる4年生とmで始まる6年生の計 ${moveUpDeleteTargetCount}人は削除されます。取り消すことはできません。`} />
                   <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
                     <p>繰上対象: {moveUpGradeTargetCount}人</p>
                     <p>削除対象: {moveUpDeleteTargetCount}人</p>
@@ -758,7 +746,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
                       transition={{ duration: 0.2 }}
                     >
                       <TableCell colSpan={isUserAdmin ? 7 : 6} className="text-center py-4 text-gray-500">
-                        該当する部員が見つかりません。
+                        検索結果 0件
                       </TableCell>
                     </motion.tr>
                   )}
@@ -770,13 +758,39 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
       </Card>
       </div>
 
-      {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>メンバーを編集</DialogTitle>
-          </DialogHeader>
+      <DraftDialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}
+        title={isWarningDialogOpen ? '管理者権限の変更確認' : 'メンバーを編集'}
+        draft={{ formData, editFormData }} busy={isSubmitting}
+        onBack={() => setIsWarningDialogOpen(false)}
+        confirmation={isWarningDialogOpen ? (
+
           <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              管理者権限を持つアカウントの役職を「部員」に変更しようとしています。
+            </p>
+            <p className="text-xs text-gray-500">
+              役職を「部員」に変更すると、管理者権限が失われます。本当に実行しますか？
+            </p>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsWarningDialogOpen(false)}
+                disabled={isSubmitting}
+              >
+                キャンセル
+              </Button>
+              <LoadingButton
+                variant="destructive"
+                onClick={handleWarningConfirm}
+                isLoading={isSubmitting}
+              >
+                変更する
+              </LoadingButton>
+            </div>
+          </div>
+        ) : undefined}
+      >
+          <div hidden={isWarningDialogOpen} className="space-y-4">
             <div>
               <Label htmlFor="edit-nickname">ニックネーム</Label>
               <Input
@@ -788,7 +802,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
             <div>
               <Label htmlFor="edit-grade">学年</Label>
               <Select value={formData.grade.toString()} onValueChange={(value) => setFormData(prev => ({ ...prev, grade: parseInt(value) }))}>
-                <SelectTrigger>
+                <SelectTrigger id="edit-grade">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -801,7 +815,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
             <div>
               <Label htmlFor="edit-role">役職</Label>
               <Select value={editFormData.role} onValueChange={(value) => setEditFormData(prev => ({ ...prev, role: value }))}>
-                <SelectTrigger>
+                <SelectTrigger id="edit-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -827,16 +841,13 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
               </div>
             </div>
             <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-                キャンセル
-              </Button>
+              <DialogClose asChild><Button variant="outline">キャンセル</Button></DialogClose>
               <LoadingButton onClick={handleUpdate} isLoading={isSubmitting}>
                 保存
               </LoadingButton>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+      </DraftDialog>
 
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
@@ -873,38 +884,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
         </DialogContent>
       </Dialog>
 
-      {/* Warning Dialog */}
-      <Dialog open={isWarningDialogOpen} onOpenChange={setIsWarningDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>確認</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              管理者権限を持つアカウントの役職を「部員」に変更しようとしています。
-            </p>
-            <p className="text-xs text-gray-500">
-              役職を「部員」に変更すると、管理者権限が失われます。本当に実行しますか？
-            </p>
-            <div className="flex justify-end space-x-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsWarningDialogOpen(false)}
-                disabled={isSubmitting}
-              >
-                キャンセル
-              </Button>
-              <LoadingButton
-                variant="destructive"
-                onClick={handleWarningConfirm}
-                isLoading={isSubmitting}
-              >
-                変更する
-              </LoadingButton>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+
     </>
   )
 }

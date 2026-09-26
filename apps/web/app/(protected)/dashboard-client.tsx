@@ -1,9 +1,10 @@
 'use client'
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import {
-  AlertCircle,
   ArrowRight,
   CalendarClock,
   CalendarDays,
@@ -11,7 +12,6 @@ import {
   ClipboardCheck,
   Clock3,
   ListChecks,
-  RefreshCw,
 } from 'lucide-react'
 import type {
   DashboardAdminAction,
@@ -23,7 +23,6 @@ import { isAdmin } from '@shared-schemas'
 import { apiClient } from '@/lib/api'
 import { useAuth } from '@/app/context/AuthContext'
 import { PageHeader } from '@/components/page-header'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -276,17 +275,7 @@ export function DashboardClient({ initialData }: { initialData?: DashboardData |
         {loading ? (
           <DashboardSkeleton />
         ) : error ? (
-          <Alert variant="destructive">
-            <AlertCircle />
-            <AlertTitle>読み込みに失敗しました</AlertTitle>
-            <AlertDescription className="mt-2 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <span>{error}</span>
-              <Button variant="outline" size="sm" onClick={loadDashboard}>
-                <RefreshCw />
-                再読み込み
-              </Button>
-            </AlertDescription>
-          </Alert>
+          <ToastNotice message={error} retry={() => void loadDashboard()} />
         ) : data ? (
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <SectionCard
@@ -294,7 +283,7 @@ export function DashboardClient({ initialData }: { initialData?: DashboardData |
               icon={<ClipboardCheck className="h-5 w-5" />}
             >
               {data.member_actions.length === 0 ? (
-                <EmptyState>現在、対応が必要な項目はありません。</EmptyState>
+                <EmptyState>要対応 0件</EmptyState>
               ) : (
                 <div className="space-y-3">
                   {data.member_actions.map((action) => (
@@ -313,7 +302,7 @@ export function DashboardClient({ initialData }: { initialData?: DashboardData |
                 icon={<ListChecks className="h-5 w-5" />}
               >
                 {data.admin_actions.length === 0 ? (
-                  <EmptyState>現在、確認が必要な設定はありません。</EmptyState>
+                  <EmptyState>要確認 0件</EmptyState>
                 ) : (
                   <div className="space-y-3">
                     {data.admin_actions.map((action) => (
@@ -330,7 +319,7 @@ export function DashboardClient({ initialData }: { initialData?: DashboardData |
                 icon={<CalendarClock className="h-5 w-5" />}
               >
                 {data.schedule_items.length === 0 ? (
-                  <EmptyState>今後14日間の予定はありません。</EmptyState>
+                  <EmptyState>予定 0件</EmptyState>
                 ) : (
                   <div className="grid gap-3 lg:grid-cols-2">
                     {data.schedule_items.map((item) => (

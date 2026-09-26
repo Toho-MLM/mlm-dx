@@ -1,11 +1,13 @@
 'use client'
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import { Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { format } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { CalendarPlus, Loader2 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { useAuth } from '@/app/context/AuthContext'
 import { HallLotteries } from '@/components/hall-lotteries'
 import { PageHeader } from '@/components/page-header'
@@ -260,13 +262,9 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
       <main className="w-full p-5">
         <HallLotteries />
         {loadError ? (
-          <div className="flex flex-col items-center gap-3 rounded-md border p-8 text-center text-sm text-muted-foreground">
-            <p>抽選情報を読み込めませんでした</p>
-            <p className="text-xs">{loadError}</p>
-            <Button type="button" variant="outline" onClick={() => void fetchData()}>再試行</Button>
-          </div>
+          <ToastNotice message={loadError} retry={() => void fetchData()} />
         ) : targetStudios.length === 0 ? (
-          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">外部抽選対象はありません</div>
+          <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">外部抽選対象 0件</div>
         ) : (
             <div className="overflow-x-auto [transform:rotateX(180deg)]">
               <div className="grid min-w-max grid-flow-col auto-cols-[17rem] items-start gap-3 py-3 [transform:rotateX(180deg)]">
@@ -304,7 +302,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
 
                     <div className="space-y-2">
                       {studioApplications.length === 0 ? (
-                        <div className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">申込はありません</div>
+                        <div className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">申込 0件</div>
                       ) : studioApplications.map((application) => {
                         const isRelated = (
                           application.user_id === user?.id || (application.group_id !== null && myGroupIds.has(application.group_id))

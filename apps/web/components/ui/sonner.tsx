@@ -13,6 +13,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      closeButton
+      duration={5000}
+      containerAriaLabel="通知"
+      style={{ pointerEvents: 'auto' }}
       toastOptions={{
         classNames: {
           toast:

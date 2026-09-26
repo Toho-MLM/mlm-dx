@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import type { Group } from '@/app/types'
 import { compareInstruments, Instrument } from '@/app/types'
 

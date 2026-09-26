@@ -12,7 +12,7 @@ import {
 } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Copy, Plus, Trash2, Wifi, WifiOff, X } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'

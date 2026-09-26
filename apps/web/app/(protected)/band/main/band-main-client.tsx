@@ -12,7 +12,7 @@ import { apiClient } from '@/lib/api'
 import { formatGroups } from '@/lib/utils'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { translateError } from '@/lib/error-label'
 
 type MemberOption = {
@@ -291,7 +291,7 @@ export function BandMainClient({ initialGroups, initialMembers }: { initialGroup
           <MainBandTableSkeleton />
         ) : rows.length === 0 ? (
           <div className="rounded-md border bg-white p-4 text-sm text-muted-foreground">
-            有効な本バンドがありません。
+            有効な本バンド 0件
           </div>
         ) : (
           <div className="space-y-3">

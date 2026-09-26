@@ -1,5 +1,7 @@
 'use client'
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import { useState, useEffect } from 'react'
 import { LoadingButton } from '@/components/ui/loading-button'
 import { Button } from '@/components/ui/button'
@@ -8,12 +10,11 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { motion } from 'framer-motion'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { ChevronDown, ChevronUp, InfoIcon } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { UserData, Instrument, instrumentNames } from '@/app/types'
 import { apiClient } from '@/lib/api'
 import { useRouter } from 'next/navigation'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { translateError } from '@/lib/error-label'
 import { useAuth } from '@/app/context/AuthContext'
 
@@ -40,7 +41,14 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
     }
   }, [step, userData.nickname, userData.instruments])
 
-  const handleNextStep = () => setStep((prev) => prev + 1)
+  const handleNextStep = () => {
+    if (!canProceed) {
+      toast.error(step === 1 ? 'ニックネームを入力してください' : '少なくとも1つの楽器を選択してください')
+      if (step === 1) document.getElementById('nickname')?.focus()
+      return
+    }
+    setStep((prev) => prev + 1)
+  }
   const handlePrevStep = () => setStep((prev) => prev - 1)
 
   const updateUserData = (key: keyof UserData, value: string | Instrument[]) => {
@@ -92,14 +100,7 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
             <p className="text-base font-semibold">{userData.name}</p>
           </div>
         </div>
-        <Alert className="flex items-center p-2">
-          <AlertTitle>
-            <InfoIcon className="h-4 w-4 mr-2" />
-          </AlertTitle>
-          <AlertDescription>
-            いずれかの情報が間違っている場合は、管理者にお問い合わせください。
-          </AlertDescription>
-        </Alert>
+        <ToastNotice variant="warning" message="登録情報をご確認ください" description={`いずれかの情報が間違っている場合は、管理者にお問い合わせください。`} />
       </CardContent>
     </motion.div>,
 
@@ -114,12 +115,7 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
             className="text-sm"
           />
         </div>
-        {!canProceed && (
-          <div className="flex items-center p-2 text-red-600 text-sm">
-            <InfoIcon className="h-4 w-4 mr-2" />
-            ニックネームは必須です。
-          </div>
-        )}
+
       </CardContent>
     </motion.div>,
 
@@ -140,12 +136,7 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
             ))}
           </div>
         </div>
-        {!canProceed && (
-          <div className="flex items-center p-2 text-red-600 text-sm">
-            <InfoIcon className="h-4 w-4 mr-2" />
-            少なくとも1つの楽器を選択してください。
-          </div>
-        )}
+
         {userData.instruments.length >= 2 && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -278,7 +269,7 @@ export function SetupWizard({ initialUserData, onComplete }: { initialUserData: 
               </Button>
             )}
             {step < steps.length - 1 ? (
-              <Button onClick={handleNextStep} disabled={!canProceed} size="sm">
+              <Button onClick={handleNextStep} aria-disabled={!canProceed} size="sm">
                 次へ
               </Button>
             ) : (

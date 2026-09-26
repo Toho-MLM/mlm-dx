@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { LoadingButton } from '@/components/ui/loading-button'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { showSuccessToast } from '@/lib/utils'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
@@ -331,7 +331,7 @@ function TimelineContent({ initialEvents }: { initialEvents?: Event[] | null }) 
                 </div>
               </div>
             ) : (
-              <div className="text-gray-500 text-center">直近のイベントがありません</div>
+              <div className="text-gray-500 text-center">直近のイベント 0件</div>
             )
           )
         ) : (
@@ -346,7 +346,7 @@ function TimelineContent({ initialEvents }: { initialEvents?: Event[] | null }) 
             events.length > 0 ? (
               <div className="text-gray-500 text-center">右上からイベントを選択してください</div>
             ) : (
-              <div className="text-gray-500 text-center">直近のイベントがありません</div>
+              <div className="text-gray-500 text-center">直近のイベント 0件</div>
             )
           )
         )}

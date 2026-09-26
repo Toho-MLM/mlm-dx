@@ -21,7 +21,7 @@ import {
 import { X } from "lucide-react"
 import { apiClient } from '@/lib/api'
 import { HttpError } from '@/lib/http-client'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { showSuccessToast } from '@/lib/utils'
 import { Event } from '@/app/types'
 

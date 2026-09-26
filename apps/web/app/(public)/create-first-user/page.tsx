@@ -1,12 +1,14 @@
 'use client'
 
+import { ToastNotice } from '@/components/toast-notice'
+
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { apiClient } from '@/lib/api'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
 import { useEffect, useState, type FormEvent } from 'react'
@@ -80,7 +82,6 @@ export default function CreateFirstUserPage() {
       const errorMessage = (error as Error).message
       const translated = translateError(errorMessage)
       setErrorMessage(translated)
-      toast.error(translated)
     } finally {
       setIsSubmitting(false)
     }
@@ -120,9 +121,7 @@ export default function CreateFirstUserPage() {
           <CardContent className="p-4">
             <div className="space-y-4">
               {errorMessage && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {errorMessage}
-                </div>
+                <ToastNotice message={errorMessage} />
               )}
               <div className="space-y-2">
                 <Label htmlFor="name">名前</Label>
