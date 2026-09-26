@@ -8,11 +8,11 @@ description: MLM-DX の Next.js フロントエンド機能を既存設計に沿
 ## ワークフロー
 
 1. `git status --short` で既存変更を把握し、対象画面と類似画面を読む。
-2. データ契約を `lib/shared-schemas.ts`、`apps/web/lib/api.ts`、`apps/web/lib/server-api.ts` で確認する。
-3. Server Component と Client Component の境界を決め、クライアント機能に必要な最小範囲だけ `"use client"` にする。
-4. 既存 UI と状態管理のパターンを再利用して実装する。
-5. loading、空状態、入力エラー、API エラー、権限制御、モバイル表示を確認する。
-6. `$verify` に従い、少なくとも Web の type-check を実行する。
+2. UI・操作・通知に影響する場合は、[デザインルール](../../../docs/design-rules.md) を読み、使う共通部品、主要操作、通知と失敗時の復帰方法を決める。
+3. データ契約を `lib/shared-schemas.ts`、`apps/web/lib/api.ts`、`apps/web/lib/server-api.ts` で確認する。
+4. Server Component と Client Component の境界を決め、クライアント機能に必要な最小範囲だけ `"use client"` にする。
+5. 共通部品を再利用し、変更対象を承認済みのデザインルールに合わせて実装する。既存画面の不一致を新しい実装へ引き継がない。
+6. `$verify` の「Web のデザイン確認」に従って正常系・失敗系・モバイル表示を確認し、少なくとも Web の type-check を実行する。
 
 ## データ取得と API
 
@@ -26,7 +26,7 @@ description: MLM-DX の Next.js フロントエンド機能を既存設計に沿
 
 - `apps/web/components/ui` の shadcn/ui、Lucide icons、既存の header/dialog/list コンポーネントを優先する。
 - Tailwind の既存トークンとレイアウトに合わせ、独自の色・間隔・ブレークポイントを安易に増やさない。
-- Dialog やフォームでは、開閉時の state 初期化、送信中の disabled、成功時の close、失敗時の再試行を扱う。
+- 通知、入力・非同期処理、ダイアログ、見た目はデザインルールの該当節を適用する。
 - 管理者モードは表示制御だけに頼らず、Worker 側の権限検証を前提とする。
 - 日時は保存形式と JST 表示を分離し、締切や日付境界を `new Date()` のローカル環境任せにしない。
 - `key`、並び順、選択状態を安定した ID で管理する。
@@ -37,3 +37,4 @@ description: MLM-DX の Next.js フロントエンド機能を既存設計に沿
 - API の request/response 型と画面の想定が一致する。
 - 既存画面の navigation、認証、管理者モードを壊さない。
 - Web の type-check 結果と、実行できなかった検証を報告する。
+- 適用したデザイン基準、画面・通知の確認結果、未実施項目、変更範囲外に残る既存の差分を簡潔に報告する。
