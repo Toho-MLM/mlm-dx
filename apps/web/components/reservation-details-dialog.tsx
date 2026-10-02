@@ -45,9 +45,13 @@ export function ReservationDetailsDialog({ open, onClose, title, subject, childr
           <fieldset disabled={busy} className="space-y-4">
             {children}
             {editor && <ReservationEditForm {...editor} formId={formId} onDirtyChange={setDirty} isSaving={busy} />}
+            {(onDelete || onCancel) && (
+              <div className="space-y-2">
+                {onDelete && <Button className="w-full" variant="destructive" onClick={() => setView('delete')}>完全に削除</Button>}
+                {onCancel && <Button className="w-full" variant="outline" onClick={() => setView('cancel')}>予約をキャンセル</Button>}
+              </div>
+            )}
             <DialogFooter>
-              {onDelete && <Button variant="destructive" onClick={() => setView('delete')}>完全に削除</Button>}
-              {onCancel && <Button variant="outline" onClick={() => setView('cancel')}>予約をキャンセル</Button>}
               <Button variant="outline" onClick={requestClose}>閉じる</Button>
               {editor && <LoadingButton form={formId} type="submit" disabled={!dirty} isLoading={busy}>保存</LoadingButton>}
             </DialogFooter>
