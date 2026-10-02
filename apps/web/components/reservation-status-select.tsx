@@ -110,7 +110,7 @@ export function ReservationStatusSelect(props: Props) {
           {Object.values(ReservationState).map((state) => <SelectItem key={state} value={state}>{eventStateNames[state]}</SelectItem>)}
         </SelectContent>
       </Select>
-      {uncertain && <Button variant="outline" disabled={busy} onClick={() => void check()}>保存結果を確認</Button>}
+      {uncertain && <Button className="w-full" variant="outline" disabled={busy} onClick={() => void check()}>保存結果を確認</Button>}
     </div>
   )
 }
