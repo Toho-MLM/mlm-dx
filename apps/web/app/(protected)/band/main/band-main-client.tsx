@@ -66,6 +66,7 @@ function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidt
 
 function downloadRowsAsPng(rows: MainBandRow[]) {
   const scale = 2
+  const indexColumnWidth = 64
   const bandColumnWidth = 180
   const instrumentColumnWidth = 180
   const headerHeight = 56
@@ -73,7 +74,7 @@ function downloadRowsAsPng(rows: MainBandRow[]) {
   const paddingY = 12
   const lineHeight = 22
   const minRowHeight = 54
-  const tableWidth = bandColumnWidth + instrumentOrder.length * instrumentColumnWidth
+  const tableWidth = indexColumnWidth + bandColumnWidth + instrumentOrder.length * instrumentColumnWidth
 
   const measureCanvas = document.createElement('canvas')
   const measureContext = measureCanvas.getContext('2d')
@@ -112,9 +113,10 @@ function downloadRowsAsPng(rows: MainBandRow[]) {
   context.font = '600 14px sans-serif'
   context.fillStyle = '#111827'
   context.textBaseline = 'middle'
-  context.fillText('バンド', paddingX, headerHeight / 2)
+  context.fillText('番号', paddingX, headerHeight / 2)
+  context.fillText('バンド', indexColumnWidth + paddingX, headerHeight / 2)
 
-  let x = bandColumnWidth
+  let x = indexColumnWidth + bandColumnWidth
   instrumentOrder.forEach(instrument => {
     const color = canvasInstrumentColors[instrument]
     const label = instrumentNames[instrument]
@@ -129,7 +131,7 @@ function downloadRowsAsPng(rows: MainBandRow[]) {
   })
 
   context.strokeStyle = '#e5e7eb'
-  for (let columnX = 0; columnX <= tableWidth; columnX += columnX === 0 ? bandColumnWidth : instrumentColumnWidth) {
+  for (const columnX of [0, indexColumnWidth, ...Array.from({ length: instrumentOrder.length + 1 }, (_, index) => indexColumnWidth + bandColumnWidth + index * instrumentColumnWidth)]) {
     context.beginPath()
     context.moveTo(columnX, 0)
     context.lineTo(columnX, tableHeight)
@@ -147,14 +149,15 @@ function downloadRowsAsPng(rows: MainBandRow[]) {
 
     context.font = '600 14px sans-serif'
     context.fillStyle = '#111827'
+    context.fillText(band.mainIndex !== null ? String(band.mainIndex + 1) : '—', paddingX, y + paddingY + lineHeight / 2)
     wrapCanvasText(context, band.name, bandColumnWidth - paddingX * 2).forEach((line, lineIndex) => {
-      context.fillText(line, paddingX, y + paddingY + lineHeight / 2 + lineIndex * lineHeight)
+      context.fillText(line, indexColumnWidth + paddingX, y + paddingY + lineHeight / 2 + lineIndex * lineHeight)
     })
 
     context.font = '14px sans-serif'
     instrumentOrder.forEach((instrument, instrumentIndex) => {
       const names = cells[instrument]
-      const cellX = bandColumnWidth + instrumentIndex * instrumentColumnWidth
+      const cellX = indexColumnWidth + bandColumnWidth + instrumentIndex * instrumentColumnWidth
       context.fillStyle = names.length > 0 ? '#111827' : '#9ca3af'
 
       const lines = names.length > 0
@@ -311,6 +314,7 @@ export function BandMainClient({ initialGroups, initialMembers }: { initialGroup
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="w-16 whitespace-nowrap font-semibold text-foreground">番号</TableHead>
                   <TableHead className="min-w-44 font-semibold text-foreground">バンド</TableHead>
                   {instrumentOrder.map(instrument => (
                     <TableHead key={instrument} className="min-w-40 font-semibold text-foreground">
@@ -344,6 +348,7 @@ export function BandMainClient({ initialGroups, initialMembers }: { initialGroup
                     onDragEnd={() => setDraggingBandId(null)}
                     className={draggingBandId === band.id ? 'opacity-50' : undefined}
                   >
+                    <TableCell className="font-medium tabular-nums">{band.mainIndex !== null ? band.mainIndex + 1 : '—'}</TableCell>
                     <TableCell className="whitespace-nowrap font-medium">
                       <div className="flex items-center gap-2">
                         {canReorder && (
@@ -388,6 +393,7 @@ function MainBandTableSkeleton() {
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
+            <TableHead className="w-16"><Skeleton className="h-5 w-8" /></TableHead>
             <TableHead className="min-w-36">
               <Skeleton className="h-5 w-16" />
             </TableHead>
@@ -401,6 +407,7 @@ function MainBandTableSkeleton() {
         <TableBody>
           {[0, 1, 2, 3].map(row => (
             <TableRow key={row}>
+              <TableCell><Skeleton className="h-5 w-8" /></TableCell>
               <TableCell>
                 <Skeleton className="h-5 w-24" />
               </TableCell>
