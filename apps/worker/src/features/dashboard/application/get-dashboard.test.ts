@@ -21,4 +21,20 @@ describe('getDashboard', () => {
     expect(result.admin_actions).toEqual([]);
     expect(result.schedule_items[0].kind).toBe('HALL_RESERVATION');
   });
+
+  it('セトリのバンド順を締切順で上書きせず、エントリー案内を混ぜても5件の上限を保つ', async () => {
+    const bandIds = [3, 4, 5, 6, 7].map((value) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`);
+    const result = await getDashboard({
+      ...repository,
+      emptySetlists: async () => bandIds.map((group_id, index) => ({
+        event_id: '00000000-0000-4000-8000-000000000001', event_title: 'ライブ',
+        group_id, group_name: `バンド${index + 1}`,
+        due_at: index === 0 ? '2026-01-04T00:00:00.000Z' : '2026-01-03T00:00:00.000Z',
+      })),
+    }, 'user-1', false, new Date('2026-01-01T00:00:00.000Z'));
+    expect(result.member_actions).toHaveLength(5);
+    expect(result.member_actions[0].kind).toBe('ENTRY_AVAILABLE');
+    expect(result.member_actions.filter((item) => item.kind === 'SETLIST_EMPTY').map((item) => item.group_id))
+      .toEqual(bandIds.slice(0, 4));
+  });
 });

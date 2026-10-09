@@ -23,6 +23,8 @@ const getJSTDateString = (date: Date): string => {
 export const InstrumentSchema = z.enum(['VO', 'GT', 'KEY', 'DR', 'BA']);
 export const UserRoleSchema = z.enum(['MGR', 'CHF', 'MAC', 'MBR', 'ADM', 'NHD', 'NAC']);
 
+export const AdminModeQuerySchema = z.enum(['true', 'false']).default('false').transform((value) => value === 'true');
+
 const ValidDateTimeStringSchema = z.string()
   .datetime({ offset: true })
   .transform((value) => new Date(value).toISOString());
@@ -72,6 +74,7 @@ export const ReservationSchema = z.object({
   group_id: UuidSchema.nullable(),
   user_name: z.string().nullable(),
   group_name: z.string().nullable(),
+  main_index: z.number().int().nonnegative().nullable(),
   start_time: z.string(),
   end_time: z.string(),
   state: ReservationStateSchema,
@@ -99,6 +102,7 @@ export const ExternalReservationSchema = z.object({
   group_id: UuidSchema.nullable(),
   user_name: z.string().nullable(),
   group_name: z.string().nullable(),
+  main_index: z.number().int().nonnegative().nullable(),
   start_time: z.string(),
   end_time: z.string(),
   state: ReservationStateSchema,
@@ -111,6 +115,8 @@ export const ExternalReservationConflictSchema = z.object({
   reservation_id: UuidSchema,
   reservation_type: z.enum(['HALL', 'EXTERNAL']),
   reservation_name: z.string(),
+  group_id: UuidSchema.nullable(),
+  main_index: z.number().int().nonnegative().nullable(),
   location_name: z.string(),
   start_time: z.string(),
   end_time: z.string(),
@@ -746,9 +752,11 @@ export const TimelineItemSchema = z.object({
   entry_id: UuidSchema,
   group_id: UuidSchema,
   group_name: z.string(),
+  main_index: z.number().int().nonnegative().nullable(),
   start_time: z.string().nullable(),
   end_time: z.string().nullable(),
   position: z.number().nullable(),
+  band_order: z.number().int().min(1),
   is_virtual: z.boolean().optional(),
 });
 
@@ -811,6 +819,7 @@ export const EventSetlistBundleItemSchema = z.object({
     note: z.string().nullable().optional(),
   }),
   group_name: z.string(),
+  main_index: z.number().int().nonnegative().nullable(),
   setlist_items: z.array(z.object({
     position: z.number(),
     title: z.string(),
@@ -943,6 +952,7 @@ export const CreateHallLotteryApplicationRequestSchema = z.object({
 }).refine(v => new Set(v.preferences).size === v.preferences.length, { message: '希望日時が重複しています' });
 export const HallLotteryApplicationSchema = z.object({
   id: z.string().uuid(), lottery_id: z.string().uuid(), group_id: z.string().uuid(), group_name: z.string(),
+  main_index: z.number().int().nonnegative().nullable(),
   user_id: z.string().uuid(), state: z.enum(['PENDING', 'WON', 'LOST', 'CANCELLED']),
   preferences: z.array(z.string().datetime()),
   winning_rank: z.number().int().nullable(), reservation_id: z.string().uuid().nullable(),

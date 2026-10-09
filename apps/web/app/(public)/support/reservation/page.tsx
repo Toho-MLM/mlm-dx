@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/page-header';
 export default function ReservationSupportPage() {
   return (
     <>
-      <PageHeader showSidebarTrigger={false} />
+      <PageHeader />
       <div className="p-4 pt-0 mx-auto">
       <Card className="pt-4">
         <CardContent>
@@ -47,13 +47,13 @@ export default function ReservationSupportPage() {
             予約は日をまたがず、朝6時から夜11時の間で最短10分・最長4時間まで、かつ2週間先まで登録できます。所属バンド名義で予約する場合は、事前にバンドメンバーとして登録されている必要があります。
           </p>
           <h4 className="text-md font-semibold ml-2 mt-4">当日の予約</h4>
-          <p className="ml-2">
+          <div className="ml-2">
             予約日が当日の場合は送信直後に自動判定が行われ、空きがあれば即時 <Badge className={reservationStateColors[ReservationState.CONFIRMED]}>確定</Badge>、空きがなければ <Badge className={reservationStateColors[ReservationState.DECLINED]}>却下</Badge> されます。部分的に空きがある場合は、利用可能な範囲に時間が自動調整されます。
-          </p>
+          </div>
           <h4 className="text-md font-semibold ml-2 mt-4">翌日以降の予約</h4>
-          <p className="ml-2">
+          <div className="ml-2">
             未来日の予約は一旦 <Badge className={reservationStateColors[ReservationState.PENDING]}>保留中</Badge> として登録され、予約日の午前0時（JST）に実行されるバッチ処理で空き状況を判定します。
-          </p>
+          </div>
           <h3 className="mt-4 text-lg font-semibold">予約のキャンセル</h3>
           <ol className="list-decimal list-inside ml-2">
             <li>予約表ページを開く</li>
@@ -61,9 +61,9 @@ export default function ReservationSupportPage() {
             <li>右上の <CalendarX2 className="inline-block h-5 w-5 relative left-[-2px] top-[-3px]" /> を押す</li>
             <li>内容を確認してキャンセルする</li>
           </ol>
-          <p className="ml-2">
+          <div className="ml-2">
             キャンセルできるのは <Badge className={reservationStateColors[ReservationState.PENDING]}>保留中</Badge> と <Badge className={reservationStateColors[ReservationState.CONFIRMED]}>確定</Badge> の予約のみです。団体予約の場合は、同じバンドのメンバーもキャンセルできます。
-          </p>
+          </div>
           <h3 className="mt-4 text-lg font-semibold">自動処理の流れ</h3>
           <p className="ml-2">
             毎日午前0時（JST）に以下の処理が実行されます。

@@ -33,6 +33,8 @@ export type MemberConflictRow = {
   reservation_id: string;
   reservation_type: 'HALL' | 'EXTERNAL';
   reservation_name: string | null;
+  group_id: string | null;
+  main_index: number | null;
   location_name: string;
   start_time: string;
   end_time: string;

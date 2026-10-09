@@ -2,12 +2,13 @@
 
 import { ToastNotice } from '@/components/toast-notice'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { EventCard } from "./event-card"
 import { EventForm } from "./event-form"
 import { Event } from "@/app/types"
 import { EventPageHeader } from '@/components/event-page-header'
 import { useAuth } from '@/app/context/AuthContext'
+import { useAdminMode } from '@/hooks/use-admin-mode'
 import { isAdmin } from '@shared-schemas'
 import { toast } from '@/lib/toast'
 import {
@@ -25,7 +26,7 @@ import { showSuccessToast } from '@/lib/utils'
 type GroupOption = { id: string; name: string; main_index: number | null }
 type EntryOption = { id: string; event_id: string; group_id: string; note?: string | null }
 
-export function EventClient({ initialEvents, initialGroups, initialEntries }: { initialEvents?: Event[] | null; initialGroups?: GroupOption[] | null; initialEntries?: EntryOption[] | null }) {
+export function EventClient({ initialEvents, initialGroups, initialEntries, initialAdminMode = false }: { initialAdminMode?: boolean; initialEvents?: Event[] | null; initialGroups?: GroupOption[] | null; initialEntries?: EntryOption[] | null }) {
   const [events, setEvents] = useState<Event[]>(initialEvents ?? [])
   const [loadingEvents, setLoadingEvents] = useState(initialEvents === undefined || initialEvents === null)
   const [eventsError, setEventsError] = useState<string | null>(initialEvents === null ? 'イベントを読み込めませんでした。' : null)
@@ -38,25 +39,29 @@ export function EventClient({ initialEvents, initialGroups, initialEntries }: { 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null)
   const { user } = useAuth()
-  const isUserAdmin = user && isAdmin(user.role)
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
+  const aggregatesRequestId = useRef(0)
 
   const fetchAggregates = useCallback(async () => {
+    const requestId = ++aggregatesRequestId.current
     try {
       setLoadingEntries(true)
       setAggregatesError(false)
       const [groupsRes, entriesRes] = await Promise.all([
-        apiClient.getGroupOptions(!!isUserAdmin),
+        apiClient.getGroupOptions(isAdminMode),
         apiClient.getEntries(),
       ])
+      if (requestId !== aggregatesRequestId.current) return
       if (groupsRes.success && groupsRes.data) setGroupOptions(groupsRes.data)
       if (entriesRes.success && entriesRes.data) setEntries(entriesRes.data)
       if (!groupsRes.success || !entriesRes.success) throw new Error('AGGREGATES_FETCH_FAILED')
     } catch {
+      if (requestId !== aggregatesRequestId.current) return
       setAggregatesError(true)
     } finally {
-      setLoadingEntries(false)
+      if (requestId === aggregatesRequestId.current) setLoadingEntries(false)
     }
-  }, [isUserAdmin])
+  }, [isAdminMode])
 
   const fetchEvents = async () => {
     try {
@@ -74,10 +79,24 @@ export function EventClient({ initialEvents, initialGroups, initialEntries }: { 
 
   useEffect(() => {
     if (initialEvents === undefined || initialEvents === null) void fetchEvents()
-    if (initialGroups === undefined || initialGroups === null || initialEntries === undefined || initialEntries === null) {
-      void fetchAggregates()
+    else {
+      setEvents(initialEvents)
+      setEventsError(null)
+      setLoadingEvents(false)
     }
-  }, [fetchAggregates, initialEntries, initialEvents, initialGroups])
+  }, [initialEvents])
+
+  useEffect(() => {
+    if (initialGroups != null && initialEntries != null && isAdminMode === initialAdminMode) {
+      aggregatesRequestId.current += 1
+      setGroupOptions(initialGroups)
+      setEntries(initialEntries)
+      setAggregatesError(false)
+      setLoadingEntries(false)
+      return
+    }
+    void fetchAggregates()
+  }, [fetchAggregates, initialEntries, initialGroups, initialAdminMode, isAdminMode])
 
   const handleEdit = (id: string) => {
     const event = events.find(e => e.id === id)
@@ -148,7 +167,7 @@ export function EventClient({ initialEvents, initialGroups, initialEntries }: { 
     return (
       <>
         <EventPageHeader
-          onAddEvent={isUserAdmin ? handleAdd : undefined}
+          onAddEvent={isAdminMode ? handleAdd : undefined}
         />
         <div className="p-4 pt-0 mx-auto">
           <EventProvider value={{ groupOptions: [], userEntries: [], loadingEntries: true, onEntriesChanged: handleEntriesChanged }}>
@@ -166,7 +185,7 @@ export function EventClient({ initialEvents, initialGroups, initialEntries }: { 
   return (
     <>
       <EventPageHeader
-        onAddEvent={isUserAdmin ? handleAdd : undefined}
+        onAddEvent={isAdminMode ? handleAdd : undefined}
       />
       <div className="p-4 pt-0 mx-auto">
       {eventsError ? (
@@ -174,7 +193,7 @@ export function EventClient({ initialEvents, initialGroups, initialEntries }: { 
       ) : aggregatesError ? (
         <ToastNotice message="参加状況を読み込めませんでした。" retry={() => void fetchAggregates()} />
       ) : null}
-      <EventProvider value={{ groupOptions, userEntries: entries, loadingEntries, onEntriesChanged: handleEntriesChanged, onEdit: isUserAdmin ? handleEdit : undefined, onDelete: isUserAdmin ? handleDeleteClick : undefined }}>
+      <EventProvider value={{ groupOptions, userEntries: entries, loadingEntries, onEntriesChanged: handleEntriesChanged, onEdit: isAdminMode ? handleEdit : undefined, onDelete: isAdminMode ? handleDeleteClick : undefined }}>
         <div className="space-y-5">
           {!eventsError && events.length === 0 ? (
             <div className="rounded-md border bg-white p-6 text-center text-sm text-muted-foreground">イベント 0件</div>
@@ -186,7 +205,7 @@ export function EventClient({ initialEvents, initialGroups, initialEntries }: { 
           ))}
         </div>
       </EventProvider>
-      {isUserAdmin && isFormOpen && (
+      {isAdminMode && isFormOpen && (
         <EventForm
           event={editingEvent}
           isOpen={isFormOpen}

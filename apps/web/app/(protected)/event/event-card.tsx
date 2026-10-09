@@ -1,3 +1,4 @@
+import { BandTypeBadge } from '@/components/band-type-badge'
 import { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -15,6 +16,9 @@ import Link from 'next/link'
 import { Badge } from "@/components/ui/badge"
 import { Music } from 'lucide-react'
 import { useEventContext } from './event-context'
+import { useAuth } from '@/app/context/AuthContext'
+import { useAdminMode } from '@/hooks/use-admin-mode'
+import { isAdmin } from '@shared-schemas'
 
 interface EventCardProps {
   event: Event
@@ -106,6 +110,8 @@ export function EventCard({ event }: EventCardProps) {
   const onEntriesChanged = ctx?.onEntriesChanged
   const onEdit = ctx?.onEdit
   const onDelete = ctx?.onDelete
+  const { user } = useAuth()
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
   const [isEntryDialogOpen, setIsEntryDialogOpen] = useState(false)
   
   const userEntryIds = useMemo(() => {
@@ -119,13 +125,13 @@ export function EventCard({ event }: EventCardProps) {
     const options = groupOptions ?? []
     const entries = userEntries ?? []
     if (groupLimit === 0) {
-      return options.filter(g => g.main_index !== null).map(g => g.name)
+      return options.filter(g => g.main_index !== null)
     }
-    const groupMap = new Map(options.map(g => [g.id, g.name]))
+    const groupMap = new Map(options.map(g => [g.id, g]))
     const eventEntries = entries.filter(e => e.event_id === event.id)
     return eventEntries
       .map(entry => groupMap.get(entry.group_id))
-      .filter((name): name is string => name !== undefined)
+      .filter((group): group is typeof options[number] => group !== undefined)
   }, [groupLimit, groupOptions, userEntries, event.id])
   
   const formatDate = (dateString: string) => {
@@ -264,10 +270,11 @@ export function EventCard({ event }: EventCardProps) {
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {enteredGroups.map((groupName, index) => (
-                  <Badge key={index} variant="secondary">
-                    {groupName}
-                  </Badge>
+                {enteredGroups.map(group => (
+                  <div key={group.id} className="flex flex-wrap items-center gap-1">
+                    <Badge variant="secondary">{group.name}</Badge>
+                    <BandTypeBadge mainIndex={group.main_index} />
+                  </div>
                 ))}
               </div>
             )}
@@ -286,7 +293,7 @@ export function EventCard({ event }: EventCardProps) {
                     variant="outline"
                     className="w-full"
                     onClick={() => setIsEntryDialogOpen(true)}
-                    disabled={!event.is_entry_accepting}
+                    disabled={!event.is_entry_accepting && !isAdminMode}
                   >
                     <Users className="mr-2 h-4 w-4" />
                     参加登録

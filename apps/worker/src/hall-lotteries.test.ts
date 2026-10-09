@@ -99,10 +99,10 @@ describe('ホール抽選 HTTP 境界', () => {
       id,
       '00000000-0000-4000-8000-000000000002',
     );
-    await request(`/${id}/applications`, 'ADM');
+    await request(`/${id}/applications?admin=true`, 'ADM');
     expect(mocks.applications).toHaveBeenLastCalledWith(id, undefined);
   });
-  it('代理申込権限はリクエスト本文ではなく認証ユーザーのロールで決定する', async () => {
+  it('代理申込は管理者モード指定と認証ユーザーのロールで決定する', async () => {
     const body = {
       group_id: id,
       preferences: ['2026-10-01T10:00:00+09:00'],
@@ -116,7 +116,7 @@ describe('ホール抽選 HTTP 境界', () => {
       ['2026-10-01T01:00:00.000Z'],
       false,
     );
-    await request(`/${id}/applications`, 'ADM', body);
+    await request(`/${id}/applications?admin=true`, 'ADM', body);
     expect(mocks.apply).toHaveBeenLastCalledWith(
       id,
       '00000000-0000-4000-8000-000000000002',

@@ -1,5 +1,6 @@
 'use client'
 
+import { BandTypeBadge } from '@/components/band-type-badge'
 import React, { useEffect, useMemo, useState, Suspense, useCallback } from 'react'
 import { memo } from 'react'
 import { useRef } from 'react'
@@ -30,6 +31,7 @@ import { useAdminMode } from '@/hooks/use-admin-mode'
 interface EntryWithSetlist {
   entry: Entry
   groupName: string
+  mainIndex: number | null
   setlistItems: SetlistItem[]
 }
 
@@ -42,14 +44,18 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
   const [creatingEntry, setCreatingEntry] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState<string>('')
 
+  const sectionRequestId = useRef(0)
   const loadSectionData = useCallback(async () => {
+    const requestId = ++sectionRequestId.current
     try {
       setSectionLoading(true)
       const bundle = await apiClient.getEventSetlist(event.id, isAdminMode)
+      if (requestId !== sectionRequestId.current) return
       if (bundle.success && bundle.data) {
         const result: EntryWithSetlist[] = bundle.data.map(b => ({
           entry: b.entry as Entry,
           groupName: b.group_name,
+          mainIndex: b.main_index,
           setlistItems: b.setlist_items.map(i => ({
             id: `${b.entry.id}-${i.position}`,
             entry_id: b.entry.id,
@@ -61,9 +67,10 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
         setSectionEntriesWithSetlist(result)
       }
     } catch {
+      if (requestId !== sectionRequestId.current) return
       toast.error('データの取得に失敗しました')
     } finally {
-      setSectionLoading(false)
+      if (requestId === sectionRequestId.current) setSectionLoading(false)
     }
   }, [event.id, isAdminMode])
 
@@ -163,8 +170,9 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
                 return (
                   <div key={item.entry.id} className="border rounded-lg">
                     <div className="flex items-center justify-between gap-2 p-2 bg-gray-100 rounded-md">
-                      <div className="flex items-baseline gap-4 min-w-0">
-                        <span className="font-bold ml-2">{item.groupName}</span>
+                      <div className="flex flex-wrap items-center gap-2 min-w-0">
+                        <span className="font-bold ml-2 break-words">{item.groupName}</span>
+                        <BandTypeBadge mainIndex={item.mainIndex} />
                       </div>
                       <Button variant="outline" size="sm" className="w-auto self-start flex-shrink-0" onClick={() => onEdit(item)} disabled={!event.is_setlist_accepting}>
                         編集
@@ -332,6 +340,7 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
         const entriesWithSetlists: EntryWithSetlist[] = bundle.data.map(b => ({
           entry: b.entry as Entry,
           groupName: b.group_name,
+          mainIndex: b.main_index,
           setlistItems: b.setlist_items.map(i => ({
             id: `${b.entry.id}-${i.position}`,
             entry_id: b.entry.id,
@@ -571,7 +580,10 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
         {editDialogOpenRef.current = !!editDialogEntry}
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editDialogEntry?.groupName}</DialogTitle>
+            <DialogTitle className="flex flex-wrap items-center gap-2">
+              {editDialogEntry?.groupName}
+              {editDialogEntry && <BandTypeBadge mainIndex={editDialogEntry.mainIndex} />}
+            </DialogTitle>
           </DialogHeader>
           {editDialogEntry && (
             <fieldset className="space-y-4" disabled={!!submitting.get(editDialogEntry.entry.id)}>

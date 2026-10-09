@@ -4,6 +4,7 @@ import React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { PlusIcon } from 'lucide-react';
+import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext';
 import { isAdmin } from '../../../lib/shared-schemas';
 
@@ -14,11 +15,11 @@ interface EventPageHeaderProps {
 
 export function EventPageHeader({ onAddEvent, className }: EventPageHeaderProps) {
   const { user } = useAuth();
-  const isUserAdmin = user && isAdmin(user.role);
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role));
 
   const rightActions = (
     <div className="flex items-center gap-2">
-      {isUserAdmin && onAddEvent && (
+      {isAdminMode && onAddEvent && (
         <Button size="sm" onClick={onAddEvent}>
           <PlusIcon className="h-4 w-4" />
           作成

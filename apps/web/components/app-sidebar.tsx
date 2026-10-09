@@ -47,13 +47,13 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         {navigationConfig.map((group, index) => (
-          group.adminOnly && (!user || !isAdmin(user.role)) ? null :
+          group.adminOnly && !isAdminMode ? null :
           <SidebarGroup key={index}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item, idx) => {
-                  if (item.adminOnly && (!user || !isAdmin(user.role))) {
+                  if (item.adminOnly && !isAdminMode) {
                     return null;
                   }
                   const IconComponent = iconMap[item.iconName as keyof typeof iconMap];

@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import type { D1Database } from '@cloudflare/workers-types';
 import { createReservationProcessingService } from '../application/processing';
 import { createD1HallReservationRepository } from './d1-hall-repository';
+import { createD1ExternalReservationRepository } from './d1-external-repository';
+import { ExternalReservationConflictSchema, ExternalReservationSchema, ReservationSchema } from '@shared-schemas';
 import { createD1ReservationProcessingRepository } from './d1-processing-repository';
 import { createD1ReservationScopeLockRepository } from './d1-scope-lock-repository';
 
@@ -65,6 +67,53 @@ function newReservation() {
     createdAt: now, enforceProtection: false,
   };
 }
+
+describe('reservation band numbers at the D1 boundary', () => {
+  it('ホール・外部予約と重複予約で保存済みの本バンド番号、自由バンド、個人名義を区別する', async () => {
+    const { sqlite, db, repository } = setup();
+    const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+    const studioId = id(20);
+    const identities = [id(21), id(22), null];
+    try {
+      sqlite.prepare('INSERT INTO external_studios (id, start_datetime, end_datetime, room_names, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(studioId, start, end, '["スタジオ"]', now, now);
+      for (const [index, groupId] of identities.entries()) {
+        if (groupId) {
+          sqlite.prepare('INSERT INTO groups (id, name, main_index, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+            .run(groupId, `バンド${index}`, index === 0 ? 2 : null, now, now);
+          sqlite.prepare('INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+            .run(id(30 + index), groupId, userId, 'VO', now, now);
+        }
+        sqlite.prepare('INSERT INTO reservations (id, user_id, group_id, start_time, end_time, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(id(40 + index), userId, groupId, start, end, 'CONFIRMED', now, now);
+        sqlite.prepare('INSERT INTO external_reservations (id, external_studio_id, room_number, user_id, group_id, start_time, end_time, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(id(50 + index), studioId, 1, userId, groupId, start, end, 'CONFIRMED', now, now);
+      }
+      const external = createD1ExternalReservationRepository(db);
+      for (const admin of [false, true]) {
+        const hallRows = (await repository.listVisibleReservations({ userId, admin, since: now }))
+          .map(row => ReservationSchema.parse({ ...row, cancellable: Boolean(row.cancellable), is_lottery: Boolean(row.is_lottery) }));
+        const externalRows = (await external.listVisibleReservations(userId, admin))
+          .map(row => ExternalReservationSchema.parse({ ...row, cancellable: Boolean(row.cancellable) }));
+        for (const rows of [hallRows, externalRows]) {
+          expect(rows.map(row => [row.group_id, row.main_index])).toEqual([[id(21), 2], [id(22), null], [null, null]]);
+          expect(rows[0]).not.toHaveProperty('created_at');
+        }
+      }
+      const conflicts = (await external.listMemberConflictRows({ memberIds: [userId], startTime: start, endTime: end }))
+        .map(row => ExternalReservationConflictSchema.parse({ ...row, member_name: 'Test' }));
+      expect(conflicts).toHaveLength(6);
+      for (const type of ['HALL', 'EXTERNAL']) {
+        expect(conflicts.filter(row => row.reservation_type === type).map(row => [row.group_id, row.main_index]))
+          .toEqual([[id(21), 2], [id(22), null], [null, null]]);
+      }
+      sqlite.prepare('UPDATE groups SET main_index = 4 WHERE id = ?').run(id(21));
+      expect((await external.listVisibleReservations(userId, false))[0].main_index).toBe(4);
+    } finally {
+      sqlite.close();
+    }
+  });
+});
 
 describe('reservation scope lock storage', () => {
   it('同じ名義のロックを二重取得せず、解放後に再取得する', async () => {

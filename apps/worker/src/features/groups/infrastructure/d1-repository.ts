@@ -1,5 +1,6 @@
 import type { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import type { GroupRepository } from '../application/repository';
+import { BAND_DISPLAY_ORDER_SQL } from './group-order';
 
 function assignmentStatements(db: D1Database, groupId: string, assignments: Record<string, string[]>, now: string, createId: () => string): D1PreparedStatement[] {
   return Object.entries(assignments).flatMap(([instrument, userIds]) => userIds.map((userId) => db.prepare(`
@@ -49,10 +50,10 @@ export function createD1GroupRepository(db: D1Database): GroupRepository {
         SELECT DISTINCT g.* FROM groups g WHERE g.main_index IS NOT NULL AND g.is_active = TRUE
         ORDER BY g.main_index ASC
       ` : mode === 'admin' ? `
-        SELECT DISTINCT g.* FROM groups g ORDER BY g.created_at DESC, g.id DESC
+        SELECT DISTINCT g.* FROM groups g ORDER BY ${BAND_DISPLAY_ORDER_SQL}
       ` : `
         SELECT DISTINCT g.* FROM groups g JOIN group_member_instruments gmi ON g.id = gmi.group_id
-        WHERE gmi.user_id = ? ORDER BY g.created_at DESC, g.id DESC
+        WHERE gmi.user_id = ? ORDER BY ${BAND_DISPLAY_ORDER_SQL}
       `;
       const groups = mode === 'member'
         ? await db.prepare(query).bind(userId).all<Record<string, unknown>>()

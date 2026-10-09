@@ -44,6 +44,7 @@ export type CalendarEvent = {
     group_id?: string | null
     user_name?: string
     group_name?: string
+    main_index?: number | null
     state?: ReservationState
     is_lottery?: boolean
     cancellable?: boolean
@@ -71,6 +72,7 @@ export function toReservationCalendarEvents(reservations: Reservation[]): Calend
       group_id: reservation.group_id,
       user_name: reservation.user_name || undefined,
       group_name: reservation.group_name || undefined,
+      main_index: reservation.main_index,
       state: reservation.state as ReservationState,
       cancellable: reservation.cancellable,
       is_lottery: reservation.is_lottery,

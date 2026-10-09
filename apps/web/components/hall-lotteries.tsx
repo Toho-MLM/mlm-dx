@@ -1,5 +1,8 @@
 'use client'
 
+import { BandTypeBadge } from '@/components/band-type-badge'
+import { useAdminMode } from '@/hooks/use-admin-mode'
+
 import { ToastNotice } from '@/components/toast-notice'
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
@@ -73,7 +76,7 @@ export function HallLotteries({
   onCreateOpenChange?: (open: boolean) => void
 }) {
   const { user } = useAuth()
-  const canApplyForAllBands = !!user && isAdmin(user.role)
+  const [canApplyForAllBands] = useAdminMode(user && isAdmin(user.role))
   const [lotteries, setLotteries] = useState<HallLottery[]>([])
   const [selectedId, setSelectedId] = useState('')
   const [applications, setApplications] = useState<HallLotteryApplication[]>([])
@@ -121,7 +124,9 @@ export function HallLotteries({
   const accepting =
     selected?.state === 'OPEN' && new Date(selected.draw_at).getTime() > now
 
+  const loadRequest = useRef(0)
   const load = useCallback(async () => {
+    const request = ++loadRequest.current
     try {
       setError('')
       const [response, groupResponse] = await Promise.all([
@@ -130,9 +135,14 @@ export function HallLotteries({
           ? apiClient.getGroupOptions(canApplyForAllBands)
           : Promise.resolve(null),
       ])
+      if (request !== loadRequest.current) return
       if (groupResponse && (!groupResponse.success || !groupResponse.data))
         throw new Error(groupResponse.error || 'INTERNAL_SERVER_ERROR')
-      if (groupResponse?.data) setGroups(groupResponse.data)
+      if (groupResponse?.data) {
+        const nextGroups = groupResponse.data
+        setGroups(nextGroups)
+        setGroupId((current) => nextGroups.some((group) => group.id === current) ? current : '')
+      }
       if (!response.success || !response.data)
         throw new Error(response.error || 'INTERNAL_SERVER_ERROR')
       setLotteries(response.data)
@@ -142,9 +152,10 @@ export function HallLotteries({
           : response.data![0]?.id || '',
       )
     } catch (e) {
+      if (request !== loadRequest.current) return
       setError(translateError((e as Error).message))
     } finally {
-      setLoading(false)
+      if (request === loadRequest.current) setLoading(false)
     }
   }, [mode, canApplyForAllBands])
   const loadApplications = useCallback(async () => {
@@ -153,7 +164,7 @@ export function HallLotteries({
     setApplicationLoading(true)
     setApplicationError('')
     try {
-      const response = await apiClient.getHallLotteryApplications(selectedId)
+      const response = await apiClient.getHallLotteryApplications(selectedId, canApplyForAllBands)
       if (!response.success || !response.data)
         throw new Error(response.error || 'INTERNAL_SERVER_ERROR')
       if (request === applicationRequest.current) setApplications(response.data)
@@ -163,7 +174,7 @@ export function HallLotteries({
     } finally {
       if (request === applicationRequest.current) setApplicationLoading(false)
     }
-  }, [selectedId, mode])
+  }, [selectedId, mode, canApplyForAllBands])
   useEffect(() => {
     void load()
   }, [load])
@@ -244,7 +255,7 @@ export function HallLotteries({
       return
     }
     void mutate(
-      () => apiClient.createHallLotteryApplication(selected.id, input.data),
+      () => apiClient.createHallLotteryApplication(selected.id, input.data, canApplyForAllBands),
       '抽選に申し込みました',
     )
   }
@@ -381,7 +392,10 @@ export function HallLotteries({
                       <SelectContent>
                         {eligibleGroups.map((g) => (
                           <SelectItem key={g.id} value={g.id}>
-                            {g.name}
+                            <span className="flex flex-wrap items-center gap-2">
+                              {g.name}
+                              <BandTypeBadge mainIndex={g.main_index} />
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -465,8 +479,9 @@ export function HallLotteries({
                         className="space-y-2 rounded-md border p-3 text-sm"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span>
-                            {a.group_name}{' '}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{a.group_name}</span>
+                            <BandTypeBadge mainIndex={a.main_index} />
                             <Badge
                               variant={
                                 a.state === 'WON' ? 'default' : 'outline'
@@ -474,7 +489,7 @@ export function HallLotteries({
                             >
                               {resultLabels[a.state]}
                             </Badge>
-                          </span>
+                          </div>
                           {mode === 'apply' &&
                             accepting &&
                             a.state === 'PENDING' &&
@@ -490,6 +505,7 @@ export function HallLotteries({
                                       apiClient.cancelHallLotteryApplication(
                                         selected.id,
                                         a.id,
+                                        canApplyForAllBands,
                                       ),
                                     '申込を取り消しました',
                                   )

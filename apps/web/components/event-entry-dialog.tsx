@@ -1,6 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/app/context/AuthContext'
+import { useAdminMode } from '@/hooks/use-admin-mode'
+import { isAdmin } from '@shared-schemas'
 import {
   Dialog,
   DialogContent,
@@ -11,6 +14,8 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
   SelectContent,
@@ -39,45 +44,54 @@ interface EventEntryDialogProps {
 }
 
 export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEntryDialogProps) {
+  const { user } = useAuth()
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
+  const canRegister = event.is_entry_accepting || isAdminMode
   const [groups, setGroups] = useState<Group[]>([])
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string>('')
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
 
-  const loadGroups = async () => {
-    try {
-      setLoading(true)
-      const response = await apiClient.getGroupOptions()
-      if (response.success && response.data) {
-        setGroups(response.data)
-      }
-    } catch (error) {
-      console.error('Error loading groups:', error)
-      toast.error('グループの取得に失敗しました')
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    if (isOpen && !canRegister) {
+      toast.error('参加登録の受け付けは終了しています', { id: `event-entry-closed-${event.id}` })
+      onClose()
     }
-  }
-
-  const loadExistingEntries = useCallback(async () => {
-    try {
-      const response = await apiClient.getEntries(event.id)
-      if (response.success && response.data) {
-        setSelectedGroups(response.data.map(entry => entry.group_id))
-      }
-    } catch (error) {
-      console.error('Error loading entries:', error)
-    }
-  }, [event.id])
+  }, [canRegister, event.id, isOpen, onClose])
 
   useEffect(() => {
-    if (isOpen) {
-      loadGroups()
-      loadExistingEntries()
+    if (!isOpen || !canRegister) return
+    let cancelled = false
+    const load = async () => {
+      try {
+        setLoading(true)
+        setLoadError(false)
+        setSelectedGroupId('')
+        const [groupsResponse, entriesResponse] = await Promise.all([
+          apiClient.getGroupOptions(isAdminMode),
+          apiClient.getEntries(event.id),
+        ])
+        if (cancelled) return
+        if (!groupsResponse.success || !entriesResponse.success) {
+          throw new Error('ENTRY_DATA_FETCH_FAILED')
+        }
+        setGroups(groupsResponse.data ?? [])
+        setSelectedGroups((entriesResponse.data ?? []).map(entry => entry.group_id))
+      } catch (error) {
+        if (cancelled) return
+        console.error('Error loading entry data:', error)
+        setLoadError(true)
+        toast.error('参加登録の情報を取得できませんでした', { description: '閉じてもう一度開いてください。' })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-  }, [isOpen, event.id, loadExistingEntries])
+    void load()
+    return () => { cancelled = true }
+  }, [canRegister, event.id, isAdminMode, isOpen])
 
   const handleSelectGroup = (groupId: string) => {
     if (!groupId) return
@@ -85,7 +99,7 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
       toast.error('このグループは既に追加されています')
       return
     }
-    if (selectedGroups.length >= event.group_limit) {
+    if (!isAdminMode && selectedGroups.length >= event.group_limit) {
       toast.error(`最大${event.group_limit}バンドまで登録可能です`)
       return
     }
@@ -104,6 +118,7 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
   }
 
   const handleSubmit = async () => {
+    if (submitting || loading || loadError || !canRegister) return
     if (selectedGroups.length === 0) {
       toast.error('少なくとも1つのグループを追加してください')
       return
@@ -114,12 +129,14 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
       const response = await apiClient.createEntries({
         event_id: event.id,
         group_ids: selectedGroups,
-      })
+      }, isAdminMode)
 
       if (response.success) {
         showSuccessToast({ message: '参加登録が完了しました' })
         onSuccess()
         onClose()
+      } else {
+        toast.error('参加登録できませんでした')
       }
     } catch (error) {
       console.error('Error submitting entry:', error)
@@ -147,58 +164,40 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
     }
   }
 
-  if (!event.is_entry_accepting) {
-    return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>参加登録は終了しました</DialogTitle>
-            <DialogDescription>
-              このイベントの受け付けは終了しました
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-            >
-              閉じる
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    )
-  }
+  if (!canRegister) return null
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !submitting) onClose() }}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>参加登録</DialogTitle>
           <DialogDescription>
-            イベントに参加するグループを追加してください（最大{event.group_limit}バンド）
+            {isAdminMode ? 'バンドごとにメンバーの参加上限が適用されます。' : `最大${event.group_limit}バンドまで登録できます。`}
           </DialogDescription>
         </DialogHeader>
-        <div className="py-4 space-y-2">
+        <fieldset disabled={loading || submitting || loadError} className="py-4 space-y-2">
+          {loading ? <Skeleton className="h-9 w-full" /> : <>
           {selectedGroups.map((groupId) => (
             <div key={groupId} className="flex items-center justify-between p-2 border rounded hover:bg-gray-50">
               <span className="text-sm">{getGroupName(groupId)}</span>
               <button
+                type="button"
                 onClick={() => handleRemoveGroup(groupId)}
                 className="text-gray-400 hover:text-red-600 p-1"
+                aria-label={`${getGroupName(groupId)}を選択から外す`}
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
           ))}
           
+          <Label htmlFor={`entry-group-${event.id}`}>追加するバンド</Label>
           <Select
             value={selectedGroupId}
             onValueChange={handleSelectGroup}
-            disabled={availableGroups.length === 0 || selectedGroups.length >= event.group_limit}
+            disabled={loading || submitting || availableGroups.length === 0 || (!isAdminMode && selectedGroups.length >= event.group_limit)}
           >
-            <SelectTrigger>
+            <SelectTrigger id={`entry-group-${event.id}`}>
               <SelectValue placeholder="グループを追加" />
             </SelectTrigger>
             <SelectContent>
@@ -212,10 +211,11 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
 
           {selectedGroups.length > 0 && (
             <div className="text-sm text-gray-600 pt-2">
-              登録中: {selectedGroups.length} / {event.group_limit}
+              {isAdminMode ? `${selectedGroups.length}バンド選択中` : `登録中: ${selectedGroups.length} / ${event.group_limit}`}
             </div>
           )}
-        </div>
+          </>}
+        </fieldset>
         <DialogFooter>
           <Button
             type="button"
@@ -228,10 +228,10 @@ export function EventEntryDialog({ event, isOpen, onClose, onSuccess }: EventEnt
           <LoadingButton
             type="button"
             onClick={handleSubmit}
-            disabled={selectedGroups.length === 0 || loading}
+            disabled={selectedGroups.length === 0 || loading || loadError}
             isLoading={submitting}
           >
-            作成
+            登録
           </LoadingButton>
         </DialogFooter>
       </DialogContent>

@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
+import { BandTypeBadge } from '@/components/band-type-badge'
 import { compareInstruments, Group, instrumentColors, instrumentNames } from "@/app/types"
 import { Button } from "@/components/ui/button"
 import { MoreVertical } from "lucide-react"
@@ -58,12 +59,11 @@ export function BandCard({ band, memberOptions = [], onEdit, onToggleActive, onD
           <>
             <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
               <div className="truncate text-sm font-semibold leading-5">{band.name}</div>
-              <Badge
+              <BandTypeBadge
+                mainIndex={band.mainIndex}
+                freeVariant="secondary"
                 className="h-5 shrink-0 px-1.5 text-[11px] font-medium"
-                variant={band.mainIndex !== null ? "default" : "secondary"}
-              >
-                {band.mainIndex !== null ? "本バンド" : "自由バンド"}
-              </Badge>
+              />
             </div>
             {!band.isActive && (
               <div className="mt-1.5 flex">

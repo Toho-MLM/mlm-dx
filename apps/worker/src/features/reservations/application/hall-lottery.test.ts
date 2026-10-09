@@ -40,6 +40,7 @@ function setup() {
         group_id: i.groupId,
         user_id: i.userId,
         group_name: i.groupId,
+        main_index: null,
         preferences: i.preferences,
         state: 'PENDING',
         winning_rank: null,

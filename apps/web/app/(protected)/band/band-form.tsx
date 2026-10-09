@@ -1,3 +1,4 @@
+import { BandTypeBadge } from '@/components/band-type-badge'
 import { useState, useEffect, useMemo } from 'react'
 import { DraftDialog } from '@/components/draft-dialog'
 import { DialogFooter } from '@/components/ui/dialog'
@@ -196,7 +197,10 @@ export function BandForm({ band, memberOptions, isOpen, onClose, onSuccess, isAd
     <DraftDialog open={isOpen} onOpenChange={(open) => { if (!open) onDialogClose() }} busy={isPending}
       draft={{ name, bandMembers, isMain }} title={isNameOnlyEdit ? '本バンド名を変更' : band ? 'バンドを更新' : 'バンドを作成'}>
         <div className="space-y-4">
-          <Label htmlFor="band-name">バンド名</Label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="band-name">バンド名</Label>
+            {band && <BandTypeBadge mainIndex={band.mainIndex} />}
+          </div>
           <Input
             id="band-name"
             value={name}

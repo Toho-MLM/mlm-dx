@@ -3,7 +3,7 @@ import { ZodError } from 'zod';
 import {
   CreateHallLotteryRequestSchema,
   CreateHallLotteryApplicationRequestSchema,
-  isAdmin,
+  AdminModeQuerySchema,
 } from '@shared-schemas';
 import type { Bindings, Variables } from '../index';
 import { requireAuth } from '../middleware/auth';
@@ -66,15 +66,19 @@ hallLotteryRoutes.post('/:id/cancel', async (c) => {
 });
 hallLotteryRoutes.get('/:id/applications', async (c) => {
   const user = c.get('user');
+  const admin = AdminModeQuerySchema.parse(c.req.query('admin'));
+  if (admin) requireAdmin(user.role);
   return c.json({
     success: true,
     data: await createD1HallLotteryRepository(c.env.DB).applications(
       c.req.param('id'),
-      isAdmin(user.role) ? undefined : user.id,
+      admin ? undefined : user.id,
     ),
   });
 });
 hallLotteryRoutes.post('/:id/applications', async (c) => {
+  const admin = AdminModeQuerySchema.parse(c.req.query('admin'));
+  if (admin) requireAdmin(c.get('user').role);
   const data = CreateHallLotteryApplicationRequestSchema.parse(
     await c.req.json(),
   );
@@ -85,7 +89,7 @@ hallLotteryRoutes.post('/:id/applications', async (c) => {
       c.get('user').id,
       data.group_id,
       data.preferences,
-      isAdmin(c.get('user').role),
+      admin,
     ),
   });
 });
@@ -93,7 +97,8 @@ hallLotteryRoutes.post('/:id/applications/:applicationId/cancel', async (c) => {
   const id = parseUuid(c.req.param('applicationId'));
   if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
   const user = c.get('user');
-  const admin = isAdmin(user.role);
+  const admin = AdminModeQuerySchema.parse(c.req.query('admin'));
+  if (admin) requireAdmin(user.role);
   const applications = await createD1HallLotteryRepository(
     c.env.DB,
   ).applications(c.req.param('id'), admin ? undefined : user.id);

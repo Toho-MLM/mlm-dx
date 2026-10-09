@@ -2,7 +2,7 @@
 
 import { ToastNotice } from '@/components/toast-notice'
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import React, { Suspense, useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar'
 import { format, getDay, parse, startOfWeek } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Badge } from '@/components/ui/badge'
+import { BandTypeBadge } from '@/components/band-type-badge'
 import { Card, CardContent, CardDescription } from '@/components/ui/card'
 import { cn, showSuccessToast } from '@/lib/utils'
 import { translateError } from '@/lib/error-label'
@@ -64,6 +64,8 @@ type CalendarEvent = {
     externalName: string
     userName?: string
     groupName?: string
+    groupId: string | null
+    mainIndex: number | null
     state: ReservationState
     cancellable: boolean
     startTime: string
@@ -202,7 +204,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
-  const [isAdminMode] = useAdminMode(user && isAdmin(user.role), initialAdminMode)
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
   const [loading, setLoading] = useState(!hasCompleteInitialData)
   const [loadError, setLoadError] = useState<string | null>(initialData?.externals === null || initialData?.reservations === null ? '外部予約を読み込めませんでした。' : null)
   const [externals, setExternals] = useState<External[]>(
@@ -231,28 +233,41 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false)
   const [draft, setDraft] = useState<ExternalDraft>(() => getInitialExternalDraft())
 
+  const groupsRequestId = useRef(0)
   const fetchGroups = useCallback(async () => {
-    if (isGroupsLoading) return
+    const requestId = ++groupsRequestId.current
     try {
       setIsGroupsLoading(true)
       const response = await apiClient.getGroupOptions(isAdminMode)
+      if (requestId !== groupsRequestId.current) return
       if (response.success && response.data) {
         setMyGroups(response.data)
+        setDraft((current) => current.groupId && !response.data!.some((group) => group.id === current.groupId)
+          ? { ...current, groupId: null } : current)
       }
     } catch (error) {
+      if (requestId !== groupsRequestId.current) return
       console.error('Failed to fetch groups:', error)
     } finally {
-      setIsGroupsLoading(false)
+      if (requestId === groupsRequestId.current) setIsGroupsLoading(false)
     }
-  }, [isAdminMode, isGroupsLoading])
+  }, [isAdminMode])
+
+  useEffect(() => {
+    void fetchGroups()
+  }, [fetchGroups])
+
+  const reservationRequestId = useRef(0)
 
   const fetchData = useCallback(async () => {
+    const requestId = ++reservationRequestId.current
     setLoadError(null)
     try {
       const [externalsResponse, reservationsResponse] = await Promise.all([
         apiClient.getExternals(),
         apiClient.getExternalReservations(isAdminMode),
       ])
+      if (requestId !== reservationRequestId.current) return
       if (!externalsResponse.success || !externalsResponse.data) {
         throw new Error(externalsResponse.error || 'EXTERNAL_FETCH_FAILED')
       }
@@ -271,6 +286,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
       })
       setReservations(reservationsResponse.data)
     } catch (error) {
+      if (requestId !== reservationRequestId.current) return
       console.error('Failed to fetch external reservations:', error)
       setLoadError(translateError((error as Error).message))
     }
@@ -288,7 +304,21 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
         return
       }
 
-      if (hasCompleteInitialData && isAdminMode === initialAdminMode) return
+      if (hasCompleteInitialData && isAdminMode === initialAdminMode) {
+        reservationRequestId.current += 1
+        const externalTargets = initialData.externals!.filter((external) => external.target_type === 'EXTERNAL')
+        setExternals(externalTargets)
+        setSelectedExternalId((currentId) => {
+          if (currentId && externalTargets.some((external) => external.id === currentId)) return currentId
+          const now = new Date()
+          return externalTargets.find((external) => new Date(external.start_datetime) <= now && new Date(external.end_datetime) > now)?.id
+            || externalTargets.find((external) => new Date(external.end_datetime) > now)?.id || externalTargets.at(-1)?.id || null
+        })
+        setReservations(initialData.reservations!)
+        setLoadError(null)
+        setLoading(false)
+        return
+      }
 
       try {
         await fetchData()
@@ -298,7 +328,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
     }
 
     void init()
-  }, [authLoading, fetchData, router, user, pathname, searchParams, hasCompleteInitialData, initialAdminMode, isAdminMode])
+  }, [authLoading, fetchData, router, user, pathname, searchParams, hasCompleteInitialData, initialData, initialAdminMode, isAdminMode])
 
   useEffect(() => {
     if (!user) return
@@ -370,6 +400,8 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
         externalName: reservation.room_name || `部屋 ${reservation.room_number}`,
         userName: reservation.user_name || undefined,
         groupName: reservation.group_name || undefined,
+        groupId: reservation.group_id,
+        mainIndex: reservation.main_index,
         state: reservation.state as ReservationState,
         cancellable: reservation.cancellable,
         startTime: reservation.start_time,
@@ -379,7 +411,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   ), [reservations])
 
   useEffect(() => {
-    setSelectedReservation((current) => current ? calendarEvents.find((event) => event.id === current.id) ?? current : current)
+    setSelectedReservation((current) => current ? calendarEvents.find((event) => event.id === current.id) ?? null : current)
   }, [calendarEvents])
 
   const selectedCalendarEvents = useMemo(() => (
@@ -605,7 +637,10 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
             {conflicts.map((conflict) => (
               <div key={`${conflict.member_id}-${conflict.reservation_type}-${conflict.reservation_id}`} className="rounded-md border p-3 text-sm">
                 <div><span className="font-medium">メンバー:</span> {conflict.member_name}</div>
-                <div className="text-gray-700"><span className="font-medium">重複予約:</span> {conflict.location_name} / {conflict.reservation_name}</div>
+                <div className="flex flex-wrap items-center gap-2 text-gray-700">
+                  <span><span className="font-medium">重複予約:</span> {conflict.location_name} / {conflict.reservation_name}</span>
+                  {conflict.group_id && <BandTypeBadge mainIndex={conflict.main_index} />}
+                </div>
                 <div className="text-gray-600">
                   <span className="font-medium">時間:</span> {format(toJSTWallClockDate(conflict.start_time), 'M月d日 H:mm', { locale: jaLocale })} 〜 {format(
                     toJSTWallClockDate(conflict.end_time),
@@ -715,6 +750,14 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
                       resourceIdAccessor="id"
                       resourceTitleAccessor="title"
                       resourceAccessor="resourceId"
+                      components={{
+                        event: ({ event }) => (
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span>{event.title}</span>
+                            {event.meta.groupId && <BandTypeBadge mainIndex={event.meta.mainIndex} className="px-1 py-0 text-[10px]" />}
+                          </div>
+                        ),
+                      }}
                       titleAccessor={(event) => event.title}
                       startAccessor={(event) => event.start}
                       endAccessor={(event) => event.end}
@@ -777,7 +820,12 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
           onBack={() => setIsConflictDialogOpen(false)}
         >
           <p><strong>場所</strong> {selectedReservation.meta.externalName}</p>
-          {selectedReservation.meta.groupName && <p><strong>グループ</strong> {selectedReservation.meta.groupName}</p>}
+          {selectedReservation.meta.groupName && (
+            <div className="flex flex-wrap items-center gap-2">
+              <strong>グループ</strong> {selectedReservation.meta.groupName}
+              <BandTypeBadge mainIndex={selectedReservation.meta.mainIndex} />
+            </div>
+          )}
           {selectedReservation.meta.userName && <p><strong>予約者</strong> {selectedReservation.meta.userName}</p>}
           {isAdminMode ? (
             <ReservationStatusSelect
@@ -840,7 +888,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
                         <SelectItem key={group.id} value={group.id}>
                         <div className="flex items-center justify-between gap-2">
                           <span>{group.name}</span>
-                          <Badge variant={group.main_index !== null ? 'default' : 'outline'}>{group.main_index !== null ? '本バンド' : '自由バンド'}</Badge>
+                          <BandTypeBadge mainIndex={group.main_index} />
                         </div>
                         </SelectItem>
                       ))}
