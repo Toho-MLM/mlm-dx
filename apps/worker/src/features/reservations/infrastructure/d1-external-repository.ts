@@ -112,7 +112,7 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
       const queries = await Promise.all([
         db.prepare(`
           SELECT r.id reservation_id, 'HALL' reservation_type,
-                 COALESCE(g.name, 'ホール予約') reservation_name, 'ホール' location_name,
+                 COALESCE(g.name, 'ホール予約') reservation_name, r.group_id, g.main_index, 'ホール' location_name,
                  r.start_time, r.end_time, gm.user_id member_id
           FROM reservations r
           INNER JOIN group_member_instruments gm ON gm.group_id = r.group_id
@@ -122,7 +122,7 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
         `).bind(...input.memberIds, input.endTime, input.startTime).all<MemberConflictRow>(),
         db.prepare(`
           SELECT r.id reservation_id, 'HALL' reservation_type,
-                 COALESCE(u.nickname, u.name, '個人予約') reservation_name, 'ホール' location_name,
+                 COALESCE(u.nickname, u.name, '個人予約') reservation_name, r.group_id, NULL main_index, 'ホール' location_name,
                  r.start_time, r.end_time, r.user_id member_id
           FROM reservations r LEFT JOIN users u ON u.id = r.user_id
           WHERE r.group_id IS NULL AND r.user_id IN (${placeholders}) AND r.state IN ('PENDING','CONFIRMED')
@@ -130,7 +130,7 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
         `).bind(...input.memberIds, input.endTime, input.startTime).all<MemberConflictRow>(),
         db.prepare(`
           SELECT er.id reservation_id, 'EXTERNAL' reservation_type,
-                 COALESCE(g.name, '外部予約') reservation_name,
+                 COALESCE(g.name, '外部予約') reservation_name, er.group_id, g.main_index,
                  COALESCE(json_extract(es.room_names, '$[' || (er.room_number - 1) || ']'), '外部スタジオ') location_name,
                  er.start_time, er.end_time, gm.user_id member_id
           FROM external_reservations er
@@ -144,7 +144,7 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
         ).all<MemberConflictRow>(),
         db.prepare(`
           SELECT er.id reservation_id, 'EXTERNAL' reservation_type,
-                 COALESCE(u.nickname, u.name, '個人予約') reservation_name,
+                 COALESCE(u.nickname, u.name, '個人予約') reservation_name, er.group_id, NULL main_index,
                  COALESCE(json_extract(es.room_names, '$[' || (er.room_number - 1) || ']'), '外部スタジオ') location_name,
                  er.start_time, er.end_time, er.user_id member_id
           FROM external_reservations er
@@ -156,14 +156,16 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
           ...input.memberIds, input.endTime, input.startTime, ...(input.excludeId ? [input.excludeId] : [])
         ).all<MemberConflictRow>(),
       ]);
-      return queries.flatMap((query) => query.results ?? []);
+      return queries.flatMap((query) => query.results ?? []).map(row => ({
+        ...row, main_index: row.main_index === null ? null : Number(row.main_index),
+      }));
     },
 
     async listVisibleReservations(userId, admin) {
       const query = `
         SELECT er.id, er.external_studio_id, er.room_number,
                json_extract(es.room_names, '$[' || (er.room_number - 1) || ']') room_name,
-               er.user_id, er.group_id, COALESCE(u.nickname, u.name) user_name, g.name group_name,
+               er.user_id, er.group_id, COALESCE(u.nickname, u.name) user_name, g.name group_name, g.main_index,
                er.start_time, er.end_time, er.state,
                CASE WHEN er.state != 'CONFIRMED' THEN 0
                  ${admin ? 'ELSE 1' : `WHEN er.user_id = ? THEN 1
@@ -180,7 +182,9 @@ export function createD1ExternalReservationRepository(db: D1Database): ExternalR
       const rows = admin
         ? await db.prepare(query).all<Record<string, unknown>>()
         : await db.prepare(query).bind(userId, userId, userId, userId).all<Record<string, unknown>>();
-      return rows.results ?? [];
+      return (rows.results ?? []).map(row => ({
+        ...row, main_index: row.main_index === null ? null : Number(row.main_index),
+      }));
     },
 
     async createReservationIfAvailable(input) {

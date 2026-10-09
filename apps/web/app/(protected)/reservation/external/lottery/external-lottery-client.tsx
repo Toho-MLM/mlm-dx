@@ -1,5 +1,6 @@
 'use client'
 
+import { BandTypeBadge } from '@/components/band-type-badge'
 import { ToastNotice } from '@/components/toast-notice'
 
 import { Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
@@ -315,7 +316,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                                 <div className="min-w-0">
                                   <div className="truncate font-medium">{application.group_name || application.user_name || '個人'}</div>
                                   <div className="text-[11px] text-muted-foreground">
-                                    {application.group_id ? (application.main_index !== null ? '本バンド' : '自由バンド') : '個人'}
+                                    {application.group_id ? <BandTypeBadge mainIndex={application.main_index} className="text-[10px]" /> : '個人'}
                                   </div>
                                 </div>
                                 <div className="shrink-0">
@@ -383,7 +384,7 @@ function ExternalLotteryContent({ initialData }: { initialData?: ExternalLottery
                 <SelectTrigger id="external-lottery-identity"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__personal__">個人（{user?.nickname || user?.name}）</SelectItem>
-                  {groups.map((group) => <SelectItem key={group.id} value={group.id}>{group.name}（{group.main_index !== null ? '本バンド' : '自由バンド'}）</SelectItem>)}
+                  {groups.map((group) => <SelectItem key={group.id} value={group.id}><span className="flex flex-wrap items-center gap-2">{group.name}<BandTypeBadge mainIndex={group.main_index} /></span></SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

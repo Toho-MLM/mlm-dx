@@ -18,18 +18,18 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
       if (admin) {
         const rows = await db.prepare(`
           SELECT (r.hall_lottery_application_id IS NOT NULL) AS is_lottery, r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
-                 COALESCE(u.nickname, u.name) AS user_name, ug.name AS group_name,
+                 COALESCE(u.nickname, u.name) AS user_name, ug.name AS group_name, ug.main_index,
                  CASE WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0 ELSE 1 END AS cancellable
           FROM reservations r
           LEFT JOIN users u ON r.user_id = u.id
           LEFT JOIN groups ug ON r.group_id = ug.id
           WHERE r.start_time >= ? ORDER BY r.start_time ASC
         `).bind(since).all<Record<string, unknown>>();
-        return rows.results ?? [];
+        return (rows.results ?? []).map(row => ({ ...row, main_index: row.main_index === null ? null : Number(row.main_index) }));
       }
       const rows = await db.prepare(`
         SELECT (r.hall_lottery_application_id IS NOT NULL) AS is_lottery, r.id, r.user_id, r.group_id, r.start_time, r.end_time, r.state,
-               COALESCE(u.nickname, u.name) AS user_name, ug.name AS group_name,
+               COALESCE(u.nickname, u.name) AS user_name, ug.name AS group_name, ug.main_index,
                CASE
                  WHEN r.state NOT IN ('PENDING', 'CONFIRMED') THEN 0
                  WHEN r.user_id = ? THEN 1
@@ -45,7 +45,7 @@ export function createD1HallReservationRepository(db: D1Database): HallReservati
           AND r.start_time >= ?
         ORDER BY r.start_time ASC
       `).bind(userId, userId, userId, since).all<Record<string, unknown>>();
-      return rows.results ?? [];
+      return (rows.results ?? []).map(row => ({ ...row, main_index: row.main_index === null ? null : Number(row.main_index) }));
     },
 
     async hasUnavailableOverlap(startTime, endTime) {

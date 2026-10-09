@@ -78,6 +78,8 @@ describe('band display order across D1 repositories', () => {
     const result = GetTimelineResponseSchema.parse(await repository.list(eventId));
     expect(result.configured.map((item) => item.group_id)).toEqual([id(4), id(3)]);
     expect(result.unconfigured.map((item) => item.group_id)).toEqual([id(2), id(5), id(6), id(7)]);
+    expect(result.configured.map(item => item.main_index)).toEqual([null, 0]);
+    expect(result.unconfigured.map(item => item.main_index)).toEqual([1, null, null, null]);
     expect(result.configured.map((item) => item.band_order)).toEqual([5, 1]);
     expect(result.unconfigured.map((item) => item.band_order)).toEqual([2, 3, 4, 6]);
     expect(result.unconfigured[0]).not.toHaveProperty('created_at');

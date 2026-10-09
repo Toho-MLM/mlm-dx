@@ -1,5 +1,6 @@
 'use client'
 
+import { BandTypeBadge } from '@/components/band-type-badge'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 
 import { ToastNotice } from '@/components/toast-notice'
@@ -391,7 +392,10 @@ export function HallLotteries({
                       <SelectContent>
                         {eligibleGroups.map((g) => (
                           <SelectItem key={g.id} value={g.id}>
-                            {g.name}
+                            <span className="flex flex-wrap items-center gap-2">
+                              {g.name}
+                              <BandTypeBadge mainIndex={g.main_index} />
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -475,8 +479,9 @@ export function HallLotteries({
                         className="space-y-2 rounded-md border p-3 text-sm"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span>
-                            {a.group_name}{' '}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{a.group_name}</span>
+                            <BandTypeBadge mainIndex={a.main_index} />
                             <Badge
                               variant={
                                 a.state === 'WON' ? 'default' : 'outline'
@@ -484,7 +489,7 @@ export function HallLotteries({
                             >
                               {resultLabels[a.state]}
                             </Badge>
-                          </span>
+                          </div>
                           {mode === 'apply' &&
                             accepting &&
                             a.state === 'PENDING' &&

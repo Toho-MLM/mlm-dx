@@ -139,6 +139,8 @@ async function getMemberConflicts(env: Bindings, userId: string, groupId: string
     member_name: names.get(row.member_id) || 'メンバー',
     reservation_id: row.reservation_id,
     reservation_type: row.reservation_type,
+    group_id: row.group_id,
+    main_index: row.main_index,
     reservation_name: row.reservation_name || '予約',
     location_name: row.location_name,
     start_time: row.start_time,

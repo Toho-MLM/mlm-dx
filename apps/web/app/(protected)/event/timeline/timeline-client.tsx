@@ -1,5 +1,6 @@
 'use client'
 
+import { BandTypeBadge } from '@/components/band-type-badge'
 import { useEffect, useMemo, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { apiClient } from '@/lib/api'
@@ -281,8 +282,9 @@ function TimelineContent({ initialEvents }: { initialEvents?: Event[] | null }) 
                             <div key={r.entry_id} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50">
                               <div className="w-8 text-center text-sm font-semibold">{i + 1}</div>
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <div className="font-medium truncate">{r.group_name}</div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-medium break-words">{r.group_name}</span>
+                                  <BandTypeBadge mainIndex={r.main_index} />
                                   {r.is_virtual && <Badge variant="outline">本バンド必須</Badge>}
                                 </div>
                                 <div className="text-sm text-gray-600">開始: {formatTimeToHHMM(r.start_time)} / 終了: {formatTimeToHHMM(r.end_time)}</div>
@@ -302,8 +304,9 @@ function TimelineContent({ initialEvents }: { initialEvents?: Event[] | null }) 
                             <div key={r.entry_id} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50">
                               <div className="w-8 text-center text-sm font-semibold">—</div>
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <div className="font-medium truncate">{r.group_name}</div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-medium break-words">{r.group_name}</span>
+                                  <BandTypeBadge mainIndex={r.main_index} />
                                   {r.is_virtual && <Badge variant="outline">本バンド必須</Badge>}
                                 </div>
                                 <div className="text-sm text-gray-600">開始: 未設定 / 終了: 未設定</div>
@@ -360,7 +363,10 @@ function TimelineContent({ initialEvents }: { initialEvents?: Event[] | null }) 
                   <div key={r.entry_id} className="relative flex items-center gap-3 p-3 border rounded-lg bg-gray-50 pr-12">
                     <div className="w-8 text-center text-sm font-semibold">{i + 1}</div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{r.group_name}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium break-words">{r.group_name}</span>
+                        <BandTypeBadge mainIndex={r.main_index} />
+                      </div>
                       <div className="flex items-center gap-2 mt-1">
                         <Input
                           type="text"
@@ -412,7 +418,10 @@ function TimelineContent({ initialEvents }: { initialEvents?: Event[] | null }) 
                   <div key={r.entry_id} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50">
                     <div className="w-8 text-center text-sm font-semibold">—</div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{r.group_name}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium break-words">{r.group_name}</span>
+                        <BandTypeBadge mainIndex={r.main_index} />
+                      </div>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => addFromUnconfigured(r.entry_id)}>追加</Button>
                   </div>

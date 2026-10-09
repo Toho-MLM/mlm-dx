@@ -120,8 +120,8 @@ describe('期間ホール抽選 D1 SQL / migration', () => {
         '2026-09-25T14:00:00.000Z',
       ].entries()) {
         const groupId = uuid(20 + index);
-        f.sqlite.prepare('INSERT INTO groups (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
-          .run(groupId, `バンド${index}`, now, now);
+        f.sqlite.prepare('INSERT INTO groups (id, name, main_index, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+          .run(groupId, `バンド${index}`, index === 0 ? 2 : null, now, now);
         if (index !== 2) {
           f.sqlite.prepare('INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
             .run(uuid(30 + index), groupId, uuid(2), 'VO', now, now);
@@ -129,6 +129,7 @@ describe('期間ホール抽選 D1 SQL / migration', () => {
         f.sqlite.prepare('INSERT INTO hall_lottery_applications (id, lottery_id, group_id, user_id, state, created_at) VALUES (?, ?, ?, ?, ?, ?)')
           .run(uuid(10 + index), lottery.id, groupId, index === 2 ? uuid(99) : uuid(2), index === 1 ? 'LOST' : 'PENDING', createdAt);
       }
+      expect((await f.repository.applications(lottery.id)).map(item => item.main_index)).toEqual([null, 2, null]);
       expect((await f.repository.applications(lottery.id)).map((item) => item.id))
         .toEqual([uuid(11), uuid(10), uuid(12)]);
       expect((await f.repository.applications(lottery.id, uuid(2))).map((item) => item.id))

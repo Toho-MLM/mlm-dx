@@ -61,6 +61,7 @@ describe('setlist listing at the D1 boundary', () => {
     expect(items.map((item) => item.entry.group_id)).toEqual([
       groupIds[0], groupIds[1], groupIds[3], groupIds[2],
     ]);
+    expect(items.map(item => item.main_index)).toEqual([0, 1, null, null]);
     expect(items[0].setlist_items.map((item) => item.position)).toEqual([0, 1, 2]);
     expect(items[1].setlist_items).toEqual([]);
   });

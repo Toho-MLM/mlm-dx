@@ -1,5 +1,6 @@
 "use client"
 
+import { BandTypeBadge } from '@/components/band-type-badge'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { BandCard } from "./band-card"
@@ -341,7 +342,7 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
               <p>
                 {deletingBands.length > 0
                   ? <><strong className="text-foreground">選択した{deletingBands.length}件のバンド</strong>を削除しますか？</>
-                  : <><strong className="text-foreground">{deletingBand?.name}</strong> を削除しますか？</>}
+                  : <><strong className="text-foreground">{deletingBand?.name}</strong>{deletingBand && <BandTypeBadge mainIndex={deletingBand.mainIndex} className="mx-2 inline-flex" />} を削除しますか？</>}
               </p>
               <p>関連する予約、外部スタジオ予約、イベント出演、セットリスト、メンバー情報も削除されます。この操作は取り消せません。</p>
             </div>

@@ -54,6 +54,7 @@ import { useAuth } from '../../context/AuthContext'
 import { ReservationPageHeader } from '@/components/reservation-page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { BandTypeBadge } from '@/components/band-type-badge'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 import { getLoginPath } from '@/lib/auth-redirect'
@@ -874,6 +875,14 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
                 className="reservation-calendar"
                 localizer={localizer}
                 events={[...reservationData, ...events, ...unavailablePeriods]}
+                components={{
+                  event: ({ event }) => (
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span>{event.title}</span>
+                      {event.resource.group_id && <BandTypeBadge mainIndex={event.resource.main_index ?? null} className="px-1 py-0 text-[10px]" />}
+                    </div>
+                  ),
+                }}
                 titleAccessor={(event: CalendarEvent) => event.title}
                 startAccessor={(event: CalendarEvent) => event.start}
                 endAccessor={(event: CalendarEvent) => event.end}
@@ -975,7 +984,12 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
           {selectedReservation.resource.type === 'reservation' ? (
             <>
               <p><strong>予約者</strong> {selectedReservation.resource.user_name}</p>
-              {selectedReservation.resource.group_name && <p><strong>グループ</strong> {selectedReservation.resource.group_name}</p>}
+              {selectedReservation.resource.group_name && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong>グループ</strong> {selectedReservation.resource.group_name}
+                  <BandTypeBadge mainIndex={selectedReservation.resource.main_index ?? null} />
+                </div>
+              )}
               {isAdminMode && selectedReservation.resource.reservationId && selectedReservation.resource.state ? (
                 <ReservationStatusSelect
                   value={selectedReservation.resource.state}
@@ -1040,9 +1054,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
                         <SelectItem key={group.id} value={group.id}>
                           <div className="flex items-center justify-between w-full gap-2">
                             <span>{group.name}</span>
-                            <Badge variant={group.main_index !== null ? "default" : "outline"} className="text-sm px-1.5 py-0 shrink-0">
-                              {group.main_index !== null ? '本バンド' : '自由バンド'}
-                            </Badge>
+                            <BandTypeBadge mainIndex={group.main_index} className="text-sm px-1.5 py-0 shrink-0" />
                           </div>
                         </SelectItem>
                       ))

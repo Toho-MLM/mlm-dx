@@ -4,7 +4,7 @@ import { MAIN_BAND_ORDER_SQL } from '../../groups/infrastructure/group-order';
 
 type SetlistRow = {
   entry_id: string; entry_event_id: string; entry_group_id: string; entry_note: string | null;
-  group_name: string | null; item_position: number | null; item_title: string | null; item_artist: string | null;
+  main_index: number | null; group_name: string | null; item_position: number | null; item_title: string | null; item_artist: string | null;
 };
 
 export function createD1SetlistRepository(db: D1Database): SetlistRepository {
@@ -68,18 +68,19 @@ export function createD1SetlistRepository(db: D1Database): SetlistRepository {
       const filter = groupIds ? ` AND e.group_id IN (${groupIds.map(() => '?').join(',')})` : '';
       const rows = await db.prepare(`
         SELECT e.id AS entry_id, e.event_id AS entry_event_id, e.group_id AS entry_group_id,
-               e.note AS entry_note, g.name AS group_name, s.position AS item_position,
+               e.note AS entry_note, g.name AS group_name, g.main_index, s.position AS item_position,
                s.title AS item_title, s.artist AS item_artist
         FROM entries e LEFT JOIN groups g ON g.id = e.group_id
         LEFT JOIN setlist_items s ON s.entry_id = e.id
         WHERE e.event_id = ?${filter}
         ORDER BY ${MAIN_BAND_ORDER_SQL}, e.created_at ASC, e.id ASC, s.position ASC
       `).bind(eventId, ...(groupIds ?? [])).all<SetlistRow>();
-      const result = new Map<string, { entry: Record<string, unknown>; group_name: string; setlist_items: Array<{ position: number; title: string; artist: string }> }>();
+      const result = new Map<string, { entry: Record<string, unknown>; group_name: string; main_index: number | null; setlist_items: Array<{ position: number; title: string; artist: string }> }>();
       for (const row of rows.results) {
         if (!result.has(row.entry_id)) result.set(row.entry_id, {
           entry: { id: row.entry_id, event_id: row.entry_event_id, group_id: row.entry_group_id, note: row.entry_note },
-          group_name: row.group_name || '不明なグループ', setlist_items: [],
+          group_name: row.group_name || '不明なグループ',
+          main_index: row.main_index === null ? null : Number(row.main_index), setlist_items: [],
         });
         if (row.item_position !== null && row.item_title !== null) result.get(row.entry_id)!.setlist_items.push({
           position: Number(row.item_position), title: row.item_title, artist: row.item_artist || '',
