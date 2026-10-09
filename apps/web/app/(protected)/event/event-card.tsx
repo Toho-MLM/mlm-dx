@@ -15,6 +15,9 @@ import Link from 'next/link'
 import { Badge } from "@/components/ui/badge"
 import { Music } from 'lucide-react'
 import { useEventContext } from './event-context'
+import { useAuth } from '@/app/context/AuthContext'
+import { useAdminMode } from '@/hooks/use-admin-mode'
+import { isAdmin } from '@shared-schemas'
 
 interface EventCardProps {
   event: Event
@@ -106,6 +109,8 @@ export function EventCard({ event }: EventCardProps) {
   const onEntriesChanged = ctx?.onEntriesChanged
   const onEdit = ctx?.onEdit
   const onDelete = ctx?.onDelete
+  const { user } = useAuth()
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
   const [isEntryDialogOpen, setIsEntryDialogOpen] = useState(false)
   
   const userEntryIds = useMemo(() => {
@@ -286,7 +291,7 @@ export function EventCard({ event }: EventCardProps) {
                     variant="outline"
                     className="w-full"
                     onClick={() => setIsEntryDialogOpen(true)}
-                    disabled={!event.is_entry_accepting}
+                    disabled={!event.is_entry_accepting && !isAdminMode}
                   >
                     <Users className="mr-2 h-4 w-4" />
                     参加登録
