@@ -19,7 +19,7 @@ import { Music, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useSearchParams } from 'next/navigation'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -174,7 +174,7 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
                         <span className="font-bold ml-2 break-words">{item.groupName}</span>
                         <BandTypeBadge mainIndex={item.mainIndex} />
                       </div>
-                      <Button variant="outline" size="sm" className="w-auto self-start flex-shrink-0" onClick={() => onEdit(item)} disabled={!event.is_setlist_accepting}>
+                      <Button variant="outline" size="sm" className="w-auto self-start flex-shrink-0" onClick={() => onEdit(item)} disabled={!event.is_setlist_accepting && !isAdminMode}>
                         編集
                       </Button>
                     </div>
@@ -253,8 +253,8 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
   const [editingItems, setEditingItems] = useState<Map<string, SetlistItem[]>>(new Map())
   const [submitting, setSubmitting] = useState<Map<string, boolean>>(new Map())
   const [editDialogEntry, setEditDialogEntry] = useState<EntryWithSetlist | null>(null)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [dialogSongLimit, setDialogSongLimit] = useState<number | null>(null)
-  const [dialogAccepting, setDialogAccepting] = useState<boolean | null>(null)
   const editDialogOpenRef = useRef(false)
   const sectionRefs = useRef<Map<string, { reload: () => void }>>(new Map())
   const [editingEntryNote, setEditingEntryNote] = useState<string>('')
@@ -263,6 +263,16 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
   const [entranceSEArtist, setEntranceSEArtist] = useState<Map<string, string>>(new Map())
 
   const selectedEvent = useMemo(() => events.find(e => e.id === selectedEventId) || null, [events, selectedEventId])
+  const dialogEvent = events.find(event => event.id === editDialogEntry?.entry.event_id)
+  const canEditDialog = Boolean(dialogEvent && (dialogEvent.is_setlist_accepting || isAdminMode))
+  const hasDialogChanges = Boolean(editDialogEntry && (
+    editingEntryNote !== (editDialogEntry.entry.note || '') ||
+    Boolean(entranceSEEnabled.get(editDialogEntry.entry.id)) !== editDialogEntry.setlistItems.some(item => item.position === 0) ||
+    (entranceSETitle.get(editDialogEntry.entry.id) || '') !== (editDialogEntry.setlistItems.find(item => item.position === 0)?.title || '') ||
+    (entranceSEArtist.get(editDialogEntry.entry.id) || '') !== (editDialogEntry.setlistItems.find(item => item.position === 0)?.artist || '') ||
+    JSON.stringify((editingItems.get(editDialogEntry.entry.id) || []).map(item => [item.title, item.artist || ''])) !==
+      JSON.stringify(editDialogEntry.setlistItems.filter(item => item.position > 0).sort((a, b) => a.position - b.position).map(item => [item.title, item.artist || '']))
+  ))
 
   const clearDialogState = useCallback((entryId: string) => {
     setEditingItems(prev => {
@@ -292,6 +302,20 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
     })
   }, [])
 
+  const closeEditDialog = () => {
+    if (!editDialogEntry || submitting.get(editDialogEntry.entry.id)) return
+    clearDialogState(editDialogEntry.entry.id)
+    setEditDialogEntry(null)
+    setConfirmDiscard(false)
+    editDialogOpenRef.current = false
+  }
+
+  const requestCloseEditDialog = () => {
+    if (editDialogEntry && submitting.get(editDialogEntry.entry.id)) return
+    if (hasDialogChanges) setConfirmDiscard(true)
+    else closeEditDialog()
+  }
+
   const openEditDialog = useCallback((item: EntryWithSetlist) => {
     const setlistItems = item.setlistItems.map(i => ({ ...i }))
     const entrance = setlistItems.find(i => i.position === 0)
@@ -305,7 +329,7 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
     setSubmitting(prev => new Map(prev.set(item.entry.id, false)))
     const ev = selectedEventId ? selectedEvent : events.find(e => e.id === item.entry.event_id) || null
     setDialogSongLimit(ev ? ev.song_limit : null)
-    setDialogAccepting(ev ? ev.is_setlist_accepting : null)
+    setConfirmDiscard(false)
     setEditDialogEntry(item)
     setEditingEntryNote(item.entry.note || '')
     setEntranceSEEnabled(prev => new Map(prev.set(item.entry.id, hasEntrance)))
@@ -315,7 +339,10 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
   }, [events, selectedEvent, selectedEventId])
 
   useEffect(() => {
-    if (initialEvents !== undefined && initialEvents !== null) return
+    if (initialEvents !== undefined && initialEvents !== null) {
+      setEvents(initialEvents)
+      return
+    }
     const init = async () => {
       try {
         setEventsLoading(true)
@@ -397,6 +424,10 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
 
   const handleSave = async (entryId: string) => {
     if (submitting.get(entryId)) return
+    if (!canEditDialog) {
+      toast.error('セットリストの受け付けは終了しています')
+      return
+    }
     const items = editingItems.get(entryId) || []
     if (items.some(item => !item.title || !item.artist)) {
       toast.error('曲名とアーティスト名は必須です')
@@ -481,7 +512,7 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
     }
   }
 
-  const rightActions = !isUserAdmin ? (
+  const rightActions = !isAdminMode ? (
     <Button size="sm" variant="outline" onClick={handleRefresh}>
       更新
     </Button>
@@ -567,26 +598,17 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
           ))
         )}
       </div>
-      <Dialog open={!!editDialogEntry} onOpenChange={(o) => {
-        if (!o) {
-          if (editDialogEntry && submitting.get(editDialogEntry.entry.id)) return
-          if (editDialogEntry) {
-            clearDialogState(editDialogEntry.entry.id)
-          }
-          setEditDialogEntry(null)
-          editDialogOpenRef.current = false
-        }
-      }}>
+      <Dialog open={!!editDialogEntry} onOpenChange={(open) => { if (!open) requestCloseEditDialog() }}>
         {editDialogOpenRef.current = !!editDialogEntry}
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center gap-2">
-              {editDialogEntry?.groupName}
-              {editDialogEntry && <BandTypeBadge mainIndex={editDialogEntry.mainIndex} />}
+              {confirmDiscard ? '変更を破棄しますか？' : editDialogEntry?.groupName}
+              {!confirmDiscard && editDialogEntry && <BandTypeBadge mainIndex={editDialogEntry.mainIndex} />}
             </DialogTitle>
           </DialogHeader>
           {editDialogEntry && (
-            <fieldset className="space-y-4" disabled={!!submitting.get(editDialogEntry.entry.id)}>
+            <fieldset hidden={confirmDiscard} className="space-y-4" disabled={!canEditDialog || !!submitting.get(editDialogEntry.entry.id)}>
               <div className="space-y-2">
                 <Label htmlFor="setlist-entry-note">備考</Label>
                 <textarea
@@ -659,21 +681,29 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
                   </div>
                 ))}
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => handleAddItem(editDialogEntry.entry.id)} disabled={!!submitting.get(editDialogEntry.entry.id) || !dialogAccepting || ((editingItems.get(editDialogEntry.entry.id) || []).length >= (dialogSongLimit ?? Number.MAX_SAFE_INTEGER))}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  曲を追加
-                </Button>
-                <LoadingButton
-                  onClick={() => editDialogEntry && handleSave(editDialogEntry.entry.id)}
-                  isLoading={!!submitting.get(editDialogEntry.entry.id)}
-                  disabled={!dialogAccepting}
-                >
-                  保存
-                </LoadingButton>
-              </div>
+              <Button variant="outline" className="w-full" onClick={() => handleAddItem(editDialogEntry.entry.id)} disabled={!canEditDialog || !!submitting.get(editDialogEntry.entry.id) || ((editingItems.get(editDialogEntry.entry.id) || []).length >= (dialogSongLimit ?? Number.MAX_SAFE_INTEGER))}>
+                <Plus className="mr-2 h-4 w-4" />
+                曲を追加
+              </Button>
             </fieldset>
           )}
+          <DialogFooter>
+            {confirmDiscard ? <>
+              <Button variant="outline" onClick={() => setConfirmDiscard(false)}>編集を続ける</Button>
+              <Button variant="destructive" onClick={closeEditDialog}>破棄して閉じる</Button>
+            </> : <>
+              <Button variant="outline" disabled={!!editDialogEntry && !!submitting.get(editDialogEntry.entry.id)} onClick={requestCloseEditDialog}>
+                キャンセル
+              </Button>
+              <LoadingButton
+                onClick={() => editDialogEntry && handleSave(editDialogEntry.entry.id)}
+                isLoading={!!editDialogEntry && !!submitting.get(editDialogEntry.entry.id)}
+                disabled={!canEditDialog}
+              >
+                保存
+              </LoadingButton>
+            </>}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
