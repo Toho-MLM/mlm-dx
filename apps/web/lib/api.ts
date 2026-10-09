@@ -85,15 +85,15 @@ class ApiClient {
   async cancelHallLottery(id: string): Promise<ApiResponse<void>> {
     return httpClient.post(`/hall-lotteries/${id}/cancel`)
   }
-  async getHallLotteryApplications(id: string): Promise<ApiResponse<SharedSchemas.HallLotteryApplication[]>> {
-    return httpClient.get(`/hall-lotteries/${id}/applications`)
+  async getHallLotteryApplications(id: string, admin: boolean = false): Promise<ApiResponse<SharedSchemas.HallLotteryApplication[]>> {
+    return httpClient.get(`/hall-lotteries/${id}/applications?admin=${admin}`)
   }
-  async createHallLotteryApplication(id: string, data: SharedSchemas.CreateHallLotteryApplicationRequest): Promise<ApiResponse<{ id: string }>> {
+  async createHallLotteryApplication(id: string, data: SharedSchemas.CreateHallLotteryApplicationRequest, admin: boolean = false): Promise<ApiResponse<{ id: string }>> {
     SharedSchemas.CreateHallLotteryApplicationRequestSchema.parse(data)
-    return httpClient.post(`/hall-lotteries/${id}/applications`, data)
+    return httpClient.post(`/hall-lotteries/${id}/applications?admin=${admin}`, data)
   }
-  async cancelHallLotteryApplication(lotteryId: string, id: string): Promise<ApiResponse<void>> {
-    return httpClient.post(`/hall-lotteries/${lotteryId}/applications/${id}/cancel`)
+  async cancelHallLotteryApplication(lotteryId: string, id: string, admin: boolean = false): Promise<ApiResponse<void>> {
+    return httpClient.post(`/hall-lotteries/${lotteryId}/applications/${id}/cancel?admin=${admin}`)
   }
 
   private getBaseUrl(): string {

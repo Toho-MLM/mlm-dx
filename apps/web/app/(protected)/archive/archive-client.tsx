@@ -7,6 +7,7 @@ import type { Archive } from '@/lib/schemas';
 import { LoadingButton } from '@/components/ui/loading-button'
 import { PageHeader } from '@/components/page-header';
 import { ArchiveAddDialog } from '@/components/archive-add-dialog';
+import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext';
 import { isAdmin } from '@shared-schemas';
 import { apiClient } from '@/lib/api'
@@ -71,7 +72,7 @@ export function ArchiveClient({ initialArchives }: { initialArchives?: Archive[]
     }
   };
 
-  const canAddArchive = user && user.role && isAdmin(user.role);
+  const [canAddArchive] = useAdminMode(user && isAdmin(user.role));
 
   const getEmbedUrl = (url: string | null | undefined): string | null => {
     if (!url) return null;

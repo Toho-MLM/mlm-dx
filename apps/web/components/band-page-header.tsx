@@ -4,8 +4,6 @@ import React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { ListChecks, PlusIcon } from 'lucide-react';
-import { useAuth } from '@/app/context/AuthContext';
-import { isAdmin } from '../../../lib/shared-schemas';
 
 interface BandPageHeaderProps {
   onAddBand?: () => void;
@@ -22,17 +20,15 @@ export function BandPageHeader({
   isAdminMode = false,
   className,
 }: BandPageHeaderProps) {
-  const { user } = useAuth();
-  const isUserAdmin = user && isAdmin(user.role);
 
   const rightActions = (
     <div className="flex items-center gap-2">
-      {onRefresh && !isUserAdmin && (
+      {onRefresh && !isAdminMode && (
         <Button variant="outline" size="sm" onClick={onRefresh}>
           更新
         </Button>
       )}
-      {isUserAdmin && isAdminMode && onOpenMainDraft && (
+      {isAdminMode && onOpenMainDraft && (
         <Button variant="outline" size="sm" onClick={onOpenMainDraft}>
           <ListChecks className="h-4 w-4" />
           本バンド決め

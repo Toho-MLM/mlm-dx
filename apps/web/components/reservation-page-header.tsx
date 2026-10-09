@@ -4,6 +4,7 @@ import React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { CalendarPlus, CalendarX2 } from 'lucide-react';
+import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext';
 import { isAdmin } from '../../../lib/shared-schemas';
 
@@ -21,11 +22,11 @@ export function ReservationPageHeader({
   className 
 }: ReservationPageHeaderProps) {
   const { user } = useAuth();
-  const isUserAdmin = user && isAdmin(user.role);
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role));
 
   const rightActions = (
     <div className="flex items-center gap-2">
-      {onRefresh && !isUserAdmin && (
+      {onRefresh && !isAdminMode && (
         <Button variant="outline" size="sm" onClick={onRefresh}>
           更新
         </Button>

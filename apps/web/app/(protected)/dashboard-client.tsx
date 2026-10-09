@@ -21,6 +21,7 @@ import type {
 } from '@shared-schemas'
 import { isAdmin } from '@shared-schemas'
 import { apiClient } from '@/lib/api'
+import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext'
 import { PageHeader } from '@/components/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -252,7 +253,7 @@ export function DashboardClient({ initialData }: { initialData?: DashboardData |
     loadDashboard()
   }, [initialData, loadDashboard])
 
-  const isUserAdmin = isAdmin(user?.role)
+  const [isAdminMode] = useAdminMode(isAdmin(user?.role))
 
   return (
     <>
@@ -296,7 +297,7 @@ export function DashboardClient({ initialData }: { initialData?: DashboardData |
               )}
             </SectionCard>
 
-            {isUserAdmin && (
+            {isAdminMode && (
               <SectionCard
                 title="管理者向け確認"
                 icon={<ListChecks className="h-5 w-5" />}
@@ -313,7 +314,7 @@ export function DashboardClient({ initialData }: { initialData?: DashboardData |
               </SectionCard>
             )}
 
-            <div className={isUserAdmin ? 'lg:col-span-2' : ''}>
+            <div className={isAdminMode ? 'lg:col-span-2' : ''}>
               <SectionCard
                 title="直近の予定"
                 icon={<CalendarClock className="h-5 w-5" />}

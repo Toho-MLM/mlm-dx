@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Group, Instrument, instrumentColors, instrumentNames, instrumentOrder } from '@/app/types'
 import { apiClient } from '@/lib/api'
 import { formatGroups } from '@/lib/utils'
+import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
 import { toast } from '@/lib/toast'
@@ -182,7 +183,7 @@ function downloadRowsAsPng(rows: MainBandRow[]) {
 
 export function BandMainClient({ initialGroups, initialMembers }: { initialGroups?: unknown[] | null; initialMembers?: MemberOption[] | null }) {
   const { user } = useAuth()
-  const canReorder = Boolean(user && isAdmin(user.role))
+  const [canReorder] = useAdminMode(user && isAdmin(user.role))
   const [bands, setBands] = useState<Group[]>(initialGroups ? formatGroups(initialGroups).filter(group => group.mainIndex !== null && group.isActive) : [])
   const [memberOptions, setMemberOptions] = useState<MemberOption[]>(initialMembers ?? [])
   const [loading, setLoading] = useState(initialGroups === undefined || initialGroups === null || initialMembers === undefined || initialMembers === null)

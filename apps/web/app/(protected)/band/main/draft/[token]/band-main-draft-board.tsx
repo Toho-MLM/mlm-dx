@@ -10,6 +10,9 @@ import {
   type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { useAuth } from '@/app/context/AuthContext'
+import { useAdminMode } from '@/hooks/use-admin-mode'
+import { isAdmin } from '@shared-schemas'
 import { useRouter } from 'next/navigation'
 import { Check, Copy, Plus, Trash2, Wifi, WifiOff, X } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -50,6 +53,8 @@ type ServerMessage =
 
 export function BandMainDraftBoard({ token, initialDraft }: { token: string; initialDraft?: BandMainDraft | null }) {
   const router = useRouter()
+  const { user } = useAuth()
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
   const [state, setState] = useState<BandDraftState | null>(initialDraft?.state ?? null)
   const [members, setMembers] = useState<BandDraftMember[]>(initialDraft?.members ?? [])
   const [canFinalize, setCanFinalize] = useState(initialDraft?.canFinalize ?? false)
@@ -381,13 +386,13 @@ export function BandMainDraftBoard({ token, initialDraft }: { token: string; ini
           <TooltipContent>共有URLをコピー</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      {canFinalize && (
+      {isAdminMode && canFinalize && (
         <Button size="sm" onClick={() => setIsConfirmOpen(true)} disabled={isPending}>
           <Check className="h-4 w-4" />
           確定
         </Button>
       )}
-      {canDelete && (
+      {isAdminMode && canDelete && (
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -421,7 +426,7 @@ export function BandMainDraftBoard({ token, initialDraft }: { token: string; ini
   return (
     <>
       <PageHeader rightActions={rightActions} />
-      <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+      <Dialog open={isAdminMode && isConfirmOpen} onOpenChange={setIsConfirmOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>本バンドを確定しますか？</DialogTitle>
@@ -440,7 +445,7 @@ export function BandMainDraftBoard({ token, initialDraft }: { token: string; ini
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+      <Dialog open={isAdminMode && isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>セッションを削除しますか？</DialogTitle>

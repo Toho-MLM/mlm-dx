@@ -42,10 +42,13 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
   const [creatingEntry, setCreatingEntry] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState<string>('')
 
+  const sectionRequestId = useRef(0)
   const loadSectionData = useCallback(async () => {
+    const requestId = ++sectionRequestId.current
     try {
       setSectionLoading(true)
       const bundle = await apiClient.getEventSetlist(event.id, isAdminMode)
+      if (requestId !== sectionRequestId.current) return
       if (bundle.success && bundle.data) {
         const result: EntryWithSetlist[] = bundle.data.map(b => ({
           entry: b.entry as Entry,
@@ -61,9 +64,10 @@ function EventSetlistSectionBase({ event, onEdit, isAdminMode = false, onCreateE
         setSectionEntriesWithSetlist(result)
       }
     } catch {
+      if (requestId !== sectionRequestId.current) return
       toast.error('データの取得に失敗しました')
     } finally {
-      setSectionLoading(false)
+      if (requestId === sectionRequestId.current) setSectionLoading(false)
     }
   }, [event.id, isAdminMode])
 

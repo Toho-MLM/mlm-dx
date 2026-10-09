@@ -8,21 +8,22 @@ import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, 
 import { AppSidebar } from "@/components/app-sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getLoginPath } from '@/lib/auth-redirect'
+import { AdminModeProvider } from './context/AdminModeContext'
 
-function Content({ children }: { children: React.ReactNode }) {
+function Content({ children, publicAccess = false }: { children: React.ReactNode; publicAccess?: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
   const { user, loading } = useAuth()
 
   useEffect(() => {
-    if (loading || !user) return
+    if (publicAccess || loading || !user) return
     const userBlocksSidebar = !!user && (!user.nickname || (user.instruments && user.instruments.length === 0))
     if (userBlocksSidebar && pathname !== '/profile') {
       router.replace('/profile')
     }
-  }, [loading, user, pathname, router])
+  }, [loading, user, pathname, router, publicAccess])
 
-  const isAuthResolving = loading || !user
+  const isAuthResolving = loading
   const userBlocksSidebar = !!user && (!user.nickname || (user.instruments && user.instruments.length === 0))
   const shouldRenderSidebarArea = pathname !== "/login"
 
@@ -69,11 +70,13 @@ function Content({ children }: { children: React.ReactNode }) {
               </div>
             </SidebarFooter>
           </Sidebar>
-        ) : (!userBlocksSidebar && <AppSidebar />)
+        ) : ((publicAccess || !userBlocksSidebar) && <AppSidebar />)
       )}
-      <Suspense fallback={null}>
-        <AuthRedirect />
-      </Suspense>
+      {!publicAccess && (
+        <Suspense fallback={null}>
+          <AuthRedirect />
+        </Suspense>
+      )}
       <div className="min-w-0 flex-1">
         {children}
       </div>
@@ -97,13 +100,21 @@ function AuthRedirect() {
   return null
 }
 
-export function MainContent({ children, initialUser }: { children: React.ReactNode; initialUser: NonNullable<ReturnType<typeof useAuth>['user']> }) {
+export function SidebarLayout({ children, initialAdminMode = false, publicAccess = false }: { children: React.ReactNode; initialAdminMode?: boolean; publicAccess?: boolean }) {
+  return (
+    <AdminModeProvider initialValue={initialAdminMode}>
+      <SidebarProvider>
+        <Content publicAccess={publicAccess}>{children}</Content>
+      </SidebarProvider>
+    </AdminModeProvider>
+  )
+}
+
+export function MainContent({ children, initialUser, initialAdminMode }: { children: React.ReactNode; initialUser: NonNullable<ReturnType<typeof useAuth>['user']>; initialAdminMode: boolean }) {
   return (
     <AuthProvider initialUser={initialUser}>
       <Gate>
-        <SidebarProvider>
-          <Content>{children}</Content>
-        </SidebarProvider>
+        <SidebarLayout initialAdminMode={initialAdminMode}>{children}</SidebarLayout>
       </Gate>
     </AuthProvider>
   )

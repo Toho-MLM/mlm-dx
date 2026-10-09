@@ -23,6 +23,8 @@ const getJSTDateString = (date: Date): string => {
 export const InstrumentSchema = z.enum(['VO', 'GT', 'KEY', 'DR', 'BA']);
 export const UserRoleSchema = z.enum(['MGR', 'CHF', 'MAC', 'MBR', 'ADM', 'NHD', 'NAC']);
 
+export const AdminModeQuerySchema = z.enum(['true', 'false']).default('false').transform((value) => value === 'true');
+
 const ValidDateTimeStringSchema = z.string()
   .datetime({ offset: true })
   .transform((value) => new Date(value).toISOString());

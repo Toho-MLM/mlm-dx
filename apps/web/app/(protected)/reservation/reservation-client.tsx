@@ -195,7 +195,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
   const [reservationLimitLoading, setReservationLimitLoading] = useState(true)
   const reservationLimitRequestIdRef = useRef(0)
   const { user, loading: authLoading } = useAuth();
-  const [isAdminMode] = useAdminMode(user && isAdmin(user.role), initialAdminMode);
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role));
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -233,10 +233,13 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
 
   useEffect(() => {
     setSelectedReservation((current) => current?.resource.type === 'reservation'
-      ? reservationData.find((event) => event.id === current.id) ?? current : current)
+      ? reservationData.find((event) => event.id === current.id) ?? null : current)
   }, [reservationData])
 
+  const reservationRequestId = useRef(0)
+
   const fetchReservations = useCallback(async () => {
+    const requestId = ++reservationRequestId.current
     try {
       setReservationError(null)
       const [reservationsResponse, eventsResponse, unavailablePeriodsResponse, reservationLimitsResponse] = await Promise.all([
@@ -246,6 +249,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
         apiClient.getReservationLimits(),
       ])
 
+      if (requestId !== reservationRequestId.current) return
       if (!reservationsResponse.success || !eventsResponse.success || !unavailablePeriodsResponse.success || !reservationLimitsResponse.success) {
         throw new Error('RESERVATION_FETCH_FAILED')
       }
@@ -255,6 +259,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
       setUnavailablePeriods(toUnavailableCalendarEvents(unavailablePeriodsResponse.data || []))
       setReservationLimits(reservationLimitsResponse.data || [])
     } catch (error) {
+      if (requestId !== reservationRequestId.current) return
       console.error('Failed to fetch reservation data:', error)
       setReservationError('予約情報を読み込めませんでした。')
     }
@@ -271,7 +276,16 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
         router.push('/profile')
         return
       }
-      if (hasCompleteInitialData && isAdminMode === initialAdminMode) return
+      if (hasCompleteInitialData && isAdminMode === initialAdminMode) {
+        reservationRequestId.current += 1
+        setReservationData(toReservationCalendarEvents(initialData.reservations!))
+        setEvents(toEventCalendarEvents(initialData.events!))
+        setUnavailablePeriods(toUnavailableCalendarEvents(initialData.unavailablePeriods!))
+        setReservationLimits(initialData.reservationLimits!)
+        setReservationError(null)
+        setLoading(false)
+        return
+      }
       try {
         await fetchReservations()
       } finally {
@@ -279,7 +293,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
       }
     }
     init()
-  }, [authLoading, user, router, pathname, searchParams, fetchReservations, hasCompleteInitialData, initialAdminMode, isAdminMode])
+  }, [authLoading, user, router, pathname, searchParams, fetchReservations, hasCompleteInitialData, initialData, initialAdminMode, isAdminMode])
 
   useEffect(() => {
     const mobileQuery = window.matchMedia('(max-width: 767px), (pointer: coarse)')
@@ -549,30 +563,39 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
     setSelectedReservation(null)
   }
 
-  const fetchMyGroups = async () => {
-    if (isGroupsLoading) return;
-
+  const groupsRequestId = useRef(0)
+  const fetchMyGroups = useCallback(async () => {
+    const requestId = ++groupsRequestId.current
     try {
-      setIsGroupsLoading(true);
-      const response = await apiClient.getGroupOptions(isAdminMode);
-
+      setIsGroupsLoading(true)
+      const response = await apiClient.getGroupOptions(isAdminMode)
+      if (requestId !== groupsRequestId.current) return
       if (response.success && response.data) {
-        setMyGroups(response.data);
+        setMyGroups(response.data)
+        setReservationDraft((current) => current.group && !response.data!.some((group) => group.id === current.group)
+          ? { ...current, group: null } : current)
       }
     } catch (err) {
-      console.error('Failed to fetch my groups:', err);
+      if (requestId !== groupsRequestId.current) return
+      console.error('Failed to fetch my groups:', err)
     } finally {
-      setIsGroupsLoading(false);
+      if (requestId === groupsRequestId.current) setIsGroupsLoading(false)
     }
-  };
+  }, [isAdminMode])
+
+  useEffect(() => {
+    void fetchMyGroups()
+  }, [fetchMyGroups])
 
   const fetchRealtimeReservationData = useCallback(async (includeReservationLimits: boolean) => {
+    const requestId = ++reservationRequestId.current
     try {
       const [reservationsResponse, reservationLimitsResponse] = await Promise.all([
         apiClient.getReservations(isAdminMode),
         includeReservationLimits ? apiClient.getReservationLimits() : Promise.resolve(null)
       ])
 
+      if (requestId !== reservationRequestId.current) return
       if (reservationsResponse.success && reservationsResponse.data) {
         setReservationData(toReservationCalendarEvents(reservationsResponse.data))
       }
@@ -583,6 +606,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
 
       await fetchReservationLimitRemaining()
     } catch (err) {
+      if (requestId !== reservationRequestId.current) return
       console.error('Failed to sync realtime reservation data:', err)
     }
   }, [fetchReservationLimitRemaining, isAdminMode])
@@ -763,7 +787,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
       })
   }, [reservationDraft.date, reservationLimits])
 
-  const shouldShowReservationLimits = user && !isAdmin(user.role) && visibleReservationLimits.length > 0
+  const shouldShowReservationLimits = user && !isAdminMode && visibleReservationLimits.length > 0
 
   return (
     <>

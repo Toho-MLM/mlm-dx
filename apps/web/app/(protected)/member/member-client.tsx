@@ -13,6 +13,7 @@ import { LoadingButton } from "@/components/ui/loading-button"
 import { AnimatePresence, motion } from 'framer-motion'
 import { MemberListItem, instrumentNames, roleNames, instrumentColors } from '@/app/types'
 import { PageHeader } from '@/components/page-header'
+import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
 import { apiClient } from '@/lib/api'
@@ -50,7 +51,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
   const [deletingMember, setDeletingMember] = useState<MemberListItem | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { user } = useAuth()
-  const isUserAdmin = user && isAdmin(user.role)
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
   const [members, setMembers] = useState<MemberListItem[] | null>(initialMembers ?? null)
   const [loading, setLoading] = useState(initialMembers === undefined || initialMembers === null)
 
@@ -173,7 +174,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
     const isSettingToMember = editFormData.role === 'MBR'
     const originalRole = editingMember.role
 
-    if (isEditingSelf && isSettingToMember && originalRole !== 'MBR' && isUserAdmin) {
+    if (isEditingSelf && isSettingToMember && originalRole !== 'MBR' && isAdminMode) {
       setIsWarningDialogOpen(true)
       return
     }
@@ -431,7 +432,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
     <>
       <PageHeader
         rightActions={
-          isUserAdmin ? (
+          isAdminMode ? (
             <>
               <Dialog open={isCsvImportDialogOpen} onOpenChange={(open) => { setIsCsvImportDialogOpen(open); if (!open) setCsvMembers([]) }}>
                 <DialogTrigger asChild>
@@ -661,7 +662,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
                   <TableHead className="text-center font-semibold whitespace-nowrap">役職</TableHead>
                   <TableHead className="text-center font-semibold whitespace-nowrap">ニックネーム</TableHead>
                   <TableHead className="text-center font-semibold whitespace-nowrap">楽器</TableHead>
-                  {isUserAdmin && (
+                  {isAdminMode && (
                     <TableHead className="text-center font-semibold whitespace-nowrap">操作</TableHead>
                   )}
                 </TableRow>
@@ -683,7 +684,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
                         <TableCell className="text-center"><Skeleton className="h-4 w-16 mx-auto" /></TableCell>
                         <TableCell className="text-center"><Skeleton className="h-4 w-24 mx-auto" /></TableCell>
                         <TableCell className="text-left"><Skeleton className="h-4 w-40" /></TableCell>
-                        {isUserAdmin && (
+                        {isAdminMode && (
                           <TableCell className="text-center">
                             <Skeleton className="h-8 w-24 mx-auto" />
                           </TableCell>
@@ -714,7 +715,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
                             ))}
                           </div>
                         </TableCell>
-                        {isUserAdmin && (
+                        {isAdminMode && (
                           <TableCell className="text-center">
                             <div className="flex justify-center gap-2">
                               <Button
@@ -745,7 +746,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <TableCell colSpan={isUserAdmin ? 7 : 6} className="text-center py-4 text-gray-500">
+                      <TableCell colSpan={isAdminMode ? 7 : 6} className="text-center py-4 text-gray-500">
                         検索結果 0件
                       </TableCell>
                     </motion.tr>

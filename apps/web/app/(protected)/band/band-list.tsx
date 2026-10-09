@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { BandCard } from "./band-card"
 import { BandForm } from "./band-form"
@@ -32,7 +32,7 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
   const isUserAdmin = user && isAdmin(user.role)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBand, setEditingBand] = useState<Group | undefined>()
-  const [isAdminMode] = useAdminMode(isUserAdmin, initialAdminMode)
+  const [isAdminMode] = useAdminMode(isUserAdmin)
   const [bands, setBands] = useState<Group[]>(initialGroups ? formatGroups(initialGroups) : [])
   const [loading, setLoading] = useState(initialGroups === undefined || initialGroups === null || initialMembers === undefined || initialMembers === null)
   const [memberOptions, setMemberOptions] = useState<MemberOption[]>((initialMembers ?? []).map((member) => ({
@@ -47,13 +47,17 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
   const placeholderMain: Group = { id: 'placeholder-main', name: '', mainIndex: 0, isActive: true, assignments: [] }
   const placeholderFree: Group = { id: 'placeholder-free', name: '', mainIndex: null, isActive: true, assignments: [] }
 
+  const bandsRequestId = useRef(0)
+
   const fetchBandsAndMembers = useCallback(async (adminFlag: boolean) => {
+    const requestId = ++bandsRequestId.current
     try {
       setLoading(true)
       const [groupsRes, membersRes] = await Promise.all([
         apiClient.getUserGroups(adminFlag),
         apiClient.getMemberOptions(),
       ])
+      if (requestId !== bandsRequestId.current) return
       if (groupsRes.success) setBands(formatGroups(groupsRes.data || []))
       if (membersRes.success) {
         setMemberOptions((membersRes.data || []).map((member) => ({
@@ -61,17 +65,29 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
           name: stripStudentNumberPrefix(member.display_name || member.name),
         })))
       }
+    } catch (error) {
+      if (requestId !== bandsRequestId.current) return
+      toast.error('バンド情報を読み込めませんでした', {
+        description: translateError((error as Error).message),
+      })
     } finally {
-      setLoading(false)
+      if (requestId === bandsRequestId.current) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     if (initialGroups !== undefined && initialGroups !== null && initialMembers !== undefined && initialMembers !== null && isAdminMode === initialAdminMode) {
+      bandsRequestId.current += 1
+      setBands(formatGroups(initialGroups))
+      setMemberOptions(initialMembers.map((member) => ({
+        ...member,
+        name: stripStudentNumberPrefix(member.display_name || member.name),
+      })))
+      setLoading(false)
       if (!isAdminMode) setSelectedBandIds(new Set())
       return
     }
-    fetchBandsAndMembers(isAdminMode)
+    void fetchBandsAndMembers(isAdminMode)
     if (!isAdminMode) setSelectedBandIds(new Set())
   }, [fetchBandsAndMembers, initialAdminMode, initialGroups, initialMembers, isAdminMode])
 
@@ -138,8 +154,10 @@ export function BandList({ initialGroups, initialMembers, initialAdminMode = fal
   }
 
   const handleRefresh = async () => {
+    const requestId = ++bandsRequestId.current
     try {
       const response = await apiClient.getUserGroups(isAdminMode)
+      if (requestId !== bandsRequestId.current) return
       if (response.success) {
         setBands(formatGroups(response.data || []))
       }

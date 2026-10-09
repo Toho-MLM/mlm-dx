@@ -2,7 +2,7 @@
 
 import { ToastNotice } from '@/components/toast-notice'
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import React, { Suspense, useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Calendar as BigCalendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar'
 import { format, getDay, parse, startOfWeek } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
@@ -202,7 +202,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
-  const [isAdminMode] = useAdminMode(user && isAdmin(user.role), initialAdminMode)
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
   const [loading, setLoading] = useState(!hasCompleteInitialData)
   const [loadError, setLoadError] = useState<string | null>(initialData?.externals === null || initialData?.reservations === null ? '外部予約を読み込めませんでした。' : null)
   const [externals, setExternals] = useState<External[]>(
@@ -231,28 +231,41 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false)
   const [draft, setDraft] = useState<ExternalDraft>(() => getInitialExternalDraft())
 
+  const groupsRequestId = useRef(0)
   const fetchGroups = useCallback(async () => {
-    if (isGroupsLoading) return
+    const requestId = ++groupsRequestId.current
     try {
       setIsGroupsLoading(true)
       const response = await apiClient.getGroupOptions(isAdminMode)
+      if (requestId !== groupsRequestId.current) return
       if (response.success && response.data) {
         setMyGroups(response.data)
+        setDraft((current) => current.groupId && !response.data!.some((group) => group.id === current.groupId)
+          ? { ...current, groupId: null } : current)
       }
     } catch (error) {
+      if (requestId !== groupsRequestId.current) return
       console.error('Failed to fetch groups:', error)
     } finally {
-      setIsGroupsLoading(false)
+      if (requestId === groupsRequestId.current) setIsGroupsLoading(false)
     }
-  }, [isAdminMode, isGroupsLoading])
+  }, [isAdminMode])
+
+  useEffect(() => {
+    void fetchGroups()
+  }, [fetchGroups])
+
+  const reservationRequestId = useRef(0)
 
   const fetchData = useCallback(async () => {
+    const requestId = ++reservationRequestId.current
     setLoadError(null)
     try {
       const [externalsResponse, reservationsResponse] = await Promise.all([
         apiClient.getExternals(),
         apiClient.getExternalReservations(isAdminMode),
       ])
+      if (requestId !== reservationRequestId.current) return
       if (!externalsResponse.success || !externalsResponse.data) {
         throw new Error(externalsResponse.error || 'EXTERNAL_FETCH_FAILED')
       }
@@ -271,6 +284,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
       })
       setReservations(reservationsResponse.data)
     } catch (error) {
+      if (requestId !== reservationRequestId.current) return
       console.error('Failed to fetch external reservations:', error)
       setLoadError(translateError((error as Error).message))
     }
@@ -288,7 +302,21 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
         return
       }
 
-      if (hasCompleteInitialData && isAdminMode === initialAdminMode) return
+      if (hasCompleteInitialData && isAdminMode === initialAdminMode) {
+        reservationRequestId.current += 1
+        const externalTargets = initialData.externals!.filter((external) => external.target_type === 'EXTERNAL')
+        setExternals(externalTargets)
+        setSelectedExternalId((currentId) => {
+          if (currentId && externalTargets.some((external) => external.id === currentId)) return currentId
+          const now = new Date()
+          return externalTargets.find((external) => new Date(external.start_datetime) <= now && new Date(external.end_datetime) > now)?.id
+            || externalTargets.find((external) => new Date(external.end_datetime) > now)?.id || externalTargets.at(-1)?.id || null
+        })
+        setReservations(initialData.reservations!)
+        setLoadError(null)
+        setLoading(false)
+        return
+      }
 
       try {
         await fetchData()
@@ -298,7 +326,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
     }
 
     void init()
-  }, [authLoading, fetchData, router, user, pathname, searchParams, hasCompleteInitialData, initialAdminMode, isAdminMode])
+  }, [authLoading, fetchData, router, user, pathname, searchParams, hasCompleteInitialData, initialData, initialAdminMode, isAdminMode])
 
   useEffect(() => {
     if (!user) return
@@ -379,7 +407,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   ), [reservations])
 
   useEffect(() => {
-    setSelectedReservation((current) => current ? calendarEvents.find((event) => event.id === current.id) ?? current : current)
+    setSelectedReservation((current) => current ? calendarEvents.find((event) => event.id === current.id) ?? null : current)
   }, [calendarEvents])
 
   const selectedCalendarEvents = useMemo(() => (

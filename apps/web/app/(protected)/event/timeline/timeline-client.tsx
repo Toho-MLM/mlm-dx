@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { LoadingButton } from '@/components/ui/loading-button'
 import { toast } from '@/lib/toast'
 import { showSuccessToast } from '@/lib/utils'
+import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin, type TimelineItem } from '@shared-schemas'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -54,6 +55,7 @@ function isoToHHMM(isoString: string | null): string {
 
 function TimelineContent({ initialEvents }: { initialEvents?: Event[] | null }) {
   const { user } = useAuth()
+  const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
   const searchParams = useSearchParams()
   const [events, setEvents] = useState<Event[]>(initialEvents ?? [])
   const [eventsLoading, setEventsLoading] = useState(initialEvents === undefined || initialEvents === null)
@@ -246,7 +248,7 @@ function TimelineContent({ initialEvents }: { initialEvents?: Event[] | null }) 
             ))}
         </SelectContent>
       </Select>
-      {selectedEventId && user && isAdmin(user.role) && (
+      {selectedEventId && isAdminMode && (
         <Button size="sm" variant="outline" onClick={startEditing}>
           編集
         </Button>
