@@ -108,6 +108,37 @@ function setup(migrate = false) {
   return { sqlite, db, repository, hall, apply, winner };
 }
 describe('期間ホール抽選 D1 SQL / migration', () => {
+  it('申込・結果を申込日時の古い順に返し、所属による絞り込みと同時刻の順序を保つ', async () => {
+    const f = setup();
+    try {
+      await f.repository.create(lottery, now);
+      f.sqlite.prepare('INSERT INTO users (id, name, email, grade, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(uuid(99), '別の申込者', 'other@example.invalid', 1, now, now);
+      for (const [index, createdAt] of [
+        '2026-09-25T14:00:00.000Z',
+        '2026-09-25T13:00:00.000Z',
+        '2026-09-25T14:00:00.000Z',
+      ].entries()) {
+        const groupId = uuid(20 + index);
+        f.sqlite.prepare('INSERT INTO groups (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
+          .run(groupId, `バンド${index}`, now, now);
+        if (index !== 2) {
+          f.sqlite.prepare('INSERT INTO group_member_instruments (id, group_id, user_id, instrument, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+            .run(uuid(30 + index), groupId, uuid(2), 'VO', now, now);
+        }
+        f.sqlite.prepare('INSERT INTO hall_lottery_applications (id, lottery_id, group_id, user_id, state, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(uuid(10 + index), lottery.id, groupId, index === 2 ? uuid(99) : uuid(2), index === 1 ? 'LOST' : 'PENDING', createdAt);
+      }
+      expect((await f.repository.applications(lottery.id)).map((item) => item.id))
+        .toEqual([uuid(11), uuid(10), uuid(12)]);
+      expect((await f.repository.applications(lottery.id, uuid(2))).map((item) => item.id))
+        .toEqual([uuid(11), uuid(10)]);
+      expect((await f.repository.applications(lottery.id, uuid(99))).map((item) => item.id)).toEqual([uuid(12)]);
+      expect(await f.repository.applications(lottery.id, uuid(98))).toEqual([]);
+    } finally {
+      f.sqlite.close();
+    }
+  });
   it('初期schemaとmigrationが同じ構造で、既存予約を保持する', () => {
     const fresh = setup();
     const migrated = setup(true);

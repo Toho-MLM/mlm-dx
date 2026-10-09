@@ -62,7 +62,7 @@ export function createD1HallLotteryRepository(
         (SELECT json_group_array(start_time) FROM (SELECT start_time FROM hall_lottery_preferences WHERE application_id=a.id ORDER BY rank)) preferences
         FROM hall_lottery_applications a JOIN groups g ON g.id=a.group_id WHERE a.lottery_id=?
         ${userId ? 'AND (a.user_id=? OR EXISTS (SELECT 1 FROM group_member_instruments m WHERE m.group_id=a.group_id AND m.user_id=?))' : ''}
-        ORDER BY a.id`,
+        ORDER BY a.created_at ASC, a.id ASC`,
         )
         .bind(id, ...(userId ? [userId, userId] : []))
         .all<Record<string, unknown>>();
