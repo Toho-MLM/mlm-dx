@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { DashboardRepository, EntryOpportunityRow, EmptySetlistRow, EventDeadlineRow, ReservationScheduleRow, TimelineIncompleteRow } from '../application/repository';
+import { BAND_DISPLAY_ORDER_SQL } from '../../groups/infrastructure/group-order';
 
 const normalizeEvent = (row: Record<string, unknown>): EventDeadlineRow => ({
   event_id: String(row.event_id), event_title: String(row.event_title),
@@ -40,11 +41,13 @@ export function createD1DashboardRepository(db: D1Database): DashboardRepository
         SELECT ev.id AS event_id, ev.title AS event_title, ev.setlist_deadline AS due_at,
                expected.group_id, expected.group_name
         FROM expected_entries expected INNER JOIN events ev ON ev.id = expected.event_id
+        INNER JOIN groups g ON g.id = expected.group_id
         LEFT JOIN setlist_items si ON si.entry_id = expected.entry_id AND si.position > 0
         WHERE ev.is_setlist_accepting = TRUE AND ev.song_limit > 0
           AND datetime(ev.setlist_deadline) BETWEEN datetime(?) AND datetime(?) AND date(ev.event_date) >= date(?)
         GROUP BY ev.id, ev.title, ev.setlist_deadline, expected.group_id, expected.group_name
-        HAVING COUNT(si.id) = 0 ORDER BY datetime(ev.setlist_deadline) ASC LIMIT ?
+        HAVING COUNT(si.id) = 0
+        ORDER BY ${BAND_DISPLAY_ORDER_SQL}, datetime(ev.setlist_deadline) ASC, ev.id ASC LIMIT ?
       `).bind(userId, userId, w.nowIso, w.horizonIso, w.todayJst, w.limit).all<EmptySetlistRow>();
       return rows.results;
     },

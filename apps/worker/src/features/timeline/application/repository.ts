@@ -1,13 +1,7 @@
 import type { TimelineUpdateItem } from '../domain/timeline';
+import type { TimelineItem as SharedTimelineItem } from '@shared-schemas';
 
-export type TimelineItem = {
-  entry_id: string;
-  group_id: string;
-  group_name: string;
-  start_time: string | null;
-  end_time: string | null;
-  position: number | null;
-};
+export type TimelineItem = SharedTimelineItem;
 
 export interface TimelineRepository {
   eventExists(eventId: string): Promise<boolean>;
@@ -16,4 +10,3 @@ export interface TimelineRepository {
   entriesBelongToEvent(eventId: string, entryIds: string[]): Promise<boolean>;
   update(items: TimelineUpdateItem[], updatedAt: string): Promise<void>;
 }
-

@@ -13,21 +13,13 @@ import { LoadingButton } from '@/components/ui/loading-button'
 import { toast } from '@/lib/toast'
 import { showSuccessToast } from '@/lib/utils'
 import { useAuth } from '@/app/context/AuthContext'
-import { isAdmin } from '@shared-schemas'
+import { isAdmin, type TimelineItem } from '@shared-schemas'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ChevronUp, ChevronDown, X } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 
-type TimelineRow = {
-  entry_id: string
-  group_id: string
-  group_name: string
-  start_time: string | null
-  end_time: string | null
-  position: number | null
-  is_virtual?: boolean
-}
+type TimelineRow = TimelineItem
 
 function toIsoFromEventDateAndTime(eventDateIso: string, hhmm: string): string {
   const date = new Date(eventDateIso)
@@ -176,7 +168,8 @@ function TimelineContent({ initialEvents }: { initialEvents?: Event[] | null }) 
     const rest = [...editingConfigured]
     rest.splice(idx, 1)
     setEditingConfigured(rest.map((r, i) => ({ ...r, position: i + 1 })))
-    setEditingUnconfigured([{ ...item, position: null }, ...editingUnconfigured])
+    setEditingUnconfigured([{ ...item, position: null }, ...editingUnconfigured]
+      .sort((a, b) => a.band_order - b.band_order))
   }
 
   const setTime = (entryId: string, field: 'start_time' | 'end_time', value: string) => {

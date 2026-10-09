@@ -749,6 +749,7 @@ export const TimelineItemSchema = z.object({
   start_time: z.string().nullable(),
   end_time: z.string().nullable(),
   position: z.number().nullable(),
+  band_order: z.number().int().min(1),
   is_virtual: z.boolean().optional(),
 });
 

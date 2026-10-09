@@ -33,10 +33,25 @@ export async function getDashboard(repository: DashboardRepository, userId: stri
     repository.reservations('hall', userId, window), repository.reservations('external', userId, window),
     repository.deadlineEvents(window),
   ]);
-  const memberActions: DashboardMemberAction[] = [
-    ...opportunities.map((row) => ({ kind: 'ENTRY_AVAILABLE' as const, ...row, eligible_group_count: Number(row.eligible_group_count) })),
-    ...setlists.map((row) => ({ kind: 'SETLIST_EMPTY' as const, ...row })),
-  ].sort((a, b) => compare(a.due_at, b.due_at)).slice(0, ITEM_LIMIT);
+  const entryActions: DashboardMemberAction[] = opportunities
+    .map((row) => ({ kind: 'ENTRY_AVAILABLE' as const, ...row, eligible_group_count: Number(row.eligible_group_count) }))
+    .sort((a, b) => compare(a.due_at, b.due_at));
+  const setlistActions: DashboardMemberAction[] = setlists.map((row) => ({ kind: 'SETLIST_EMPTY' as const, ...row }));
+  const memberActions: DashboardMemberAction[] = [];
+  let entryIndex = 0;
+  let setlistIndex = 0;
+  // セトリのrepositoryが返したバンド順を保ち、エントリー案内を締切に沿って挿入する。
+  while (memberActions.length < ITEM_LIMIT && (entryIndex < entryActions.length || setlistIndex < setlistActions.length)) {
+    const entry = entryActions[entryIndex];
+    const setlist = setlistActions[setlistIndex];
+    if (entry && (!setlist || compare(entry.due_at, setlist.due_at) <= 0)) {
+      memberActions.push(entry);
+      entryIndex++;
+    } else {
+      memberActions.push(setlist);
+      setlistIndex++;
+    }
+  }
 
   let adminActions: DashboardAdminAction[] = [];
   if (admin) {

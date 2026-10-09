@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { SetlistRepository } from '../application/repository';
+import { MAIN_BAND_ORDER_SQL } from '../../groups/infrastructure/group-order';
 
 type SetlistRow = {
   entry_id: string; entry_event_id: string; entry_group_id: string; entry_note: string | null;
@@ -71,7 +72,8 @@ export function createD1SetlistRepository(db: D1Database): SetlistRepository {
                s.title AS item_title, s.artist AS item_artist
         FROM entries e LEFT JOIN groups g ON g.id = e.group_id
         LEFT JOIN setlist_items s ON s.entry_id = e.id
-        WHERE e.event_id = ?${filter} ORDER BY e.created_at ASC, s.position ASC
+        WHERE e.event_id = ?${filter}
+        ORDER BY ${MAIN_BAND_ORDER_SQL}, e.created_at ASC, e.id ASC, s.position ASC
       `).bind(eventId, ...(groupIds ?? [])).all<SetlistRow>();
       const result = new Map<string, { entry: Record<string, unknown>; group_name: string; setlist_items: Array<{ position: number; title: string; artist: string }> }>();
       for (const row of rows.results) {

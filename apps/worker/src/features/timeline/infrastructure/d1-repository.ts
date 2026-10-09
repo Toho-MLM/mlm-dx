@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { TimelineRepository } from '../application/repository';
+import { BAND_DISPLAY_ORDER_SQL } from '../../groups/infrastructure/group-order';
 
 type TimelineRow = {
   entry_id: string;
@@ -7,6 +8,7 @@ type TimelineRow = {
   start_time: string | null;
   end_time: string | null;
   position: number | null;
+  band_order: number;
   group_name: string | null;
 };
 
@@ -31,10 +33,13 @@ export function createD1TimelineRepository(db: D1Database): TimelineRepository {
     },
     async list(eventId) {
       const rows = await db.prepare(`
-        SELECT e.id AS entry_id, e.group_id, e.start_time, e.end_time, e.position, g.name AS group_name
+        SELECT e.id AS entry_id, e.group_id, e.start_time, e.end_time, e.position, g.name AS group_name,
+               ROW_NUMBER() OVER (ORDER BY ${BAND_DISPLAY_ORDER_SQL}, e.id ASC) AS band_order
         FROM entries e LEFT JOIN groups g ON g.id = e.group_id
         WHERE e.event_id = ?
-        ORDER BY e.position IS NULL, e.position ASC, e.created_at ASC
+        ORDER BY e.position IS NULL, e.position ASC,
+          CASE WHEN e.position IS NOT NULL THEN e.created_at END ASC,
+          ${BAND_DISPLAY_ORDER_SQL}, e.created_at ASC, e.id ASC
       `).bind(eventId).all<TimelineRow>();
       const result = { configured: [], unconfigured: [] } as Awaited<ReturnType<TimelineRepository['list']>>;
       for (const row of rows.results) {
@@ -45,6 +50,7 @@ export function createD1TimelineRepository(db: D1Database): TimelineRepository {
           start_time: row.start_time || null,
           end_time: row.end_time || null,
           position: row.position === null ? null : Number(row.position),
+          band_order: Number(row.band_order),
         };
         (item.position === null ? result.unconfigured : result.configured).push(item);
       }
