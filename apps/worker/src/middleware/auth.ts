@@ -1,3 +1,4 @@
+import { createExecutiveTransitionService } from '../features/executive-transition/infrastructure/service';
 import type { Context } from 'hono';
 import type { Bindings, Variables } from '../index';
 import type { User } from '../types';
@@ -15,6 +16,8 @@ export const requireAuth = async (c: Context<{ Bindings: Bindings; Variables: Va
       return c.json({ success: false, error: 'NO_AUTHENTICATION_TOKEN' }, 401);
     }
 
+    // Cron が遅延しても、権限を読む前に期限到来分を一括反映する。
+    await createExecutiveTransitionService(c.env.DB).processDue();
     const fullUser = await resolveSession(
       createD1AuthRepository(c.env.DB),
       webCryptoSessionTokenProvider,

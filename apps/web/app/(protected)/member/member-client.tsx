@@ -1,5 +1,6 @@
 'use client'
 
+import { ExecutiveTransitionDialog } from '@/components/executive-transition-dialog'
 import { DraftDialog } from '@/components/draft-dialog'
 import { ToastNotice } from '@/components/toast-notice'
 
@@ -637,6 +638,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
         }
       />
       <div className="p-4 pt-0 mx-auto">
+      <ExecutiveTransitionDialog enabled={isAdminMode} onApplied={fetchMembers} />
       <Card className="w-full max-w-screen mx-auto">
         <CardContent className="p-6">
           <div className="mb-6">

@@ -36,6 +36,32 @@ const ValidDateStringSchema = z.string()
     return Number.isFinite(date.getTime()) && getJSTDateString(date) === value;
   });
 
+// 幹部交代は管理者 (ADM) を対象に含めない。
+export const ExecutiveRoleSchema = z.enum(['MGR', 'CHF', 'MAC', 'NHD', 'NAC']);
+export const ExecutiveAssignmentSchema = z.object({
+  user_id: UuidSchema,
+  role: ExecutiveRoleSchema,
+});
+const ExecutiveAssignmentsSchema = z.array(ExecutiveAssignmentSchema).min(1)
+  .refine((entries) => new Set(entries.map((entry) => entry.user_id)).size === entries.length);
+export const SaveExecutiveTransitionRequestSchema = z.object({
+  effective_date: ValidDateStringSchema,
+  assignments: ExecutiveAssignmentsSchema,
+  expected_revision: UuidSchema.nullable(),
+});
+export const CancelExecutiveTransitionRequestSchema = z.object({ expected_revision: UuidSchema });
+export const ExecutiveTransitionSchema = z.object({
+  revision: UuidSchema,
+  effective_date: ValidDateStringSchema,
+  effective_at: ValidDateTimeStringSchema,
+  assignments: ExecutiveAssignmentsSchema,
+  status: z.enum(['PENDING', 'APPLIED', 'CANCELLED', 'FAILED']),
+  failure_reason: z.literal('MEMBER_UNAVAILABLE').nullable(),
+});
+export type ExecutiveAssignment = z.infer<typeof ExecutiveAssignmentSchema>;
+export type ExecutiveTransition = z.infer<typeof ExecutiveTransitionSchema>;
+export type SaveExecutiveTransitionRequest = z.infer<typeof SaveExecutiveTransitionRequestSchema>;
+
 export const UserSchema = z.object({
   id: UuidSchema,
   email: z.string().email(),

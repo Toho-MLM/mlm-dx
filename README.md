@@ -781,3 +781,11 @@ curl http://localhost:8787/api/auth/session
 | `pnpm run lint:worker` | バックエンドのリント |
 | `pnpm run type-check` | 型チェック |
 | `pnpm run clean` | 全ビルド成果物を削除 |
+
+### 幹部交代の予約
+
+- `isAdmin` の対象（MBR以外）が管理者モードでメンバー一覧の「幹部交代」を開き、交代日と交代後の役職を全員分まとめて設定する。予定の取得・設定・取消APIも同じ `isAdmin` の条件に従い、MBRには予定を公開しない。
+- 交代日はJSTの午前0時。対象は部長・主務・看護部長・医会計・看護会計で、指定されなかった現幹部は部員になる。管理者（ADM）は変更しない。
+- 次回の予定は1件。交代前は変更・取消でき、同時編集はrevisionで検出する。対象者の削除・管理者への変更が発生した場合は一括処理を停止し、全員の役職を維持する。
+- 既存のUTC `0 15 * * *`（JST 0時）のcronで反映する。cron遅延時も認証・セッション取得前に期限到来分を反映し、旧役職の権限が残ることを防ぐ。処理は[D1 batchのトランザクション](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch)で一括実行する。
+- リリース前に `023_add_executive_transitions.sql` を含むmigrationを適用する。認証処理も新テーブルを使うため、DBを先に更新してからアプリを反映する。既存データの変更・初期化は不要。

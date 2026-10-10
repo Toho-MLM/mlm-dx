@@ -11,6 +11,8 @@ import { generateState, generateNonce, generateCodeVerifier, generateCodeChallen
 import type { AuthUser } from './auth';
 import { userRoutes } from './routes/users';
 import { groupRoutes } from './routes/groups';
+import { executiveTransitionRoutes } from './routes/executive-transition';
+import { createExecutiveTransitionService } from './features/executive-transition/infrastructure/service';
 import { memberRoutes } from './routes/members';
 import { reservationRoutes } from './routes/reservations';
 import { externalReservationRoutes, externalStudioRoutes } from './routes/external';
@@ -370,6 +372,7 @@ app.get('/auth/session', async (c) => {
       return c.json({ user: null });
     }
 
+    await createExecutiveTransitionService(c.env.DB).processDue();
     const dbUserRaw = await resolveSession(
       createD1AuthRepository(c.env.DB),
       webCryptoSessionTokenProvider,
@@ -708,6 +711,7 @@ app.post('/auth/create-first-user', async (c) => {
 app.route('/me', userRoutes);
 app.route('/groups', groupRoutes);
 app.route('/members', memberRoutes);
+app.route('/executive-transition', executiveTransitionRoutes);
 app.route('/hall-lotteries', hallLotteryRoutes);
 app.route('/reservations', reservationRoutes);
 app.route('/reservation/external', externalStudioRoutes);
@@ -731,12 +735,14 @@ export const apiWorker = {
     switch (event.cron) {
       case "0 12 * * *":
         await runScheduledTasks([
+          { name: 'executive transition', run: () => createExecutiveTransitionService(env.DB).processDue() },
           { name: 'hall lotteries', run: () => processDueHallLotteries(env) },
           { name: 'external lotteries', run: () => processExternalLotteryForNextDay(env) },
         ], reportError);
         break;
       case "0 15 * * *":
         await runScheduledTasks([
+          { name: 'executive transition', run: () => createExecutiveTransitionService(env.DB).processDue() },
           { name: 'due hall lotteries', run: () => hallLotteryService(env).processDue() },
           { name: 'expired sessions', run: () => createD1AuthRepository(env.DB).deleteExpiredSessions(new Date().toISOString()) },
           { name: 'due hall reservations', run: () => processTodayReservations(env) },
