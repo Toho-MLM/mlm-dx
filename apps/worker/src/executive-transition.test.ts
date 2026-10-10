@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Context, Next } from 'hono';
+import { getExecutiveTransitionCohort } from '@shared-schemas';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn(), cancel: vi.fn() }));
 vi.mock('./middleware/auth', () => ({
   requireAuth: async (c: Context, next: Next) => {
@@ -44,6 +45,7 @@ describe('幹部交代 HTTP境界', () => {
     { ...payload, assignments: [{ user_id: id, role: 'ADM' }] },
     { ...payload, assignments: [{ user_id: 'bad', role: 'MGR' }] },
     { ...payload, assignments: [payload.assignments[0], payload.assignments[0]] },
+    { ...payload, assignments: [payload.assignments[0], { user_id: '00000000-0000-4000-8000-000000000002', role: 'MGR' }] },
     { ...payload, expected_revision: 'bad' },
   ])('不正日付・管理者への変更・重複などを400にする', async (body) => {
     expect((await request('PUT', 'ADM', body)).status).toBe(400);
@@ -55,5 +57,16 @@ describe('幹部交代 HTTP境界', () => {
     mocks.save.mockRejectedValue(new ExecutiveTransitionError('INVALID_EFFECTIVE_DATE'));
     expect((await request('PUT', 'ADM', payload)).status).toBe(400);
     expect((await request('DELETE', 'ADM', {})).status).toBe(400);
+  });
+});
+
+describe('幹部交代の候補年度', () => {
+  it.each([
+    ['2026-10-10T00:00:00Z', 2026, ['M25', 'N25']],
+    ['2027-01-01T00:00:00Z', 2026, ['M25', 'N25']],
+    ['2027-03-31T14:59:59.999Z', 2026, ['M25', 'N25']],
+    ['2027-03-31T15:00:00.000Z', 2027, ['M26', 'N26']],
+  ])('JSTの年度境界で候補学籍番号を切り替える: %s', (now, year, prefixes) => {
+    expect(getExecutiveTransitionCohort(new Date(now))).toEqual({ year, prefixes });
   });
 });

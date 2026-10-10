@@ -435,6 +435,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
         rightActions={
           isAdminMode ? (
             <>
+              <ExecutiveTransitionDialog enabled={isAdminMode} onApplied={fetchMembers} />
               <Dialog open={isCsvImportDialogOpen} onOpenChange={(open) => { setIsCsvImportDialogOpen(open); if (!open) setCsvMembers([]) }}>
                 <DialogTrigger asChild>
                   <Button variant="outline">
@@ -638,7 +639,6 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
         }
       />
       <div className="p-4 pt-0 mx-auto">
-      <ExecutiveTransitionDialog enabled={isAdminMode} onApplied={fetchMembers} />
       <Card className="w-full max-w-screen mx-auto">
         <CardContent className="p-6">
           <div className="mb-6">
