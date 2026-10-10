@@ -254,6 +254,18 @@ class ApiClient {
     return apiUrl.toString()
   }
 
+  async getExecutiveTransition(): Promise<ApiResponse<SharedSchemas.ExecutiveTransition | null>> {
+    return httpClient.get('/executive-transition')
+  }
+
+  async saveExecutiveTransition(data: SharedSchemas.SaveExecutiveTransitionRequest): Promise<ApiResponse<SharedSchemas.ExecutiveTransition>> {
+    return httpClient.put('/executive-transition', data)
+  }
+
+  async cancelExecutiveTransition(revision: string): Promise<ApiResponse<void>> {
+    return httpClient.delete('/executive-transition', { expected_revision: revision })
+  }
+
   async getMemberList(): Promise<ApiResponse<MemberListItem[]>> {
     return httpClient.get<ApiResponse<MemberListItem[]>>('/members')
   }
