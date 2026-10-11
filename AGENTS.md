@@ -3,6 +3,7 @@
 ## コミュニケーション
 
 - ユーザーへの説明、進捗、最終回答は日本語で行う。
+- MBR以外の有効な役職を持つ人の総称はEditor、ADMという特定の役職はADMと呼ぶ。ADMもEditorに含まれる。呼称の詳細は `docs/design-rules.md` に従う。
 - 不明点はまず既存コード、README、`package.json`、Git 履歴から確認する。
 - 変更後は、変更内容・検証結果・残課題を簡潔に報告する。
 
@@ -20,7 +21,7 @@
 - 変更前に同種の画面、ルート、API メソッドを探し、既存パターンに合わせる。
 - API 契約を変更するときは、共有スキーマ、Worker、Web API クライアント、画面を一続きで確認する。
 - 入力値は境界で Zod により検証し、D1 の SQL はプレースホルダーと `.bind()` を使う。
-- 認証が必要な Worker ルートには `requireAuth` を適用し、管理操作には `requireAdmin` を適用する。
+- 認証が必要な Worker ルートには `requireAuth` を適用し、Editor権限が必要な操作には既存の `requireAdmin` を適用する（ADM専用の判定ではない）。予約の完全削除・ADMの付与/降格/削除には `requireAdm` または同等のDB書き込み条件でADM専用権限を強制する。
 - D1 の boolean、JSON、数値をレスポンスへ返す前に、共有スキーマが期待する形へ正規化する。
 - D1 の boolean は Worker 側で `true` / `false` へ変換し、共有スキーマと Web では boolean のみを扱う。`0` / `1` を API レスポンスへ露出しない。
 - `created_at` と `updated_at` はDB内部の監査・並び替え用として扱い、APIレスポンスや共有レスポンス型へ含めない。

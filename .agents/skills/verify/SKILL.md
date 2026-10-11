@@ -53,8 +53,8 @@ pnpm --filter mlm-dx-worker run type-check
 
 ## 手動確認を設計する
 
-- UI: desktop/mobile、loading、空状態、入力エラー、API エラー、管理者/一般ユーザー。
-- API: 正常系、401、403、400、404/409、DB row の型変換。
+- UI: desktop/mobile、loading、空状態、入力エラー、API エラー、ADM/ADM以外のEditor/一般ユーザー。
+- API: 正常系、401、403、400、404/409、DB row の型変換。ADM限定操作は全役職の拒否/許可、CSV経由のADM付与、書き込み時の権限条件も確認する。予約の直接削除はADM限定、メンバー・バンド・抽選対象に伴う連動削除はEditorにも許可されることを区別して確認する。
 - 日時: JST の日付境界、締切直前/直後、予約の最短/最長と営業時間。
 - realtime: 2クライアント、再接続、競合更新、切断後の状態。
 - migration: 空DB、既存データあり、再適用時の挙動。

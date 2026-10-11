@@ -5,7 +5,7 @@ import { useAdminMode } from '@/hooks/use-admin-mode'
 
 import { ToastNotice } from '@/components/toast-notice'
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import Link from 'next/link'
 import { toast } from '@/lib/toast'
 import {
@@ -70,10 +70,12 @@ export function HallLotteries({
   mode = 'apply',
   createOpen = false,
   onCreateOpenChange,
+  createTriggerRef,
 }: {
   mode?: 'admin' | 'apply' | 'calendar'
   createOpen?: boolean
   onCreateOpenChange?: (open: boolean) => void
+  createTriggerRef?: RefObject<HTMLButtonElement>
 }) {
   const { user } = useAuth()
   const [canApplyForAllBands] = useAdminMode(user && isAdmin(user.role))
@@ -544,7 +546,12 @@ export function HallLotteries({
           if (!busy) onCreateOpenChange?.(value)
         }}
       >
-        <DialogContent className="max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto" onCloseAutoFocus={event => {
+          if (createTriggerRef?.current) {
+            event.preventDefault()
+            createTriggerRef.current.focus()
+          }
+        }}>
           <DialogHeader>
             <DialogTitle>ホール抽選を追加</DialogTitle>
             <DialogDescription>
@@ -619,6 +626,7 @@ export function HallLotteries({
               />
             </div>
             <DialogFooter>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => onCreateOpenChange?.(false)}>キャンセル</Button>
               <Button type="submit" disabled={busy}>
                 {busy ? '作成中…' : '抽選を作成'}
               </Button>

@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
 import { CreateReservationRequestSchema, validateReservationTime, CreateUnavailablePeriodRequestSchema, UnavailablePeriodSchema, CreateReservationLimitRequestSchema, UpdateReservationLimitRequestSchema, ReservationLimitSchema, ReservationSchema, isAdmin, UpdateReservationRequestSchema, UpdateReservationStatusRequestSchema, type ReservationState } from '../../../../lib/shared-schemas';
 import { processReservationState, isTodayInJST, getJSTDateString, getAvailableIntervals, validateReservationDateRange } from '../utils/reservation-processor';
-import { requireAdmin } from '../utils/admin';
+import { requireAdmin, requireAdm } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
 import type { EmailNotificationType } from '../../../../lib/shared-schemas';
 import { prepareAndSendReservationEmail } from '../utils/reservation-email';
@@ -921,7 +921,7 @@ reservationRoutes.delete('/unavailable/:id', async (c) => {
 reservationRoutes.delete('/:id', async (c) => {
   try {
     const user = c.get('user');
-    requireAdmin(user.role);
+    requireAdm(user.role);
 
     const reservationId = parseUuid(c.req.param('id'));
     if (!reservationId) {
@@ -938,12 +938,11 @@ reservationRoutes.delete('/:id', async (c) => {
 
     return c.json({ success: true });
   } catch (error) {
-    console.error('Error deleting reservation:', error);
-
     if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
       return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
+    console.error('Error deleting reservation:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
 });

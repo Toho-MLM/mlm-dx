@@ -1,6 +1,6 @@
 # Worker API リファレンス
 
-最終更新日: 2026-08-19
+最終更新日: 2026-10-10（権限の呼称・ADM限定操作を更新）
 
 ## 概要
 
@@ -17,7 +17,7 @@ Worker は以下の `Bindings` を前提としています。
 | `DB` | Cloudflare D1 Database インスタンス |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth クライアント |
 | `CORS_ORIGIN` | 許可するオリジンのカンマ区切りリスト |
-| `INITIAL_ADMIN_EMAIL` | 初回登録を許可する管理者の Google メールアドレス。未設定時は登録不可 |
+| `INITIAL_ADMIN_EMAIL` | 初回登録を許可するADMの Google メールアドレス。未設定時は登録不可 |
 | `FRONTEND_URL` | フロントエンドアプリのルート URL |
 | `NODE_ENV` | 実行環境の識別子 |
 | `AUTH_URL` | Worker 自身のパブリック URL (OAuth コールバックに利用) |
@@ -28,7 +28,9 @@ Worker は以下の `Bindings` を前提としています。
 - Cookie は `HttpOnly`、HTTPS では `Secure`、`SameSite=Lax`、`Path=/` とし、有効期間は7日です。Cookie には256ビットのランダム値だけを保存し、D1 の `auth_sessions` には SHA-256 ハッシュだけを保存します。
 - `requireAuth` ミドルウェアが D1 上の有効期限とユーザーを検証し、`c.set('user', ...)` を実施します。失敗時は `401` で `NO_AUTHENTICATION_TOKEN` または `INVALID_SESSION` を返却します。
 - `POST`、`PUT`、`PATCH`、`DELETE` は同一 origin または `CORS_ORIGIN` に列挙された origin だけを許可します。
-- 管理者権限チェックは `requireAdmin` を使用し、ユーザーの `role` が `MBR` 以外の場合に許可されます。
+- EditorはMBR以外の有効な役職（ADM・MGR・CHF・MAC・NHD・NAC）の総称で、ADMも含みます。呼称は [デザインルール](../../docs/design-rules.md#権限の呼称) に従います。
+- Editor権限チェックは既存の `isAdmin` / `requireAdmin` を使用し、有効な役職だけを許可します。ADM限定のコア操作には `isAdm` / `requireAdm` または同等のDB書き込み条件を適用します。予約の完全削除とADMの付与・降格・削除（CSVを含む）はADMのみ実行できます。
+- メンバー・バンド・抽選対象の削除に伴う予約の連動削除はEditorにも許可します。学年一括繰上でも予約履歴の有無では制限しません。ADMが削除対象に含まれる場合だけ、非ADMの処理は全体を変更せず拒否します。権限不足は `403 INSUFFICIENT_PERMISSIONS` を返します。
 
 ### Google OAuth フロー
 
@@ -157,7 +159,7 @@ Worker は以下の `Bindings` を前提としています。
 ### Groups
 
 #### POST `/groups`
-- 認証必須。自由バンドは任意ユーザー、本バンドは管理者のみ作成できます。
+- 認証必須。自由バンドは任意ユーザー、本バンドはEditorのみ作成できます。
 - ボディ (`CreateGroupRequestSchema`):
 ```json
 {
@@ -175,7 +177,7 @@ Worker は以下の `Bindings` を前提としています。
 
 #### GET `/groups`
 - 認証必須。
-- クエリ `admin=true` を付けると全グループ取得 (管理者権限が必要)。付けない場合はログインユーザーが所属するグループのみ。
+- クエリ `admin=true` を付けると全グループ取得 (Editor権限が必要)。付けない場合はログインユーザーが所属するグループのみ。
 - 応答は `main_index`, `is_active` に加え、`assignments` 配列（`{ "id": "<user-id>", "instruments": ["VO","GT"] }`）を含みます。`main_index` が `null` の場合は自由バンドです。
 
 #### PUT `/groups/:id`
@@ -196,13 +198,13 @@ Worker は以下の `Bindings` を前提としています。
 - レスポンス: `{ "success": true }` のみ。
 
 #### PUT `/groups/active`
-- 管理者のみ。
+- Editorのみ。
 - ボディ: `{ "ids": ["group-uuid"], "is_active": true }`。1〜100件のバンドを一括で有効化または無効化します。
 - 指定IDが1件でも存在しない場合は `404 GROUP_NOT_FOUND` とし、更新しません。
 - レスポンス: `{ "success": true }` のみ。
 
 #### PUT `/groups/main-order`
-- 管理者のみ。
+- Editorのみ。
 - ボディ: `{ "ids": ["group-uuid-2", "group-uuid-1"] }`。有効な本バンドを表示順どおり全件指定します。
 - 対象の不足・重複・対象外IDがある場合は更新せず、`409 GROUP_ORDER_MISMATCH` を返します。
 - レスポンス: `{ "success": true }` のみ。
@@ -212,11 +214,13 @@ Worker は以下の `Bindings` を前提としています。
 | メソッド/パス | 認証 | 説明 |
 | --- | --- | --- |
 | `GET /members` | 必須 | 全メンバーと所属グループ名の一覧。`groups` は文字列配列。 |
-| `POST /members` | 管理者のみ | リクエスト: `{ "name": "...", "email": "...", "grade": 1-6 }`。新規ユーザーを `role: MBR` で登録。レスポンス: `{ "success": true }` |
-| `PUT /members/:id` | 管理者のみ | リクエスト: `{ "nickname": string, "grade": number, "instruments": string[], "role": enum }`。レスポンス: `{ "success": true }` |
-| `DELETE /members/:id` | 管理者のみ | ユーザー削除。存在しない場合は `404 MEMBER_NOT_FOUND`。 |
-| `POST /members/bulk` | 管理者のみ | 複数ユーザーを一括登録。重複メールは `failed` 配列にエラーとして返却。レスポンス: `{ "success": true, "data": { "created": string[], "failed": [{ "email": string, "error": string }] } }` |
+| `POST /members` | Editorのみ | リクエスト: `{ "name": "...", "email": "...", "grade": 1-6 }`。新規ユーザーを `role: MBR` で登録。レスポンス: `{ "success": true }` |
+| `PUT /members/:id` | Editorのみ | リクエスト: `{ "nickname": string, "grade": number, "instruments": string[], "role": enum }`。レスポンス: `{ "success": true }` |
+| `DELETE /members/:id` | Editorのみ | ユーザー削除。存在しない場合は `404 MEMBER_NOT_FOUND`。 |
+| `POST /members/bulk` | Editorのみ | 複数ユーザーを一括登録。重複メールは `failed` 配列にエラーとして返却。レスポンス: `{ "success": true, "data": { "created": string[], "failed": [{ "email": string, "error": string }] } }` |
 | `GET /members/select` | 必須 | 予約・エントリー用の軽量リスト。要素は `{ "id": string, "name": string, "instruments": string[] }`。 |
+
+`PUT /members/:id` でADMを付与・降格する場合と、`DELETE /members/:id` でADMを削除する場合はADM限定です。ADMの役職を維持するプロフィール編集はEditorにも許可します。`POST /members/bulk` にADMが含まれる場合、非ADMは一件も登録せず403で拒否します。`POST /members/move-up-grade` はADMの卒業対象者が含まれると非ADMによる処理を全体拒否します。通常メンバーの予約履歴は処理を制限しません。
 
 `POST /members/bulk` は入力内の重複メールを `DUPLICATE_IN_INPUT`、既存ユーザーを `EMAIL_ALREADY_EXISTS` として `failed` 配列にまとめて返却します。
 
@@ -236,7 +240,7 @@ Worker は以下の `Bindings` を前提としています。
   - 日付をまたがないこと
   - 利用時間は最短10分 / 最長4時間
   - 利用時間帯は 06:00〜23:00（JST 基準）
-  - `group_id` を指定した場合は、そのグループが `is_active = true` であり、ログインユーザーが所属している必要があります。`admin: true` を指定した管理者は所属していないアクティブグループを指定できますが、予約禁止期間内の時間帯は指定できません
+  - `group_id` を指定した場合は、そのグループが `is_active = true` であり、ログインユーザーが所属している必要があります。`admin: true` を指定したEditorは所属していないアクティブグループを指定できますが、予約禁止期間内の時間帯は指定できません
 - 同日内の予約は送信直後に `processReservationState` が実行され、空きがあれば `CONFIRMED`、部分的な空きは時間帯を調整したうえで `CONFIRMED`、空きがなければ `DECLINED` で保存されます。未来日の予約は `PENDING` で登録され、予約日の午前0時（JST）のバッチで判定されます。
 - 正常時のレスポンスは `{ "success": true }`。主なエラー:
   - `INVALID_RESERVATION_TIME`: 時刻バリデーション違反
@@ -251,12 +255,12 @@ Worker は以下の `Bindings` を前提としています。
 - 制限に抵触する場合は `403 RESERVATION_CANNOT_BE_CANCELLED` を返します。
 
 #### DELETE `/reservations/:id`
-- 管理者のみ実行できます。
+- ADMのみ実行できます。
 - 予約の状態を変更するのではなく、対象レコードをDBから完全に削除します。
 - 存在しない予約は `404 RESERVATION_NOT_FOUND`、UUID形式でないIDは `400 INVALID_INPUT` を返します。
 
 #### DELETE `/reservations/external/:id`
-- 管理者のみ実行できます。
+- ADMのみ実行できます。
 - 外部予約の状態を変更するのではなく、対象予約と紐づく利用実績をDBから完全に削除します。
 - 存在しない予約は `404 RESERVATION_NOT_FOUND`、UUID形式でないIDは `400 INVALID_INPUT` を返します。
 
@@ -267,7 +271,7 @@ Worker は以下の `Bindings` を前提としています。
 
 #### GET `/reservation/external/studios` / POST `/reservation/external/studios/bulk`
 - 認証必須。取得結果の `target_type` は既存データに応じて `HALL` または `EXTERNAL` です。
-- 作成は管理者のみで、`target_type` は `EXTERNAL` のみ受け付けます。`HALL` の作成は `USE_HALL_LOTTERIES` で拒否し、ホール抽選 API を利用します。
+- 作成はEditorのみで、`target_type` は `EXTERNAL` のみ受け付けます。`HALL` の作成は `USE_HALL_LOTTERIES` で拒否し、ホール抽選 API を利用します。
 - 既存の外部スタジオ行は migration により `EXTERNAL` として保持されます。
 - ホール対象を削除すると、未処理申込を閉じ、当選済みで利用前のホール予約を `DECLINED` にして取消通知を送ります。
 
@@ -281,16 +285,16 @@ Worker は以下の `Bindings` を前提としています。
 - 希望時間帯を指定しない場合、6:00〜23:00の制限は適用せず、外部スタジオの時間枠全体を抽選対象にします。
 
 #### ホール予約の抽選期間制限
-- `POST /reservations` と `PUT /reservations/:id` は、未抽選の `HALL` 対象時間と一部でも重なる場合、`LOTTERY_PERIOD_PROTECTED` で拒否します。管理者モードでは適用しません。
+- `POST /reservations` と `PUT /reservations/:id` は、未抽選の `HALL` 対象時間と一部でも重なる場合、`LOTTERY_PERIOD_PROTECTED` で拒否します。Editorモードでは適用しません。
 - 抽選後は、同時間帯の `CONFIRMED` ホール予約と競合しない時間に通常予約できます。未来日の通常予約は `PENDING` 同士で重なっても受け付け、利用日の午前0時（JST）に確定・時間調整・辞退を判定します。
 - ホール当選は `reservations`、外部当選は `external_reservations` に `CONFIRMED` として保存されます。
 
 #### 外部予約の抽選期間制限
 - `POST /reservations/external/check`、`POST /reservations/external`、`PUT /reservations/external/:id` は、利用日の前日21:00に行う抽選が未実施で、かつ利用日が翌日〜14日先に含まれる場合、`EXTERNAL_LOTTERY_PERIOD_PROTECTED` で拒否します。
-- 日付をまたぐ予約は、対象期間と一部でも重なる場合に拒否します。管理者モードではこの制限を適用しません。
+- 日付をまたぐ予約は、対象期間と一部でも重なる場合に拒否します。Editorモードではこの制限を適用しません。
 
 #### POST `/reservations/unavailable`
-- 管理者のみ実行できます。
+- Editorのみ実行できます。
 - 新しい予約禁止期間と既存の `PENDING` / `CONFIRMED` 予約が一部だけ重なる場合、禁止部分を除いた最長の時間帯へ予約を短縮し、状態は維持します。この変更は `RESERVATION_ADJUSTED` 通知の対象です。
 - 予約全体が禁止期間に含まれ、利用可能な時間が残らない場合は `DECLINED` に更新し、`RESERVATION_REVOKED` 通知の対象にします。
 
@@ -331,7 +335,7 @@ Worker は以下の `Bindings` を前提としています。
 
 | メソッド/パス | 認証 | 説明 |
 | --- | --- | --- |
-| `POST /setlist` | 必須 | ボディ: `{ "entry_id": string, "position": number, "title": string, "artist": string, "admin"?: true }`。`admin:true` を指定すると管理者権限を要求。イベントがセットリスト受付中 (`is_setlist_accepting`) かつ締切前であることを確認します。 |
+| `POST /setlist` | 必須 | ボディ: `{ "entry_id": string, "position": number, "title": string, "artist": string, "admin"?: true }`。`admin:true` を指定するとEditor権限を要求。イベントがセットリスト受付中 (`is_setlist_accepting`) かつ締切前であることを確認します。 |
 | `PUT /setlist?entryId=<id>` | 必須 | ボディ: `{ "items": [{ "title": string, "artist"?: string }], "hasSE": boolean, "admin"?: true }`。エントリーのセットリストを丸ごと置換し、`hasSE=true` の場合は位置0にSE曲を保存します。`song_limit` を超えると `400 SONG_LIMIT_EXCEEDED`。 |
 | `GET /setlist/event/:eventId` | 必須 | エントリーごとのセットリストをまとめて返却。各要素に `entry`, `group_name`, `setlist_items` を含みます。 |
 
@@ -342,16 +346,16 @@ Worker は以下の `Bindings` を前提としています。
 | メソッド/パス | 認証 | 説明 |
 | --- | --- | --- |
 | `GET /timeline/event/:eventId` | 必須 | 指定イベントの進行表を `configured`（位置が設定済み）と `unconfigured` に分けて返却します。要素は `entry_id`, `group_id`, `group_name`, `start_time`, `end_time`, `position` などを含みます。 |
-| `PUT /timeline/event/:eventId` | 管理者のみ | ボディ: `{ "items": [{ "entry_id": string, "position": number|null, "start_time"?: string|null, "end_time"?: string|null }] }` を想定。重複ポジションや欠番、終了時刻≦開始時刻は `400`。存在しないエントリー指定時は `404 ENTRY_NOT_FOUND`。 |
+| `PUT /timeline/event/:eventId` | Editorのみ | ボディ: `{ "items": [{ "entry_id": string, "position": number|null, "start_time"?: string|null, "end_time"?: string|null }] }` を想定。重複ポジションや欠番、終了時刻≦開始時刻は `400`。存在しないエントリー指定時は `404 ENTRY_NOT_FOUND`。 |
 
 ### Archive
 
 | メソッド/パス | 認証 | 備考 |
 | --- | --- | --- |
 | `GET /archive` | 必須 | 全アーカイブを年降順で取得。 |
-| `POST /archive` | 管理者 | ボディ: `{ "title": string, "youtube_url"?: string, "year": number }`。レスポンス: `{ "success": true }` |
-| `PUT /archive/:id` | 管理者 | 存在しない場合は `404 ARCHIVE_NOT_FOUND`。レスポンス: `{ "success": true }` |
-| `DELETE /archive/:id` | 管理者 | 削除成功で `{ "message": "Archive deleted successfully" }`。 |
+| `POST /archive` | Editor | ボディ: `{ "title": string, "youtube_url"?: string, "year": number }`。レスポンス: `{ "success": true }` |
+| `PUT /archive/:id` | Editor | 存在しない場合は `404 ARCHIVE_NOT_FOUND`。レスポンス: `{ "success": true }` |
+| `DELETE /archive/:id` | Editor | 削除成功で `{ "message": "Archive deleted successfully" }`。 |
 
 `youtube_url` は任意。空文字が保存される場合があります。
 
@@ -359,10 +363,10 @@ Worker は以下の `Bindings` を前提としています。
 
 | メソッド/パス | 認証 | 説明 |
 | --- | --- | --- |
-| `POST /events` | 管理者 | ボディ: `{ title, event_date, entry_deadline, is_entry_accepting, setlist_deadline, is_setlist_accepting, group_limit, song_limit }`。日付順 (`entry_deadline < setlist_deadline < event_date`) を満たさないと `400 INVALID_DATE_ORDER`。レスポンス: `{ "success": true }` |
+| `POST /events` | Editor | ボディ: `{ title, event_date, entry_deadline, is_entry_accepting, setlist_deadline, is_setlist_accepting, group_limit, song_limit }`。日付順 (`entry_deadline < setlist_deadline < event_date`) を満たさないと `400 INVALID_DATE_ORDER`。レスポンス: `{ "success": true }` |
 | `GET /events` | 必須 | イベント一覧。`is_entry_accepting` / `is_setlist_accepting` は boolean として返却。 |
-| `PUT /events/:id` | 管理者 | グループ上限が減った場合は超過分のエントリーを削除。`song_limit` 未指定時は既存値を維持。レスポンス: `{ "success": true }` |
-| `DELETE /events/:id` | 管理者 | 対象イベントおよび紐付くエントリー(外部キー設定に依存)を削除。 |
+| `PUT /events/:id` | Editor | グループ上限が減った場合は超過分のエントリーを削除。`song_limit` 未指定時は既存値を維持。レスポンス: `{ "success": true }` |
+| `DELETE /events/:id` | Editor | 対象イベントおよび紐付くエントリー(外部キー設定に依存)を削除。 |
 
 作成・更新のレスポンスはいずれも `{ "success": true }` のみ。
 
@@ -380,7 +384,7 @@ Worker は Cron トリガーを利用した自動処理を実装しています�
 ## 付録: 主要スキーマと列挙値
 
 - 楽器コード: `VO` (Vocal), `GT` (Guitar), `KEY` (Keyboard), `DR` (Drums), `BA` (Bass)。
-- 役割 (`role`): `MGR`, `CHF`, `MAC`, `MBR`, `ADM`, `NHD`, `NAC`。`requireAdmin` は `MBR` 以外を管理者扱い。
+- 役割 (`role`): `MGR`, `CHF`, `MAC`, `MBR`, `ADM`, `NHD`, `NAC`。`requireAdmin` はEditor権限の判定（ADM専用ではない）。
 - 予約ステータス: `PENDING`, `WITHDRAWN`, `DECLINED`, `CONFIRMED`, `CANCELLED`, `COMPLETED` (主に取得時に使用)。
 
 ---

@@ -36,7 +36,15 @@ const ValidDateStringSchema = z.string()
     return Number.isFinite(date.getTime()) && getJSTDateString(date) === value;
   });
 
-// 幹部交代は管理者 (ADM) を対象に含めない。
+// 幹部交代の候補学年はJSTの4月始まりの年度から決める。
+export const getExecutiveTransitionCohort = (now: Date) => {
+  const jst = new Date(now.getTime() + JAPAN_TIME_OFFSET_MS);
+  const year = jst.getUTCFullYear() - (jst.getUTCMonth() < 3 ? 1 : 0);
+  const suffix = String((year - 1) % 100).padStart(2, '0');
+  return { year, prefixes: [`M${suffix}`, `N${suffix}`] };
+};
+
+// 幹部交代はADMを対象に含めない。
 export const ExecutiveRoleSchema = z.enum(['MGR', 'CHF', 'MAC', 'NHD', 'NAC']);
 export const ExecutiveAssignmentSchema = z.object({
   user_id: UuidSchema,
@@ -46,7 +54,8 @@ const ExecutiveAssignmentsSchema = z.array(ExecutiveAssignmentSchema).min(1)
   .refine((entries) => new Set(entries.map((entry) => entry.user_id)).size === entries.length);
 export const SaveExecutiveTransitionRequestSchema = z.object({
   effective_date: ValidDateStringSchema,
-  assignments: ExecutiveAssignmentsSchema,
+  assignments: ExecutiveAssignmentsSchema.max(5)
+    .refine((entries) => new Set(entries.map((entry) => entry.role)).size === entries.length),
   expected_revision: UuidSchema.nullable(),
 });
 export const CancelExecutiveTransitionRequestSchema = z.object({ expected_revision: UuidSchema });
@@ -564,14 +573,22 @@ export const CreateExternalLotteryApplicationRequestSchema = ExternalLotteryTime
 });
 
 export function isAdmin(role: string | undefined): boolean {
-  if (!role) {
-    return false;
-  }
-  return role !== 'MBR';
+  return UserRoleSchema.safeParse(role).success && role !== 'MBR';
 }
 
 export function requireAdmin(role: string | undefined): void {
   if (!isAdmin(role)) {
+    throw new Error('INSUFFICIENT_PERMISSIONS');
+  }
+}
+
+// Editor権限とは区別し、コア操作はADMという役職だけに許可する。
+export function isAdm(role: string | undefined): boolean {
+  return role === 'ADM';
+}
+
+export function requireAdm(role: string | undefined): void {
+  if (!isAdm(role)) {
     throw new Error('INSUFFICIENT_PERMISSIONS');
   }
 }

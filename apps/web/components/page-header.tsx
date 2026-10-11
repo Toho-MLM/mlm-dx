@@ -10,9 +10,12 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { useTitle } from '@/app/context/TitleContext';
+import { PageHeaderActions, type PageHeaderRightActions } from '@/components/page-header-actions';
+
+export type { PageHeaderAction, PageHeaderMenuItem, PageHeaderRightActions } from '@/components/page-header-actions';
 
 interface PageHeaderProps {
-  rightActions?: React.ReactNode;
+  rightActions?: PageHeaderRightActions;
   className?: string;
   showSidebarTrigger?: boolean;
 }
@@ -52,7 +55,7 @@ export function PageHeader({ rightActions, className = "", showSidebarTrigger = 
       </div>
       {rightActions && (
         <div className="flex max-w-[65%] shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap">
-          {rightActions}
+          <PageHeaderActions actions={rightActions} />
         </div>
       )}
     </div>
