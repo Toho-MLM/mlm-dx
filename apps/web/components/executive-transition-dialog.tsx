@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { getExecutiveTransitionCohort, ExecutiveRoleSchema, ExecutiveTransitionSchema, SaveExecutiveTransitionRequestSchema, type ExecutiveAssignment, type ExecutiveTransition } from '@shared-schemas'
 import { MemberListItem, Role, roleNames } from '@/app/types'
 import { apiClient } from '@/lib/api'
@@ -31,7 +31,11 @@ const assignmentsFor = (draft: Draft): ExecutiveAssignment[] => executiveRoles
   .map((role) => ({ user_id: draft.successors[role], role }))
 const assignmentsKey = (entries: ExecutiveAssignment[]) => JSON.stringify([...entries].sort((a, b) => a.user_id.localeCompare(b.user_id)))
 
-export function ExecutiveTransitionDialog({ enabled, onApplied }: { enabled: boolean; onApplied: () => Promise<void> }) {
+export function ExecutiveTransitionDialog({ enabled, onApplied, renderTrigger }: {
+  enabled: boolean
+  onApplied: () => Promise<void>
+  renderTrigger?: (props: { onClick: () => void; isLoading: boolean }) => ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const inFlight = useRef(false)
@@ -62,7 +66,7 @@ export function ExecutiveTransitionDialog({ enabled, onApplied }: { enabled: boo
   }
 
   const start = async () => {
-    if (inFlight.current) return
+    if (!enabled || inFlight.current) return
     inFlight.current = true
     setBusy(true)
     try {
@@ -181,9 +185,9 @@ export function ExecutiveTransitionDialog({ enabled, onApplied }: { enabled: boo
   const successorName = (role: ExecutiveRole) => members.find((member) => member.id === draft.successors[role])?.name || '指定なし'
   return <>
     {enabled && <div ref={triggerRef} className="inline-flex shrink-0">
-      <LoadingButton variant="outline" isLoading={busy && !open} onClick={start}>
+      {renderTrigger ? renderTrigger({ onClick: () => { void start() }, isLoading: busy && !open }) : <LoadingButton variant="outline" isLoading={busy && !open} onClick={start}>
         幹部交代
-      </LoadingButton>
+      </LoadingButton>}
     </div>}
     <DraftDialog open={open && enabled} onOpenChange={setOpen} title="幹部交代" draft={draft} busy={busy}
       onBack={() => setConfirmation(null)} confirmation={confirmation && <div className="space-y-4">

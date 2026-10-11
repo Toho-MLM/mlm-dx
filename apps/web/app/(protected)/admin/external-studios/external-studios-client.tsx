@@ -1,17 +1,17 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { ja as jaLocale } from 'date-fns/locale'
 import { Plus, Trash2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { HallLotteries } from '@/components/hall-lotteries'
-import { PageHeader } from '@/components/page-header'
+import { PageHeader, type PageHeaderAction } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
@@ -57,6 +57,7 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
+  const applicationMenuRef = useRef<HTMLButtonElement>(null)
   const [externals, setExternals] = useState<External[]>(initialExternals ?? [])
   const [loading, setLoading] = useState(initialExternals === undefined || initialExternals === null)
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -167,10 +168,20 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
     }
   }
 
+  const rightActions: PageHeaderAction[] = [{
+    type: 'menu', id: 'application', label: '申込', variant: 'default', triggerRef: applicationMenuRef,
+    hidden: !authLoading && !isAdmin(user?.role),
+    disabled: authLoading || loading || isCreating,
+    items: [
+      { id: 'hall', label: 'ホール', onSelect: () => setIsHallFormOpen(true) },
+      { id: 'external', label: '外部', onSelect: () => setIsFormOpen(true) },
+    ],
+  }]
+
   if (authLoading || loading) {
     return (
       <>
-        <PageHeader rightActions={<><Button size="sm" disabled>外部抽選を追加</Button><Button size="sm" disabled>ホール抽選を追加</Button></>} />
+        <PageHeader rightActions={rightActions} />
         <div className="p-4 pt-0">
           <Skeleton className="h-24 w-full" />
         </div>
@@ -180,13 +191,8 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
 
   return (
     <>
-      <PageHeader rightActions={
-        <>
-          <Button size="sm" onClick={() => setIsFormOpen(true)}>外部抽選を追加</Button>
-          <Button size="sm" onClick={() => setIsHallFormOpen(true)}>ホール抽選を追加</Button>
-        </>
-      } />
-      <div className="px-5 pt-4"><HallLotteries mode="admin" createOpen={isHallFormOpen} onCreateOpenChange={setIsHallFormOpen} /></div>
+      <PageHeader rightActions={rightActions} />
+      <div className="px-5 pt-4"><HallLotteries mode="admin" createOpen={isHallFormOpen} onCreateOpenChange={setIsHallFormOpen} createTriggerRef={applicationMenuRef} /></div>
       <div className="mx-auto space-y-4 p-4 pt-0">
         <Card>
           <CardContent className="p-4">
@@ -230,8 +236,8 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
         </Card>
       </div>
 
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={isFormOpen} onOpenChange={open => { if (!isCreating) setIsFormOpen(open) }}>
+        <DialogContent className="max-w-2xl" onCloseAutoFocus={event => { event.preventDefault(); applicationMenuRef.current?.focus() }}>
           <DialogHeader>
             <DialogTitle>外部抽選対象を追加</DialogTitle>
             <DialogDescription>抽選する場所と利用時間枠を登録します。</DialogDescription>
@@ -280,9 +286,10 @@ function ExternalStudiosContent({ initialExternals }: { initialExternals?: Exter
                 <Input id="external-end-datetime" type="datetime-local" step={60} min={startDateTime} value={endDateTime} onChange={(event) => setEndDateTime(event.target.value)} required />
               </div>
             </div>
-            <div className="flex justify-end">
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={isCreating} onClick={() => setIsFormOpen(false)}>キャンセル</Button>
               <LoadingButton type="submit" isLoading={isCreating}>作成</LoadingButton>
-            </div>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

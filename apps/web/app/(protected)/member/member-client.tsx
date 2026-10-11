@@ -4,7 +4,7 @@ import { ExecutiveTransitionDialog } from '@/components/executive-transition-dia
 import { DraftDialog } from '@/components/draft-dialog'
 import { ToastNotice } from '@/components/toast-notice'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,6 +14,7 @@ import { LoadingButton } from "@/components/ui/loading-button"
 import { AnimatePresence, motion } from 'framer-motion'
 import { MemberListItem, instrumentNames, roleNames, instrumentColors } from '@/app/types'
 import { PageHeader } from '@/components/page-header'
+import { PageHeaderActions } from '@/components/page-header-actions'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext'
 import { isAdmin } from '@shared-schemas'
@@ -27,12 +28,12 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger
+  DialogFooter
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { PlusIcon, EditIcon, TrashIcon, UploadIcon } from 'lucide-react'
+import { EditIcon, TrashIcon } from 'lucide-react'
 
 const isMoveUpDeleteTarget = (member: MemberListItem) => {
   const studentNumberPrefix = member.student_number.toLowerCase().charAt(0)
@@ -40,6 +41,8 @@ const isMoveUpDeleteTarget = (member: MemberListItem) => {
 }
 
 export function MemberClient({ initialMembers }: { initialMembers?: MemberListItem[] | null }) {
+  const addMenuRef = useRef<HTMLButtonElement>(null)
+  const annualMenuRef = useRef<HTMLButtonElement>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -431,213 +434,205 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
 
   return (
     <>
-      <PageHeader
-        rightActions={
-          isAdminMode ? (
-            <>
-              <ExecutiveTransitionDialog enabled={isAdminMode} onApplied={fetchMembers} />
-              <Dialog open={isCsvImportDialogOpen} onOpenChange={(open) => { setIsCsvImportDialogOpen(open); if (!open) setCsvMembers([]) }}>
-                <DialogTrigger asChild>
-                  <Button variant="outline">
-                    <UploadIcon className="h-4 w-4" />
-                    CSVインポート
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>CSVインポート</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div>
-                      <Label>CSVファイル</Label>
-                      <Input
-                        type="file"
-                        accept=".csv"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0]
-                          if (file) {
-                            handleCsvSelect(file)
-                          }
-                        }}
-                        disabled={isSubmitting}
-                      />
-                    </div>
-                    {csvMembers.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="text-sm text-gray-700">{csvMembers.length}件を読み込みました</div>
-                        {duplicateEmailsInDb.length > 0 && (
-                          <ToastNotice variant="warning" message="重複ユーザーはスキップされます" description={`${duplicateEmailsInDb.length}件のメールアドレスが既存データと重複しています。${duplicateEmailsInDb.slice(0,5).join(', ')}${duplicateEmailsInDb.length > 5 ? ' 他' + (duplicateEmailsInDb.length-5) + '件' : ''}`} />
-                        )}
-                        {(missingRequiredRows.length > 0 || invalidGradeRows.length > 0) && (
-                          <ToastNotice variant="warning" message="必須不足の行はスキップされます" description={`必須列不足 ${missingRequiredRows.length} 行${invalidGradeRows.length > 0 ? `、無効な学年 ${invalidGradeRows.length} 行` : ''}`} />
-                        )}
-                        <div className="max-h-64 overflow-auto border rounded">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>名前</TableHead>
-                                <TableHead>メール</TableHead>
-                                <TableHead>学年</TableHead>
-                                <TableHead>ニックネーム</TableHead>
-                                <TableHead>楽器</TableHead>
-                                <TableHead>役職</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {csvMembers.map((m, idx) => {
-                                const isDup = existingEmails.has((m.email || '').trim().toLowerCase())
-                                const isInvalid = m.errors.length > 0
-                                const rowClass = isDup ? 'bg-red-50' : isInvalid ? 'bg-amber-50' : undefined
-                                return (
-                                <TableRow key={idx} className={rowClass}>
-                                  <TableCell>{m.name}</TableCell>
-                                  <TableCell>{m.email}</TableCell>
-                                  <TableCell>{m.grade ?? '-'}</TableCell>
-                                  <TableCell>{m.nickname || '-'}</TableCell>
-                                  <TableCell>
-                                    {Array.isArray(m.instruments) && m.instruments.length > 0 ? (
-                                      <div className="flex flex-wrap gap-1">
-                                        {m.instruments.map((inst, i) => (
-                                          <span key={`${inst}-${i}`} className={`${instrumentColors[inst as keyof typeof instrumentColors] || ''} px-2 py-0.5 rounded text-xs whitespace-nowrap`}>
-                                            {instrumentNames[inst as keyof typeof instrumentNames] || inst}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      '-'
-                                    )}
-                                  </TableCell>
-                                  <TableCell>{m.role || '-'}</TableCell>
-                                </TableRow>
-                                )
-                              })}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      </div>
-                    )}
-                    <div className="text-sm text-gray-500 space-y-1">
-                      <p>CSV仕様</p>
-                      <p>・1行目はヘッダー必須</p>
-                      <p>・必須ヘッダー: name, email, grade（gradeは1-6の整数）</p>
-                      <p>・任意ヘッダー: nickname, instruments, role</p>
-                      <p>・instruments: VO, GT, KEY, DR, BA のコードを文字列内に含めて記述（複数可）</p>
-                      <p>例: DR,GT,VO｜DR GT VO</p>
-                      <p>・role: MGR, CHF, MAC, MBR, ADM, NHD, NAC のいずれか</p>
-                    </div>
-                    <div className="flex justify-between items-center gap-2">
-                      <div>
-                        <Button variant="outline" onClick={() => { setCsvMembers([]); }} disabled={isSubmitting || csvMembers.length === 0}>
-                          クリア
-                        </Button>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => setIsCsvImportDialogOpen(false)}>
-                          閉じる
-                        </Button>
-                        <LoadingButton onClick={submitCsvImport} isLoading={isSubmitting} disabled={csvMembers.length === 0}>
-                          保存
-                        </LoadingButton>
-                      </div>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button onClick={() => resetForm()}>
-                    <PlusIcon className="h-4 w-4" />
-                    追加
-                  </Button>
-                </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>メンバーを追加</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="name">名前</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="email">メールアドレス</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="grade">学年</Label>
-                    <Select value={formData.grade.toString()} onValueChange={(value) => setFormData(prev => ({ ...prev, grade: parseInt(value) }))}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[1, 2, 3, 4, 5, 6].map(grade => (
-                          <SelectItem key={grade} value={grade.toString()}>{grade}年</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex justify-end space-x-2">
-                    <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                      キャンセル
-                    </Button>
-                    <LoadingButton onClick={handleCreate} isLoading={isSubmitting}>
-                      作成
-                    </LoadingButton>
+      <PageHeader rightActions={isAdminMode ? <>
+        <PageHeaderActions actions={[{
+          type: 'menu', id: 'add', label: '追加', variant: 'default', triggerRef: addMenuRef,
+          disabled: isSubmitting,
+          items: [
+            { id: 'individual', label: '個別', onSelect: () => { resetForm(); setIsCreateDialogOpen(true) } },
+            { id: 'csv', label: '一括(CSV)', onSelect: () => setIsCsvImportDialogOpen(true) },
+          ],
+        }]} />
+        <ExecutiveTransitionDialog enabled={isAdminMode} onApplied={fetchMembers}
+          renderTrigger={({ onClick, isLoading }) => <PageHeaderActions actions={[{
+            type: 'menu', id: 'annual', label: '年次操作', triggerRef: annualMenuRef,
+            disabled: isLoading || isSubmitting || loading,
+            items: [
+              { id: 'transition', label: '幹部交代', onSelect: onClick },
+              { id: 'promote', label: '学年繰上', destructive: true, separatorBefore: true, onSelect: () => setIsPromoteDialogOpen(true) },
+            ],
+          }]} />}
+        />
+      </> : undefined} />
+      {isAdminMode && <>
+        <Dialog open={isCsvImportDialogOpen} onOpenChange={(open) => { if (isSubmitting) return; setIsCsvImportDialogOpen(open); if (!open) setCsvMembers([]) }}>
+          <DialogContent onCloseAutoFocus={event => { event.preventDefault(); addMenuRef.current?.focus() }}>
+            <DialogHeader>
+              <DialogTitle>CSVインポート</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>CSVファイル</Label>
+                <Input
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      handleCsvSelect(file)
+                    }
+                  }}
+                  disabled={isSubmitting}
+                />
+              </div>
+              {csvMembers.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm text-gray-700">{csvMembers.length}件を読み込みました</div>
+                  {duplicateEmailsInDb.length > 0 && (
+                    <ToastNotice variant="warning" message="重複ユーザーはスキップされます" description={`${duplicateEmailsInDb.length}件のメールアドレスが既存データと重複しています。${duplicateEmailsInDb.slice(0,5).join(', ')}${duplicateEmailsInDb.length > 5 ? ' 他' + (duplicateEmailsInDb.length-5) + '件' : ''}`} />
+                  )}
+                  {(missingRequiredRows.length > 0 || invalidGradeRows.length > 0) && (
+                    <ToastNotice variant="warning" message="必須不足の行はスキップされます" description={`必須列不足 ${missingRequiredRows.length} 行${invalidGradeRows.length > 0 ? `、無効な学年 ${invalidGradeRows.length} 行` : ''}`} />
+                  )}
+                  <div className="max-h-64 overflow-auto border rounded">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>名前</TableHead>
+                          <TableHead>メール</TableHead>
+                          <TableHead>学年</TableHead>
+                          <TableHead>ニックネーム</TableHead>
+                          <TableHead>楽器</TableHead>
+                          <TableHead>役職</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {csvMembers.map((m, idx) => {
+                          const isDup = existingEmails.has((m.email || '').trim().toLowerCase())
+                          const isInvalid = m.errors.length > 0
+                          const rowClass = isDup ? 'bg-red-50' : isInvalid ? 'bg-amber-50' : undefined
+                          return (
+                          <TableRow key={idx} className={rowClass}>
+                            <TableCell>{m.name}</TableCell>
+                            <TableCell>{m.email}</TableCell>
+                            <TableCell>{m.grade ?? '-'}</TableCell>
+                            <TableCell>{m.nickname || '-'}</TableCell>
+                            <TableCell>
+                              {Array.isArray(m.instruments) && m.instruments.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {m.instruments.map((inst, i) => (
+                                    <span key={`${inst}-${i}`} className={`${instrumentColors[inst as keyof typeof instrumentColors] || ''} px-2 py-0.5 rounded text-xs whitespace-nowrap`}>
+                                      {instrumentNames[inst as keyof typeof instrumentNames] || inst}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                '-'
+                              )}
+                            </TableCell>
+                            <TableCell>{m.role || '-'}</TableCell>
+                          </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
                   </div>
                 </div>
-              </DialogContent>
-            </Dialog>
-            <Dialog open={isPromoteDialogOpen} onOpenChange={setIsPromoteDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="destructive">
-                  学年繰上
+              )}
+              <div className="text-sm text-gray-500 space-y-1">
+                <p>CSV仕様</p>
+                <p>・1行目はヘッダー必須</p>
+                <p>・必須ヘッダー: name, email, grade（gradeは1-6の整数）</p>
+                <p>・任意ヘッダー: nickname, instruments, role</p>
+                <p>・instruments: VO, GT, KEY, DR, BA のコードを文字列内に含めて記述（複数可）</p>
+                <p>例: DR,GT,VO｜DR GT VO</p>
+                <p>・role: MGR, CHF, MAC, MBR, ADM, NHD, NAC のいずれか</p>
+              </div>
+              <Button variant="outline" className="w-full" onClick={() => { setCsvMembers([]); }} disabled={isSubmitting || csvMembers.length === 0}>
+                クリア
+              </Button>
+              <DialogFooter>
+                <Button variant="outline" disabled={isSubmitting} onClick={() => setIsCsvImportDialogOpen(false)}>
+                  閉じる
                 </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>学年繰上</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <p className="text-sm text-gray-700">
-                    削除対象以外のメンバーの学年を一括で1つ繰り上げます。
-                  </p>
-                  <ToastNotice variant="warning" message="対象学年のメンバーは削除されます" description={`この操作を実行すると、学籍番号がnで始まる4年生とmで始まる6年生の計 ${moveUpDeleteTargetCount}人は削除されます。取り消すことはできません。`} />
-                  <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-                    <p>繰上対象: {moveUpGradeTargetCount}人</p>
-                    <p>削除対象: {moveUpDeleteTargetCount}人</p>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsPromoteDialogOpen(false)}
-                      disabled={isSubmitting}
-                    >
-                      キャンセル
-                    </Button>
-                    <LoadingButton
-                      variant="destructive"
-                      onClick={handleMoveUpGrade}
-                      isLoading={isSubmitting}
-                    >
-                      実行する
-                    </LoadingButton>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-            </>
-          ) : undefined
-        }
-      />
+                <LoadingButton onClick={submitCsvImport} isLoading={isSubmitting} disabled={csvMembers.length === 0}>
+                  保存
+                </LoadingButton>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isCreateDialogOpen} onOpenChange={open => { if (!isSubmitting) setIsCreateDialogOpen(open) }}>
+          <DialogContent onCloseAutoFocus={event => { event.preventDefault(); addMenuRef.current?.focus() }} className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>メンバーを追加</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="name">名前</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="email">メールアドレス</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="grade">学年</Label>
+                <Select value={formData.grade.toString()} onValueChange={(value) => setFormData(prev => ({ ...prev, grade: parseInt(value) }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4, 5, 6].map(grade => (
+                      <SelectItem key={grade} value={grade.toString()}>{grade}年</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" disabled={isSubmitting} onClick={() => setIsCreateDialogOpen(false)}>
+                  キャンセル
+                </Button>
+                <LoadingButton onClick={handleCreate} isLoading={isSubmitting}>
+                  作成
+                </LoadingButton>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isPromoteDialogOpen} onOpenChange={open => { if (!isSubmitting) setIsPromoteDialogOpen(open) }}>
+          <DialogContent onCloseAutoFocus={event => { event.preventDefault(); annualMenuRef.current?.focus() }} className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>学年繰上</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-700">
+                削除対象以外のメンバーの学年を一括で1つ繰り上げます。
+              </p>
+              <ToastNotice variant="warning" message="対象学年のメンバーは削除されます" description={`この操作を実行すると、学籍番号がnで始まる4年生とmで始まる6年生の計 ${moveUpDeleteTargetCount}人は削除されます。取り消すことはできません。`} />
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                <p>繰上対象: {moveUpGradeTargetCount}人</p>
+                <p>削除対象: {moveUpDeleteTargetCount}人</p>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsPromoteDialogOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  キャンセル
+                </Button>
+                <LoadingButton
+                  variant="destructive"
+                  onClick={handleMoveUpGrade}
+                  isLoading={isSubmitting}
+                >
+                  実行する
+                </LoadingButton>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </>}
       <div className="p-4 pt-0 mx-auto">
       <Card className="w-full max-w-screen mx-auto">
         <CardContent className="p-6">
