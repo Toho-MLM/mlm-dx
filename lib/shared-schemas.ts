@@ -573,14 +573,22 @@ export const CreateExternalLotteryApplicationRequestSchema = ExternalLotteryTime
 });
 
 export function isAdmin(role: string | undefined): boolean {
-  if (!role) {
-    return false;
-  }
-  return role !== 'MBR';
+  return UserRoleSchema.safeParse(role).success && role !== 'MBR';
 }
 
 export function requireAdmin(role: string | undefined): void {
   if (!isAdmin(role)) {
+    throw new Error('INSUFFICIENT_PERMISSIONS');
+  }
+}
+
+// Editor権限とは区別し、コア操作はADMという役職だけに許可する。
+export function isAdm(role: string | undefined): boolean {
+  return role === 'ADM';
+}
+
+export function requireAdm(role: string | undefined): void {
+  if (!isAdm(role)) {
     throw new Error('INSUFFICIENT_PERMISSIONS');
   }
 }

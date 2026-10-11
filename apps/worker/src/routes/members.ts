@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth';
-import { requireAdmin } from '../utils/admin';
+import { requireAdmin, requireAdm, isAdm } from '../utils/admin';
 import type { Bindings, Variables } from '../index';
 import { z } from 'zod';
 import { parseUuid } from '../utils/uuid';
@@ -48,6 +48,9 @@ memberRoutes.post('/', async (c) => {
     
     return c.json({ success: true });
   } catch (error) {
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
     if (error instanceof z.ZodError) {
       return c.json({ success: false, error: 'INVALID_REQUEST_DATA' }, 400);
     }
@@ -82,15 +85,23 @@ memberRoutes.put('/:id', async (c) => {
 
     const now = new Date().toISOString();
 
-    await createD1MemberRepository(c.env.DB).update(memberId, {
+    const repository = createD1MemberRepository(c.env.DB);
+    const currentRole = await repository.findRole(memberId);
+    if (currentRole === null) return c.json({ success: false, error: 'MEMBER_NOT_FOUND' }, 404);
+    if (requestData.role !== currentRole && (isAdm(currentRole) || isAdm(requestData.role))) requireAdm(user.role);
+    const updated = await repository.update(memberId, {
       nickname: requestData.nickname || null,
       grade: requestData.grade,
       instruments: requestData.instruments,
       role: requestData.role,
-    }, now);
+    }, now, isAdm(user.role));
+    if (!updated) return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
     return c.json({ success: true });
   } catch (error) {
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
     if (error instanceof z.ZodError) {
       return c.json({ success: false, error: 'INVALID_REQUEST_DATA' }, 400);
     }
@@ -128,6 +139,8 @@ memberRoutes.post('/bulk', async (c) => {
       created: [] as string[],
       failed: [] as Array<{ email: string; error: string }>,
     };
+
+    if (requestData.members.some((member) => isAdm(member.role))) requireAdm(user.role);
 
     const normalizedMembers = requestData.members.map(m => ({
       name: m.name,
@@ -176,6 +189,9 @@ memberRoutes.post('/bulk', async (c) => {
       }
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
     if (error instanceof z.ZodError) {
       return c.json({ success: false, error: 'INVALID_REQUEST_DATA' }, 400);
     }
@@ -191,7 +207,9 @@ memberRoutes.post('/move-up-grade', async (c) => {
     requireAdmin(user.role);
 
     const now = new Date().toISOString();
-    const { deletedCount, movedUpCount } = await createD1MemberRepository(c.env.DB).moveUpGrades(now);
+    const result = await createD1MemberRepository(c.env.DB).moveUpGrades(now, isAdm(user.role));
+    if (!result) return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    const { deletedCount, movedUpCount } = result;
 
     return c.json({
       success: true,
@@ -201,6 +219,9 @@ memberRoutes.post('/move-up-grade', async (c) => {
       },
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
     console.error('Error moving up grades:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }
@@ -221,10 +242,14 @@ memberRoutes.delete('/:id', async (c) => {
       return c.json({ success: false, error: 'MEMBER_NOT_FOUND' }, 404);
     }
 
-    await repository.delete(memberId);
+    const deleted = await repository.delete(memberId, isAdm(user.role));
+    if (!deleted) return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
     return c.json({ success: true, message: 'Member deleted successfully' });
   } catch (error) {
+    if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
+      return c.json({ success: false, error: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
     console.error('Error deleting member:', error);
     return c.json({ success: false, error: 'INTERNAL_SERVER_ERROR' }, 500);
   }

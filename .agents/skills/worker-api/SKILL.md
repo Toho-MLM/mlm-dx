@@ -8,7 +8,7 @@ description: MLM-DX の Cloudflare Worker バックエンドを実装・修正�
 ## ワークフロー
 
 1. 対象ルート、関連 utility、`lib/shared-schemas.ts`、D1 テーブルを追い、業務制約を整理する。
-2. request、response、エラーコード、認証、管理者権限、日時基準を先に決める。
+2. request、response、エラーコード、認証、Editor権限、日時基準を先に決める。
 3. 共有契約を変更する場合は共有 Zod スキーマを一次情報として更新する。
 4. `apps/worker/src/features/<feature>` の責務境界に従い、domain、application、infrastructure を実装し、`src/routes` の HTTP adapter から呼び出す。
 5. D1 処理を repository に実装し、必要なら新しい連番 migration を追加する。
@@ -29,7 +29,7 @@ description: MLM-DX の Cloudflare Worker バックエンドを実装・修正�
 
 ## API 境界
 
-- protected router 全体には `requireAuth` を適用し、管理操作では `requireAdmin(c.get('user').role)` を実行する。
+- protected router 全体には `requireAuth` を適用し、Editor操作では `requireAdmin(c.get('user').role)`、ADM限定操作では `requireAdm(c.get('user').role)` を実行する。ADMの役職変更・削除はDB書き込み条件でも保護する。メンバー・バンド・抽選対象の削除に伴う予約の連動削除はEditorにも許可する。
 - body、params、query は境界で検証する。ZodError は既存形式に合わせて 400 を返す。
 - レスポンスは原則 `{ success, data?, error?, message? }` に揃え、機械可読エラーは大文字スネークケースにする。
 - 401、403、404、409、400、500 を意味に応じて使い分ける。内部例外や秘密情報をレスポンスへ含めない。

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import type { Bindings, Variables } from '../index';
-import { requireAdmin } from '../utils/admin';
+import { requireAdmin, requireAdm } from '../utils/admin';
 import { broadcastReservationRealtimeEvent } from '../utils/reservation-realtime';
 import type { EmailNotificationType } from '../../../../lib/shared-schemas';
 import { prepareAndSendReservationEmail, prepareReservationEmail, sendPreparedReservationEmail } from '../utils/reservation-email';
@@ -587,7 +587,7 @@ externalReservationRoutes.put('/:id/status', async (c) => {
 
 externalReservationRoutes.delete('/:id', async (c) => {
   try {
-    requireAdmin(c.get('user').role);
+    requireAdm(c.get('user').role);
     const id = parseUuid(c.req.param('id'));
     if (!id) return c.json({ success: false, error: 'INVALID_INPUT' }, 400);
 

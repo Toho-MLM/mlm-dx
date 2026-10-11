@@ -40,32 +40,44 @@ export function createD1MemberRepository(db: D1Database): MemberRepository {
       `).bind(member.id, member.name, member.nickname, member.email, member.grade,
         JSON.stringify(member.instruments), member.role, now, now).run();
     },
-    async update(id, values, now) {
-      await db.prepare(`
-        UPDATE users SET nickname = ?, grade = ?, instruments = ?, role = ?, updated_at = ? WHERE id = ?
-      `).bind(values.nickname, values.grade, JSON.stringify(values.instruments), values.role, now, id).run();
+    async findRole(id) {
+      const row = await db.prepare('SELECT role FROM users WHERE id = ?').bind(id).first<{ role: string }>();
+      return row?.role ?? null;
     },
-    async moveUpGrades(now) {
+    async update(id, values, now, canChangeAdmRole) {
+      const result = await db.prepare(`
+        UPDATE users SET nickname = ?, grade = ?, instruments = ?, role = ?, updated_at = ? WHERE id = ?
+          AND (? = 1 OR role = ? OR (role <> 'ADM' AND ? <> 'ADM'))
+      `).bind(values.nickname, values.grade, JSON.stringify(values.instruments), values.role, now, id,
+        canChangeAdmRole ? 1 : 0, values.role, values.role).run();
+      return Number(result.meta.changes ?? 0) > 0;
+    },
+    async moveUpGrades(now, canDeleteAdm) {
       const deletion = `
         (LOWER(SUBSTR(email, 1, 1)) = 'n' AND grade = 4)
         OR (LOWER(SUBSTR(email, 1, 1)) = 'm' AND grade = 6)
       `;
       const advancement = `grade BETWEEN 1 AND 5 AND NOT (LOWER(SUBSTR(email, 1, 1)) = 'n' AND grade = 4)`;
-      const deleteCount = await db.prepare(`SELECT COUNT(*) AS count FROM users WHERE ${deletion}`)
-        .first<{ count: number | string }>();
-      const moveCount = await db.prepare(`SELECT COUNT(*) AS count FROM users WHERE ${advancement}`)
-        .first<{ count: number | string }>();
-      await db.batch([
-        db.prepare(`DELETE FROM users WHERE ${deletion}`),
-        db.prepare(`UPDATE users SET grade = grade + 1, updated_at = ? WHERE ${advancement}`).bind(now),
+      const guard = `(? = 1 OR NOT EXISTS (
+        SELECT 1 FROM users u WHERE (${deletion}) AND u.role = 'ADM'
+      ))`;
+      const permission = canDeleteAdm ? 1 : 0;
+      const results = await db.batch([
+        db.prepare(`SELECT ${guard} AS permitted,
+          (SELECT COUNT(*) FROM users WHERE ${deletion}) AS deletedCount,
+          (SELECT COUNT(*) FROM users WHERE ${advancement}) AS movedUpCount`).bind(permission),
+        db.prepare(`DELETE FROM users WHERE (${deletion}) AND ${guard}`).bind(permission),
+        db.prepare(`UPDATE users SET grade = grade + 1, updated_at = ? WHERE (${advancement}) AND ${guard}`).bind(now, permission),
       ]);
-      return { deletedCount: Number(deleteCount?.count ?? 0), movedUpCount: Number(moveCount?.count ?? 0) };
+      const counts = results[0].results[0] as { permitted: number; deletedCount: number; movedUpCount: number };
+      return counts.permitted ? { deletedCount: Number(counts.deletedCount), movedUpCount: Number(counts.movedUpCount) } : null;
     },
     async exists(id) {
       return Boolean(await db.prepare('SELECT id FROM users WHERE id = ?').bind(id).first());
     },
-    async delete(id) {
-      await db.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+    async delete(id, canDeleteAdm) {
+      const result = await db.prepare(`DELETE FROM users WHERE id = ? AND (? = 1 OR role <> 'ADM')`).bind(id, canDeleteAdm ? 1 : 0).run();
+      return Number(result.meta.changes ?? 0) > 0;
     },
     async listForSelect(currentUserId) {
       const rows = await db.prepare(`
@@ -90,4 +102,3 @@ export function createD1MemberRepository(db: D1Database): MemberRepository {
     },
   };
 }
-

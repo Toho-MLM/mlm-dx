@@ -88,7 +88,7 @@ export const roleNames: Record<Role, string> = {
   [Role.medical_accountant]: '医会計',
   [Role.nursing_accountant]: '看護会計',
   [Role.member]: '部員',
-  [Role.admin]: '管理者',
+  [Role.admin]: 'ADM',
 }
 
 export interface ReservationData {

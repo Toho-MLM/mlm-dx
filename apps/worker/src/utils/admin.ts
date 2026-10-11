@@ -1,1 +1,1 @@
-export { isAdmin, requireAdmin } from '../../../../lib/shared-schemas';
+export { isAdmin, requireAdmin, isAdm, requireAdm } from '../../../../lib/shared-schemas';

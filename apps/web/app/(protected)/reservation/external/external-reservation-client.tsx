@@ -26,7 +26,7 @@ import { apiClient } from '@/lib/api'
 import { getLoginPath } from '@/lib/auth-redirect'
 import { useAuth } from '@/app/context/AuthContext'
 import { eventStateNames, ReservationState } from '@/app/types'
-import { isAdmin, isExternalLotteryReservationProtected, validateExternalReservationTime, type External, type ExternalReservation, type ExternalReservationConflict } from '@shared-schemas'
+import { isAdmin, isAdm, isExternalLotteryReservationProtected, validateExternalReservationTime, type External, type ExternalReservation, type ExternalReservationConflict } from '@shared-schemas'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 import { DraftDialog } from '@/components/draft-dialog'
 import { ReservationDetailsDialog } from '@/components/reservation-details-dialog'
@@ -205,6 +205,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
   const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
+  const canDeleteReservation = isAdminMode && isAdm(user?.role)
   const [loading, setLoading] = useState(!hasCompleteInitialData)
   const [loadError, setLoadError] = useState<string | null>(initialData?.externals === null || initialData?.reservations === null ? '外部予約を読み込めませんでした。' : null)
   const [externals, setExternals] = useState<External[]>(
@@ -548,6 +549,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
   }
 
   const handleDeleteReservation = async (id: string) => {
+    if (!canDeleteReservation) return
     try {
       setIsDeleting(true)
       const response = await apiClient.deleteExternalReservation(id)
@@ -815,7 +817,7 @@ function ExternalReservationContent({ initialData, initialAdminMode }: { initial
             rangeEnd: selectedReservationExternal ? new Date(selectedReservationExternal.end_datetime) : undefined,
           } : undefined}
           onCancel={selectedReservation.meta.cancellable ? () => void handleCancelReservation(selectedReservation.meta.reservationId) : undefined}
-          onDelete={isAdminMode ? () => void handleDeleteReservation(selectedReservation.meta.reservationId) : undefined}
+          onDelete={canDeleteReservation ? () => void handleDeleteReservation(selectedReservation.meta.reservationId) : undefined}
           confirmation={isConflictDialogOpen && pendingEdit ? conflictConfirmation : undefined}
           onBack={() => setIsConflictDialogOpen(false)}
         >

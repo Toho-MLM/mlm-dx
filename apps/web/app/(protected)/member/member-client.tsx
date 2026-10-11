@@ -17,7 +17,7 @@ import { PageHeader } from '@/components/page-header'
 import { PageHeaderActions } from '@/components/page-header-actions'
 import { useAdminMode } from '@/hooks/use-admin-mode'
 import { useAuth } from '@/app/context/AuthContext'
-import { isAdmin } from '@shared-schemas'
+import { isAdmin, isAdm } from '@shared-schemas'
 import { apiClient } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/lib/toast'
@@ -56,6 +56,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { user } = useAuth()
   const [isAdminMode] = useAdminMode(user && isAdmin(user.role))
+  const canManageAdm = isAdminMode && isAdm(user?.role)
   const [members, setMembers] = useState<MemberListItem[] | null>(initialMembers ?? null)
   const [loading, setLoading] = useState(initialMembers === undefined || initialMembers === null)
 
@@ -238,12 +239,14 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
   }
 
   const handleDeleteClick = (member: MemberListItem) => {
+    if (isAdm(member.role) && !canManageAdm) return
     setDeletingMember(member)
     setIsDeleteDialogOpen(true)
   }
 
   const handleDeleteConfirm = async () => {
     if (!deletingMember) return
+    if (isAdm(deletingMember.role) && !canManageAdm) return
 
     setIsSubmitting(true)
     try {
@@ -395,6 +398,10 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
     )
     if (sendingList.length === 0) {
       toast.error('全てスキップ対象です（重複または必須不足）')
+      return
+    }
+    if (!canManageAdm && sendingList.some((member) => isAdm(member.role))) {
+      toast.error('ADMを含むCSVの登録はADMのみ実行できます')
       return
     }
     setIsSubmitting(true)
@@ -723,14 +730,14 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
                               >
                                 <EditIcon className="h-4 w-4" />
                               </Button>
-                              <Button
+                              {(canManageAdm || !isAdm(user.role)) && <Button
                                 variant="destructive"
                                 size="sm"
                                 onClick={() => handleDeleteClick(user)}
                                 aria-label={`${user.name}を削除`}
                               >
                                 <TrashIcon className="h-4 w-4" />
-                              </Button>
+                              </Button>}
                             </div>
                           </TableCell>
                         )}
@@ -757,17 +764,17 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
       </div>
 
       <DraftDialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}
-        title={isWarningDialogOpen ? '管理者権限の変更確認' : 'メンバーを編集'}
+        title={isWarningDialogOpen ? 'Editor権限の変更確認' : 'メンバーを編集'}
         draft={{ formData, editFormData }} busy={isSubmitting}
         onBack={() => setIsWarningDialogOpen(false)}
         confirmation={isWarningDialogOpen ? (
 
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              管理者権限を持つアカウントの役職を「部員」に変更しようとしています。
+              Editor権限を持つアカウントの役職を「部員」に変更しようとしています。
             </p>
             <p className="text-xs text-gray-500">
-              役職を「部員」に変更すると、管理者権限が失われます。本当に実行しますか？
+              役職を「部員」に変更すると、Editor権限が失われます。本当に実行しますか？
             </p>
             <div className="flex justify-end space-x-2">
               <Button
@@ -812,12 +819,12 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
             </div>
             <div>
               <Label htmlFor="edit-role">役職</Label>
-              <Select value={editFormData.role} onValueChange={(value) => setEditFormData(prev => ({ ...prev, role: value }))}>
+              <Select value={editFormData.role} disabled={!canManageAdm && isAdm(editingMember?.role)} onValueChange={(value) => setEditFormData(prev => ({ ...prev, role: value }))}>
                 <SelectTrigger id="edit-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(roleNames).map(([key, value]) => (
+                  {Object.entries(roleNames).filter(([key]) => canManageAdm || !isAdm(key) || isAdm(editingMember?.role)).map(([key, value]) => (
                     <SelectItem key={key} value={key}>{value}</SelectItem>
                   ))}
                 </SelectContent>

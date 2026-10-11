@@ -25,7 +25,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn, showSuccessToast } from "@/lib/utils"
 import { ReservationState, eventStateNames } from '../../types'
-import { validateReservationTime, isReservationDateValid, isReservationTimeValid, isAdmin, type Reservation, type Event, type UnavailablePeriod, type ReservationLimit, type ReservationLimitRemaining } from '@shared-schemas'
+import { validateReservationTime, isReservationDateValid, isReservationTimeValid, isAdmin, isAdm, type Reservation, type Event, type UnavailablePeriod, type ReservationLimit, type ReservationLimitRemaining } from '@shared-schemas'
 import {
   adjustReservationDraftForDate,
   MIN_RESERVATION_MINUTES,
@@ -197,6 +197,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
   const reservationLimitRequestIdRef = useRef(0)
   const { user, loading: authLoading } = useAuth();
   const [isAdminMode] = useAdminMode(user && isAdmin(user.role));
+  const canDeleteReservation = isAdminMode && isAdm(user?.role);
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -417,6 +418,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
   }
 
   const handleDelete = async (id: string) => {
+    if (!canDeleteReservation) return
     setIsDeleting(true)
     try {
       const response = await apiClient.deleteReservation(id)
@@ -979,7 +981,7 @@ function ReservationContent({ initialData, initialAdminMode }: { initialData?: R
             onSave: handleUpdateReservation,
           } : undefined}
           onCancel={selectedReservation.resource.cancellable ? () => void handleCancel(selectedReservation.resource.reservationId!) : undefined}
-          onDelete={isAdminMode && selectedReservation.resource.reservationId ? () => void handleDelete(selectedReservation.resource.reservationId!) : undefined}
+          onDelete={canDeleteReservation && selectedReservation.resource.reservationId ? () => void handleDelete(selectedReservation.resource.reservationId!) : undefined}
         >
           {selectedReservation.resource.type === 'reservation' ? (
             <>
