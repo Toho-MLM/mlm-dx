@@ -21,6 +21,8 @@ description: MLM-DX のコード変更を安全に検証する。実装後、バ
 
 ## 段階的に実行する
 
+Webはvinextの `pnpm build`、ローカル本番確認は `pnpm preview` を使う。生成先は `apps/web/dist`。本番構成のビルドは `CLOUDFLARE_ENV=production pnpm build`。deployは明示依頼時のみ実行する。
+
 最小の関連チェックから始め、失敗を解消してから広いチェックへ進む。
 
 ```bash

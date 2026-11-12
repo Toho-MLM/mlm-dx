@@ -10,7 +10,7 @@
 ## プロジェクト構成
 
 - pnpm workspace のモノレポとして扱う。
-- `apps/web`: Next.js 14 App Router、React、TypeScript、Tailwind CSS、shadcn/ui。
+- `apps/web`: vinext（Next.js互換App Router、Vite）、React 19、TypeScript、Tailwind CSS、shadcn/ui。
 - `apps/worker`: Cloudflare Workers、Hono、D1、Durable Objects。
 - `lib/shared-schemas.ts`: Web と Worker が共有する Zod スキーマと型の一次情報。
 - `apps/worker/migrations`: D1 の差分マイグレーション。

@@ -75,7 +75,7 @@ export function HallLotteries({
   mode?: 'admin' | 'apply' | 'calendar'
   createOpen?: boolean
   onCreateOpenChange?: (open: boolean) => void
-  createTriggerRef?: RefObject<HTMLButtonElement>
+  createTriggerRef?: RefObject<HTMLButtonElement | null>
 }) {
   const { user } = useAuth()
   const [canApplyForAllBands] = useAdminMode(user && isAdmin(user.role))

@@ -1,6 +1,6 @@
 # MLM-DX
 
-MLM-DXは、バンド管理システムです。Next.js（OpenNext）とHono APIを単一のCloudflare Worker `dx` で配信し、D1とDurable Objectsを同じデプロイに統合しています。モノレポ内の `apps/worker` はAPI実装と分離ローカル開発用として維持します。
+MLM-DXは、バンド管理システムです。vinext（Next.js互換・Vite）とHono APIを単一のCloudflare Worker `dx` で配信し、D1とDurable Objectsを同じデプロイに統合しています。モノレポ内の `apps/worker` はAPI実装と分離ローカル開発用として維持します。
 
 公開URLは `/api` または `/api/**` だけをHonoへ送り、それ以外をNext.jsへ送ります。ブラウザは本番で同一オリジンの `/api` を使用し、`NEXT_PUBLIC_API_URL` は分離開発時のAPI origin（例: `http://localhost:8787`）だけを指定します。
 
@@ -9,7 +9,7 @@ MLM-DXは、バンド管理システムです。Next.js（OpenNext）とHono API
 ```
 mlm-dx/
 ├── apps/
-│   ├── web/          # Next.jsフロントエンド
+│   ├── web/          # vinextフロントエンド
 │   └── worker/       # Cloudflare Workersバックエンド
 ├── package.json      # ルートレベルの設定
 └── README.md
@@ -39,6 +39,21 @@ mlm-dx/
 ## セットアップ
 
 ### 1. 依存関係のインストール
+
+Node.js 22.12以上とpnpm 10.22を使用します。
+ビルドはNext.js CLIではなくvinextとCloudflare Viteプラグインで行います。
+Next.js 16は互換APIの型定義・依存ライブラリのpeer依存のために残しています。
+
+`pnpm-workspace.yaml` でインストール時スクリプトは `esbuild` と `workerd` のみ許可しています。
+`sharp` と `unrs-resolver` はビルド済みのOS別依存を利用し、スクリプトは実行しません。
+OpenNextとrcloneは使用しません。新しい依存の警告が出た場合は内容を確認してから設定を更新します。
+
+`pnpm build` は統合Workerを `apps/web/dist/server`、静的ファイルを `dist/client` に生成します。
+`pnpm preview` はビルド結果をローカルの8787番で実行し、`pnpm dry-run` はアップロードせずに構成を検証します。
+本番用ビルドは `CLOUDFLARE_ENV=production pnpm build` を使用します。
+CIとdeployは生成された `dist/server/wrangler.json` を使います。
+ローカルdev/previewは既存の `apps/worker/.wrangler/state` を共有し、DBのmigration・seedコマンドは従来どおりです。
+vinextはベータのため、更新時は認証・RSCの画面遷移・予約カレンダー・WebSocketも確認してください。
 
 ```bash
 pnpm install
@@ -104,8 +119,8 @@ pnpm run db:setup:prod
 
 **開発環境:**
 ```
-http://localhost:3000
-http://127.0.0.1:3000
+http://localhost:8787
+http://127.0.0.1:8787
 ```
 
 **本番環境:**
@@ -177,8 +192,8 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 INITIAL_ADMIN_EMAIL=first-admin@example.com
 
 # CORS設定
-CORS_ORIGIN=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
+CORS_ORIGIN=http://localhost:8787
+FRONTEND_URL=http://localhost:8787
 
 # SMTP通知設定（465はtls、587はstarttls）
 SMTP_HOST=smtp.example.com
@@ -200,7 +215,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [assets]
 binding = "ASSETS"
-directory = ".open-next/assets"
+directory = "dist/client"
 
 [triggers]
 crons = ["0 12 * * *", "0 15 * * *"]
@@ -259,8 +274,8 @@ SMTP_FROM_NAME = "MLM-DX"
 | `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | `.dev.vars`ファイル | `wrangler secret put` |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | `.dev.vars`ファイル | `wrangler secret put` |
 | `INITIAL_ADMIN_EMAIL` | 初回登録を許可するADMの Google メールアドレス。未設定時は初回登録不可 | `.dev.vars`ファイル | 統合 Worker の GitHub Repository Secret |
-| `CORS_ORIGIN` | CORS許可オリジン | `http://localhost:3000` | `https://your-frontend-domain.com` |
-| `FRONTEND_URL` | フロントエンドのURL | `http://localhost:3000` | `https://your-frontend-domain.com` |
+| `CORS_ORIGIN` | CORS許可オリジン | `http://localhost:8787` | `https://your-frontend-domain.com` |
+| `FRONTEND_URL` | フロントエンドのURL | `http://localhost:8787` | `https://your-frontend-domain.com` |
 | `SMTP_HOST` | SMTPサーバーのホスト名 | `.dev.vars`ファイル | GitHub Repository Variable |
 | `SMTP_PORT` | SMTPポート（`465`または`587`） | `.dev.vars`ファイル | GitHub Repository Variable |
 | `SMTP_SECURITY` | 暗号化方式（`tls`または`starttls`） | `.dev.vars`ファイル | GitHub Repository Variable |
@@ -352,8 +367,8 @@ GitHub Actionsから本番デプロイする場合は、リポジトリ設定へ
 pnpm run dev
 
 # 個別に実行
-pnpm run dev:web           # フロントエンド（Next.js）
-pnpm run dev:worker        # バックエンド（Wrangler ローカル）
+pnpm run dev:web           # Web + APIを統合（vinext、http://localhost:8787）
+pnpm run dev:worker        # API単独の分離開発用（統合devとは同時起動しない）
 ```
 
 ## デプロイ
@@ -733,7 +748,7 @@ INSERT INTO users (
 
 ### JavaScript生成元のエラー
 - 「承認済みのJavaScript生成元」が空の場合、`Error 400: redirect_uri_mismatch`が発生します
-- 開発環境では`http://localhost:3000`と`http://127.0.0.1:3000`を設定
+- 開発環境では`http://localhost:8787`と`http://127.0.0.1:8787`を設定
 - 本番環境では`https://your-frontend-domain.com`を設定
 - ワイルドカード（`*`）は使用できません
 
@@ -743,7 +758,7 @@ INSERT INTO users (
 
 ### CORSエラー
 - `CORS_ORIGIN`がフロントエンドのURLと一致していることを確認
-- カンマ区切りで複数のオリジンを指定可能: `"http://localhost:3000,https://example.com"`
+- カンマ区切りで複数のオリジンを指定可能: `"http://localhost:8787,https://example.com"`
 
 ### データベースエラー
 - マイグレーションが正しく実行されていることを確認
@@ -772,7 +787,7 @@ curl http://localhost:8787/api/auth/session
 | スクリプト | 説明 |
 |-----------|------|
 | `pnpm run dev` | フルスタック開発環境を起動（ローカル） |
-| `pnpm run dev:web` | フロントエンドのみ起動 |
+| `pnpm run dev:web` | vinextでWeb/APIを統合起動 |
 | `pnpm run dev:worker` | バックエンドのみ起動（ローカル） |
 | `pnpm run build` | ローカル用ビルド |
 | `pnpm run db:setup:local` | ローカルDB設定 |
@@ -782,8 +797,8 @@ curl http://localhost:8787/api/auth/session
 | スクリプト | 説明 |
 |-----------|------|
 | `pnpm run deploy` | 本番環境にフルスタックデプロイ |
-| `pnpm run preview` | OpenNext統合Workerをローカルpreview |
-| `pnpm run build` | OpenNext統合Workerをbuild |
+| `pnpm run preview` | vinext統合Workerをローカルpreview |
+| `pnpm run build` | vinext統合Workerをbuild |
 | `pnpm run dry-run` | 統合WorkerをWranglerでdry-run |
 | `pnpm run deploy` | `dx`統合Workerを本番デプロイ |
 | `pnpm run db:setup:prod` | 本番DB設定 |

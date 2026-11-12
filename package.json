@@ -8,12 +8,12 @@
     "apps/worker"
   ],
   "scripts": {
-    "dev": "concurrently \"pnpm --filter mlm-dx-worker run dev\" \"pnpm --filter mlm-dx-web run dev\"",
+    "dev": "pnpm run dev:web",
     "dev:web": "pnpm --filter mlm-dx-web run dev",
     "dev:worker": "pnpm --filter mlm-dx-worker run dev",
     "preview": "pnpm --filter mlm-dx-web run preview",
     "build": "pnpm run build:web",
-    "build:web": "pnpm --filter mlm-dx-web run build:worker",
+    "build:web": "pnpm --filter mlm-dx-web run build",
     "build:worker": "pnpm --filter mlm-dx-worker run build",
     "dry-run": "pnpm --filter mlm-dx-web run dry-run",
     "deploy": "pnpm --filter mlm-dx-web run deploy",
@@ -31,16 +31,15 @@
     "test": "pnpm run test:worker",
     "test:worker": "pnpm --filter mlm-dx-worker run test",
     "type-check": "pnpm --filter mlm-dx-web run type-check && pnpm --filter mlm-dx-worker run type-check",
-    "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist apps/*/.next apps/worker/.wrangler"
+    "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist apps/web/.next apps/web/.open-next apps/web/.vinext apps/web/.vite apps/worker/.wrangler"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
-    "concurrently": "^10.0.3",
     "typescript": "^5.9.3"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "pnpm": ">=9.0.0"
+    "node": ">=22.12.0",
+    "pnpm": ">=10.22.0"
   },
   "dependencies": {
     "date-fns": "^4.4.0",
