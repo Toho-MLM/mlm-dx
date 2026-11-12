@@ -1,4 +1,4 @@
-import { getCloudflareContext } from '@opennextjs/cloudflare'
+import { env } from 'cloudflare:workers'
 import { redirect } from 'next/navigation'
 import { cookies, headers } from 'next/headers'
 import { cache } from 'react'
@@ -15,22 +15,8 @@ export interface ApiResponse<T = unknown> {
   message?: string
 }
 
-function getSeparatedDevelopmentOrigin(): string | null {
-  if (process.env.NODE_ENV !== 'development') return null
-  const configuredOrigin = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '')
-  if (configuredOrigin) return configuredOrigin
-  return 'http://localhost:8787'
-}
-
 async function fetchApi(request: Request): Promise<Response> {
-  try {
-    const service = getCloudflareContext().env.WORKER_SELF_REFERENCE
-    if (service) return service.fetch(request)
-  } catch {
-    // next dev では Cloudflare request context がないため、分離 Worker へフォールバックする。
-  }
-
-  return fetch(request)
+  return env.WORKER_SELF_REFERENCE.fetch(request)
 }
 
 export async function serverRequest<T = unknown>(
@@ -39,10 +25,9 @@ export async function serverRequest<T = unknown>(
 ): Promise<T> {
   const cookieStore = await cookies()
   const requestHeaders = await headers()
-  const developmentOrigin = getSeparatedDevelopmentOrigin()
   const forwardedHost = requestHeaders.get('x-forwarded-host') || requestHeaders.get('host')
   const forwardedProtocol = requestHeaders.get('x-forwarded-proto') || 'https'
-  const origin = developmentOrigin || (forwardedHost ? `${forwardedProtocol}://${forwardedHost}` : 'https://worker.internal')
+  const origin = forwardedHost ? `${forwardedProtocol}://${forwardedHost}` : 'https://worker.internal'
   const url = `${origin}/api${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`
   const request = new Request(url, {
     ...options,

@@ -76,10 +76,11 @@ jobs:
           workingDirectory: apps/web
           command: d1 migrations apply mlm-dx-db --env production --remote
           packageManager: pnpm
-      - name: Build OpenNext unified Worker
+      - name: Build vinext unified Worker
         run: pnpm build
         env:
           NODE_ENV: production
+          CLOUDFLARE_ENV: production
           NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       - name: Deploy dx Worker
         uses: cloudflare/wrangler-action@v3.14.1
@@ -87,9 +88,8 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/web
-          command: deploy --env production
+          command: deploy --config dist/server/wrangler.json
           packageManager: pnpm
-          environment: production
           secrets: |
             AUTH_SECRET
             GOOGLE_CLIENT_ID

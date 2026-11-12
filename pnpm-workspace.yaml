@@ -1,3 +1,11 @@
 packages:
   - apps/*
 
+# Native executables used by builds, tests and local Workers.
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
+# Prebuilt optional dependencies are used; no local compilation/download fallback.
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver

@@ -47,3 +47,8 @@ next-env.d.ts
 /apps/worker/.worker-bundle
 /apps/web/.worker-bundle
 /.pnpm-store
+
+# Vite / vinext
+/apps/web/dist/
+/apps/web/.vite/
+/apps/web/.vinext/

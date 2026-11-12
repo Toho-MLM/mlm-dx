@@ -5,6 +5,8 @@ description: MLM-DX の Next.js フロントエンド機能を既存設計に沿
 
 # MLM-DX Web 機能開発
 
+実行・ビルドはvinext（Next.js互換API）とCloudflare Viteプラグインを使う。`next dev/build/lint` は使わない。`pnpm dev` は8787番でWeb/APIを統合起動する。Worker bindingsは `cloudflare:workers` から参照する。
+
 ## ワークフロー
 
 1. `git status --short` で既存変更を把握し、対象画面と類似画面を読む。
