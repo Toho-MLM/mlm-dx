@@ -2,8 +2,9 @@ import React from 'react';
 import localFont from "next/font/local";
 import "./globals.css";
 import { TitleProvider } from './context/TitleContext';
-import { Metadata } from 'next';
+import { Metadata, Viewport } from 'next';
 import { Toaster } from '@/components/ui/sonner';
+import { PwaUpdates } from '@/components/pwa-updates';
 
 const notoSansJP = localFont({
   src: "./fonts/NotoSansJP-VariableFont_wght.ttf",
@@ -14,8 +15,16 @@ const notoSansJP = localFont({
 export const metadata: Metadata = {
   title: "MLM DX",
   description: "MLM ホール予約・バンド管理システム",
+  applicationName: 'MLM DX',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'MLM DX',
+    statusBarStyle: 'default',
+  },
   icons: {
     icon: "/favicon.ico",
+    apple: '/icons/apple-touch-icon.png',
   },
   robots: {
     index: false,
@@ -29,6 +38,12 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#111827',
+};
+
 export default function RootLayout({
   children
 }: Readonly<{
@@ -40,6 +55,7 @@ export default function RootLayout({
         <TitleProvider>
           {children}
           <Toaster />
+          <PwaUpdates />
         </TitleProvider>
       </body>
     </html>
