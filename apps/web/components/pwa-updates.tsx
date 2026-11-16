@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { registerPwa } from '@/lib/pwa'
 
 const toastId = 'pwa-update'
@@ -16,7 +16,14 @@ export function PwaUpdates() {
           id: toastId,
           description: '入力内容を保存してから再読み込みしてください。',
           duration: Infinity,
-          action: { label: '再読み込み', onClick: reload },
+          action: {
+            label: '再読み込み',
+            onClick: (event) => {
+              // Applying can synchronously replace this toast with an error.
+              event.preventDefault()
+              reload()
+            },
+          },
         })
       },
       onUpdateError: (retry) => {
@@ -24,7 +31,13 @@ export function PwaUpdates() {
           id: toastId,
           description: '通信状況を確認して、もう一度お試しください。',
           duration: Infinity,
-          action: { label: '再試行', onClick: retry },
+          action: {
+            label: '再試行',
+            onClick: (event) => {
+              event.preventDefault()
+              retry()
+            },
+          },
         })
       },
     })
