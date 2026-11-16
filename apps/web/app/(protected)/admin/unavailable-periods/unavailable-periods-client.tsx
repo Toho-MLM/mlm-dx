@@ -94,7 +94,7 @@ function UnavailablePeriodsContent({ initialPeriods }: { initialPeriods?: Unavai
       if (response.success && response.data) {
         setPeriods(response.data as UnavailablePeriod[])
       }
-    } catch (err) {
+    } catch {
       toast.error('予約不可期間の取得中にエラーが発生しました')
     } finally {
       setLoading(false)

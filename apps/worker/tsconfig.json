@@ -23,7 +23,7 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": ["@cloudflare/workers-types"],
+    "types": ["@cloudflare/workers-types", "node"],
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "@shared-schemas": ["../../lib/shared-schemas.ts"]

@@ -55,6 +55,8 @@ CIとdeployは生成された `dist/server/wrangler.json` を使います。
 ローカルdev/previewは既存の `apps/worker/.wrangler/state` を共有し、DBのmigration・seedコマンドは従来どおりです。
 vinextはベータのため、更新時は認証・RSCの画面遷移・予約カレンダー・WebSocketも確認してください。
 
+`pnpm test:web` はWebの回帰テスト、`pnpm test:worker` はWorkerのテスト、`pnpm test` は両方を実行します。予約カレンダーは実際のライブラリで3日・1日・週表示と月をまたぐ移動を描画し、部品の読み込み不整合を検出します。Webのテストはデプロイ前のCIでも実行します。ブラウザ上の操作や実機表示の確認は別途必要です。
+
 ```bash
 pnpm install
 ```

@@ -98,7 +98,7 @@ function ReservationLimitsContent({ initialLimits }: { initialLimits?: Reservati
       if (response.success && response.data) {
         setLimits(response.data)
       }
-    } catch (err) {
+    } catch {
       toast.error('予約上限の取得中にエラーが発生しました')
     } finally {
       setLoading(false)

@@ -28,13 +28,14 @@
     "lint": "pnpm run lint:web && pnpm run lint:worker",
     "lint:web": "pnpm --filter mlm-dx-web run lint",
     "lint:worker": "pnpm --filter mlm-dx-worker run lint",
-    "test": "pnpm run test:worker",
+    "test": "pnpm run test:web && pnpm run test:worker",
     "test:worker": "pnpm --filter mlm-dx-worker run test",
     "type-check": "pnpm --filter mlm-dx-web run type-check && pnpm --filter mlm-dx-worker run type-check",
-    "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist apps/web/.next apps/web/.open-next apps/web/.vinext apps/web/.vite apps/worker/.wrangler"
+    "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist apps/web/.next apps/web/.open-next apps/web/.vinext apps/web/.vite apps/worker/.wrangler",
+    "test:web": "pnpm --filter mlm-dx-web run test"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.6.6",
     "typescript": "^5.9.3"
   },
   "engines": {
@@ -43,7 +44,7 @@
   },
   "dependencies": {
     "date-fns": "^4.4.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "packageManager": "pnpm@10.22.0+sha512.bf049efe995b28f527fd2b41ae0474ce29186f7edcb3bf545087bd61fbbebb2bf75362d1307fda09c2d288e1e499787ac12d4fcb617a974718a6051f2eee741c"
 }

@@ -11,7 +11,7 @@ description: MLM-DX のコード変更を安全に検証する。実装後、バ
 2. `git diff -- <対象>` で自分の変更と既存の未コミット変更を区別する。
 3. 変更ファイルから検証範囲を決める。
 
-- `apps/web/**`: Web の type-check。UI/route/build 設定なら lint と build も検討する。
+- `apps/web/**`: Web の type-check と `pnpm test:web`。UI/route/build 設定なら lint と build も検討する。
 - `apps/worker/**`: Worker の type-check。route、binding、Durable Object、wrangler 設定なら build も検討する。
 - `apps/worker/src/features/**`: `pnpm test:worker` で境界検査、純粋 domain、fake repository を使う application テストを実行する。
 - `lib/shared-schemas.ts`: Web と Worker の両方を検証する。
@@ -26,6 +26,7 @@ Webはvinextの `pnpm build`、ローカル本番確認は `pnpm preview` を使
 最小の関連チェックから始め、失敗を解消してから広いチェックへ進む。
 
 ```bash
+pnpm test:web
 pnpm test:worker
 pnpm type-check
 pnpm lint
