@@ -26,6 +26,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Type check Web and Worker
         run: pnpm type-check
+      - name: Test Web
+        run: pnpm test:web
       - name: Test Worker
         run: pnpm test:worker
       - name: Validate SMTP configuration

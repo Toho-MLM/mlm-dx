@@ -63,6 +63,7 @@
 - 生成物 (`.next`、`.open-next`、`.wrangler`、`.worker-bundle`) を編集・コミットしない。
 - 最低限、変更したアプリの type-check を行う。可能なら lint、境界をまたぐ変更では両アプリの type-check、リリース影響が大きい変更では build まで行う。
 - ルートコマンドを優先する: `pnpm type-check`、`pnpm lint`、`pnpm build`。範囲を限定する場合は定義済みのアプリ別スクリプトを使う。
+- Web のコードを変更した場合は `pnpm test:web` を実行する。
 - Worker の domain、application、repository 境界を変更した場合は `pnpm test:worker` を実行する。
 - 自動テストがない領域では、代表的な正常系・権限エラー・入力エラー・境界日時を手動確認項目として報告する。
 

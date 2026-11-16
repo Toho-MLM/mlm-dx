@@ -13,7 +13,8 @@
     "db:migrate:prod": "wrangler d1 migrations apply mlm-dx-db --env production --remote",
     "db:reset:prod": "wrangler d1 execute mlm-dx-db --env production --remote --file=../worker/schema.sql",
     "lint": "eslint app components hooks lib types middleware.ts worker.ts vite.config.ts vinext-env.d.ts --ext .ts,.tsx",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -69,6 +70,7 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.9.3",
     "vite": "^8.3.8",
+    "vitest": "^3.2.7",
     "wrangler": "4.160.0"
   },
   "type": "module"

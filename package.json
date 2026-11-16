@@ -28,10 +28,11 @@
     "lint": "pnpm run lint:web && pnpm run lint:worker",
     "lint:web": "pnpm --filter mlm-dx-web run lint",
     "lint:worker": "pnpm --filter mlm-dx-worker run lint",
-    "test": "pnpm run test:worker",
+    "test": "pnpm run test:web && pnpm run test:worker",
     "test:worker": "pnpm --filter mlm-dx-worker run test",
     "type-check": "pnpm --filter mlm-dx-web run type-check && pnpm --filter mlm-dx-worker run type-check",
-    "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist apps/web/.next apps/web/.open-next apps/web/.vinext apps/web/.vite apps/worker/.wrangler"
+    "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist apps/web/.next apps/web/.open-next apps/web/.vinext apps/web/.vite apps/worker/.wrangler",
+    "test:web": "pnpm --filter mlm-dx-web run test"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
