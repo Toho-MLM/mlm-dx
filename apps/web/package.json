@@ -12,7 +12,7 @@
     "db:create": "wrangler d1 create mlm-dx-db",
     "db:migrate:prod": "wrangler d1 migrations apply mlm-dx-db --env production --remote",
     "db:reset:prod": "wrangler d1 execute mlm-dx-db --env production --remote --file=../worker/schema.sql",
-    "lint": "eslint app components hooks lib types middleware.ts worker.ts vite.config.ts vinext-env.d.ts --ext .ts,.tsx",
+    "lint": "eslint app components hooks lib pwa types middleware.ts worker.ts vite.config.ts vinext-env.d.ts --ext .ts,.tsx,.js",
     "type-check": "tsc --noEmit",
     "test": "vitest run"
   },
