@@ -382,7 +382,7 @@ function SetlistContent({ initialEvents }: { initialEvents?: Event[] | null }) {
         })
         setEditingItems(editingMap)
       }
-    } catch (error) {
+    } catch {
       toast.error('データの取得に失敗しました')
     }
   }, [isAdminMode])

@@ -147,7 +147,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
       } else {
         toast.error('メンバーの作成に失敗しました')
       }
-    } catch (error) {
+    } catch {
       toast.error('エラーが発生しました')
     } finally {
       setIsSubmitting(false)
@@ -201,7 +201,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
       } else {
         toast.error('メンバーの更新に失敗しました')
       }
-    } catch (error) {
+    } catch {
       toast.error('エラーが発生しました')
     } finally {
       setIsSubmitting(false)
@@ -229,7 +229,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
         } else {
           toast.error('メンバーの更新に失敗しました')
         }
-      } catch (error) {
+      } catch {
         toast.error('エラーが発生しました')
       } finally {
         setIsSubmitting(false)
@@ -259,7 +259,7 @@ export function MemberClient({ initialMembers }: { initialMembers?: MemberListIt
       } else {
         toast.error('メンバーの削除に失敗しました')
       }
-    } catch (error) {
+    } catch {
       toast.error('エラーが発生しました')
     } finally {
       setIsSubmitting(false)

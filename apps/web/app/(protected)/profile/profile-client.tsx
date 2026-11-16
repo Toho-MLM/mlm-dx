@@ -20,7 +20,7 @@ import {
 } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import { startRegistration } from '@simplewebauthn/browser'
-import type { AuthenticatorAttestationResponseJSON } from '@simplewebauthn/types'
+import type { AuthenticatorAttestationResponseJSON } from '@simplewebauthn/browser'
 import { toast } from '@/lib/toast'
 import { showSuccessToast } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'

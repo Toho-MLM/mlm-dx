@@ -1,3 +1,4 @@
+import { URL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import type { D1Database, ExecutionContext } from '@cloudflare/workers-types';

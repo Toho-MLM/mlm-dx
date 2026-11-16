@@ -1,7 +1,7 @@
 import { MemberListItem } from '@/app/types'
 import * as SharedSchemas from '../../../lib/shared-schemas'
 import { httpClient } from './http-client'
-import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, AuthenticatorAttestationResponseJSON, AuthenticatorAssertionResponseJSON } from '@simplewebauthn/types'
+import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, AuthenticatorAttestationResponseJSON, AuthenticatorAssertionResponseJSON } from '@simplewebauthn/browser'
 
 type UserWithInstruments = SharedSchemas.UserWithInstruments
 type Group = SharedSchemas.Group

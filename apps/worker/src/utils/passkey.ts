@@ -40,8 +40,8 @@ function parseTransports(value: string | null): string[] | undefined {
   }
 }
 
-function encodeUserId(value: string): Uint8Array {
-  return new TextEncoder().encode(value);
+function encodeUserId(value: string): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(new TextEncoder().encode(value));
 }
 
 export async function createRegistrationOptions(env: Bindings, user: { id: string; email: string; name: string }, passkeys: StoredPasskey[]): Promise<RegistrationOptions> {
@@ -126,7 +126,7 @@ export function encodeBase64Url(buffer: ArrayBuffer | Uint8Array): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-export function decodeBase64Url(data: string): Uint8Array {
+export function decodeBase64Url(data: string): Uint8Array<ArrayBuffer> {
   let base64 = data.replace(/-/g, '+').replace(/_/g, '/');
   while (base64.length % 4 !== 0) {
     base64 += '=';

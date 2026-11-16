@@ -9,3 +9,15 @@ onlyBuiltDependencies:
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+
+# Security fixes for transitive versions pinned by upstream dependencies.
+# Revisit these overrides when the upstream version ranges include the fixes.
+overrides:
+  # satori / opentype.js: malformed ZIP64 archive handling.
+  'fflate@>=0.7.0 <0.7.5': '0.7.5'
+  # Next ESLint plugin: cancellation bypass (the globSync API is retained).
+  'glob@>=9 <14.0.2': '^14.0.6'
+  # Glob and TypeScript ESLint: globparts amplification.
+  'minimatch@>=7 <11.0.1': '^11.0.8'
+  # Vite / PostCSS optional peer resolution: deeply nested collections.
+  'yaml@>=2 <2.8.3': '^2.8.3'
